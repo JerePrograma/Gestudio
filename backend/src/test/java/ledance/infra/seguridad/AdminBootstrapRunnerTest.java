@@ -7,15 +7,20 @@ import ledance.repositorios.UsuarioRepositorio;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.boot.DefaultApplicationArguments;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class AdminBootstrapRunnerTest {
@@ -46,6 +51,7 @@ class AdminBootstrapRunnerTest {
         verify(usuarioRepositorio).save(captor.capture());
         assertEquals("admin-inicial", captor.getValue().getNombreUsuario());
         assertEquals("bcrypt-hash", captor.getValue().getContrasena());
+        assertNotEquals("clave-inicial-segura", captor.getValue().getContrasena());
         assertEquals(role, captor.getValue().getRol());
         assertTrue(captor.getValue().getActivo());
     }
@@ -61,18 +67,95 @@ class AdminBootstrapRunnerTest {
         );
 
         assertTrue(exception.getMessage().contains("deshabilítelo"));
+        verify(usuarioRepositorio, never()).save(any());
+        verifyNoInteractions(rolRepositorio, passwordEncoder);
     }
 
     @Test
-    void rechazaCredencialesBootstrapVaciasOCortas() {
+    void reinicioAccidentalNoModificaElUsuarioExistente() {
+        Usuario existente = new Usuario();
+        existente.setId(7L);
+        existente.setNombreUsuario("existente");
+        existente.setContrasena("hash-existente");
+        existente.setRol(new Rol(1L, "ADMINISTRADOR", true));
+        existente.setActivo(true);
+        when(usuarioRepositorio.count()).thenReturn(1L);
+
+        assertThrows(IllegalStateException.class,
+                () -> runner("otro-admin", "otra-clave-inicial-segura")
+                        .run(new DefaultApplicationArguments()));
+
+        assertEquals("existente", existente.getNombreUsuario());
+        assertEquals("hash-existente", existente.getContrasena());
+        verify(usuarioRepositorio, never()).save(any());
+        verifyNoInteractions(rolRepositorio, passwordEncoder);
+    }
+
+    @Test
+    void rechazaUsernameVacioEnBlancoODemasiadoLargoAntesDeGuardar() {
         when(usuarioRepositorio.count()).thenReturn(0L);
 
         assertThrows(IllegalStateException.class,
                 () -> runner("", "clave-inicial-segura")
                         .run(new DefaultApplicationArguments()));
         assertThrows(IllegalStateException.class,
+                () -> runner("   ", "clave-inicial-segura")
+                        .run(new DefaultApplicationArguments()));
+        assertThrows(IllegalStateException.class,
+                () -> runner("a".repeat(101), "clave-inicial-segura")
+                        .run(new DefaultApplicationArguments()));
+
+        verify(usuarioRepositorio, never()).save(any());
+    }
+
+    @Test
+    void rechazaPasswordAusenteCortaOMayorA72BytesAntesDeGuardar() {
+        when(usuarioRepositorio.count()).thenReturn(0L);
+
+        assertThrows(IllegalStateException.class,
+                () -> runner("admin", null)
+                        .run(new DefaultApplicationArguments()));
+        assertThrows(IllegalStateException.class,
                 () -> runner("admin", "corta")
                         .run(new DefaultApplicationArguments()));
+        assertThrows(IllegalStateException.class,
+                () -> runner("admin", "á".repeat(37))
+                        .run(new DefaultApplicationArguments()));
+
+        verify(usuarioRepositorio, never()).save(any());
+    }
+
+    @Test
+    void fallaSiElRolAdministradorNoExiste() {
+        when(usuarioRepositorio.count()).thenReturn(0L);
+        when(rolRepositorio.findByDescripcionIgnoreCase("ADMINISTRADOR")).thenReturn(Optional.empty());
+
+        assertThrows(IllegalStateException.class,
+                () -> runner("admin", "clave-inicial-segura")
+                        .run(new DefaultApplicationArguments()));
+
+        verify(usuarioRepositorio, never()).save(any());
+    }
+
+    @Test
+    void fallaSiElRolAdministradorEstaInactivo() {
+        when(usuarioRepositorio.count()).thenReturn(0L);
+        when(rolRepositorio.findByDescripcionIgnoreCase("ADMINISTRADOR"))
+                .thenReturn(Optional.of(new Rol(1L, "administrador", false)));
+
+        assertThrows(IllegalStateException.class,
+                () -> runner("admin", "clave-inicial-segura")
+                        .run(new DefaultApplicationArguments()));
+
+        verify(usuarioRepositorio, never()).save(any());
+    }
+
+    @Test
+    void bootstrapDeshabilitadoNoRegistraElRunner() {
+        new ApplicationContextRunner()
+                .withUserConfiguration(AdminBootstrapRunner.class)
+                .withPropertyValues("app.bootstrap-admin.enabled=false")
+                .run(context -> assertTrue(context.getBeansOfType(AdminBootstrapRunner.class).isEmpty()));
     }
 
     private AdminBootstrapRunner runner(String username, String password) {
