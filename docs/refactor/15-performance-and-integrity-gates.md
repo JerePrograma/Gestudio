@@ -31,8 +31,9 @@ PostgreSQL explícito, `open-in-view` predeterminado, aviso futuro de annotation
 processing de `javac`, puerto host 5432 ocupado y nueva versión mayor de npm
 disponible. No se corrigieron porque no son fallos de este gate.
 
-Pendiente real: ejecutar el workflow remoto cuando estos cambios tengan un
-commit publicado; esta sesión no crea commit ni hace push.
+La confirmación remota posterior quedó registrada en `CI Le Dance` run
+`28544656047`: commit `33c03bbd7cadaa1342134156bc7cb8c9de22e795`, jobs
+`validate` y `build-images` en `SUCCESS`.
 
 ## Gate de aislamiento PostgreSQL y concurrencia - 2026-07-01
 
@@ -43,3 +44,21 @@ sus datos reclamables/dependientes antes del seed y todos los waits, futures y
 executors concurrentes tienen cierre acotado. La combinación problemática pasó
 11/11 tests y dos `clean verify` consecutivos pasaron 70/70, sin errores,
 omitidos ni aumento de `timeout-minutes`.
+
+## Gate de smoke canónico aislado - 2026-07-02
+
+El smoke usa un proyecto Compose, red, volumen PostgreSQL y volumen de recibos
+distintos por ejecución; PostgreSQL sólo se consulta con `docker compose exec
+-T db`. Dos ejecuciones completas consecutivas pasaron 19 pasos y 0 fallos:
+
+| Proyecto | Puertos PostgreSQL/backend/frontend | Duración | Resultado |
+| --- | --- | --- | --- |
+| `ledance-smoke-21692-e608c2c9` | `60745` / `60746` / `60747` | `00:01:51` | PASS; cleanup y verificación externa sin recursos |
+| `ledance-smoke-20344-716ba129` | `61952` / `61953` / `61954` | `00:01:37` | PASS; cleanup y verificación externa sin recursos |
+
+Ambas comenzaron con V1 vacía, crearon un único `ADMINISTRADOR`, apagaron el
+bootstrap antes del reinicio y recorrieron por API alumno, inscripción,
+matrícula, cargo, pago parcial/total, retries, caja, egreso, stock y reversiones.
+SQL quedó limitado a Flyway, hashes, relaciones no expuestas e invariantes. El
+smoke demuestra creación y unicidad del outbox; no demuestra entrega SMTP
+exactly-once y R31 continúa abierto.

@@ -312,7 +312,7 @@
 - No se encontraron los placeholders sensibles de CI en configuración, historial ni filesystem de las imágenes.
 - Advertencias no bloqueantes observadas: auto-attach de Mockito/Byte Buddy, dialecto PostgreSQL explícito, `open-in-view` predeterminado, aviso futuro de annotation processing de `javac`, puerto host 5432 ocupado y actualización mayor de npm disponible.
 - Archivos modificados: `.github/workflows/github.-actions-demo.yml`, `frontend/package.json`, `scripts/codex/validate.ps1`, `docs/refactor/15-performance-and-integrity-gates.md`, este worklog y `docs/development/local-development.md`.
-- Pendiente real: el workflow remoto sólo podrá confirmar el runner de GitHub después de publicar un commit; no se creó commit ni se hizo push en esta sesión. No quedan gates locales rojos.
+- Confirmación remota posterior: `CI Le Dance` run `28544656047`, commit `33c03bbd7cadaa1342134156bc7cb8c9de22e795`; `validate` y `build-images` finalizaron `SUCCESS`.
 
 ## Aislamiento PostgreSQL y cierre acotado de concurrencia - 2026-07-01
 
@@ -332,4 +332,40 @@
 | Primer `mvnw.cmd clean verify` | PASS; 70 tests, 0 failures/errors/skipped; PostgreSQL 15.12 Testcontainers, Flyway V1, JaCoCo sobre 221 clases y JAR; Maven 01:33 |
 | Segundo `mvnw.cmd clean verify` consecutivo | PASS; 70 tests, 0 failures/errors/skipped; PostgreSQL 15.12 Testcontainers, Flyway V1, JaCoCo sobre 221 clases y JAR; Maven 01:36 |
 
-- Pendiente real: confirmar el workflow remoto cuando exista un commit publicado; esta sesión no crea commit ni hace push.
+- Confirmación remota posterior: `CI Le Dance` run `28544656047`, commit `33c03bbd7cadaa1342134156bc7cb8c9de22e795`; `validate` y `build-images` finalizaron `SUCCESS`.
+
+## Smoke integrado de baseline canónica - 2026-07-02
+
+### Estado inicial
+
+- Rama obligatoria: `main`.
+- HEAD inicial y `origin/main`: `33c03bbd7cadaa1342134156bc7cb8c9de22e795`.
+- Ahead/behind: `0/0`; worktree inicial limpio.
+- CI remoto anterior confirmado: workflow `CI Le Dance`, run `28544656047`, commit `33c03bbd7cadaa1342134156bc7cb8c9de22e795`; `validate` y `build-images` finalizaron `SUCCESS`.
+- Alcance: bootstrap administrativo de único uso y smoke Docker/API/SQL aislado; sin nueva rama, commit, push, tag, deploy, datos reales, secretos reales, conexión a `localhost:5432` ni cambios en Flyway V1.
+- `ADMINISTRADOR` sigue siendo el rol máximo del modelo y el exigido por `SecurityConfigurations`; no se agrega `SUPER_ADMIN` ni un bypass por usuario.
+- Primer gate pendiente: prueba focalizada del bootstrap después de completar únicamente la cobertura contractual faltante.
+
+### Implementación y validación
+
+- El initializer productivo ya satisfacía el contrato: bean condicional sólo con `APP_BOOTSTRAP_ADMIN_ENABLED=true`, default `false`, tabla `usuarios` vacía, rol activo `ADMINISTRADOR` buscado sin distinguir mayúsculas, `PasswordEncoder`, usuario activo y log limitado al ID/instrucción de apagar la bandera. No se cambió código productivo, V1, roles ni seguridad.
+- `AdminBootstrapRunnerTest` quedó con 8 tests para creación única/codificada, usernames inválidos, passwords ausente/corta/>72 bytes, usuario preexistente, rol ausente/inactivo, condición Spring deshabilitada y reinicio accidental sin mutación.
+- Gate focalizado: PASS, 8 tests, 0 failures/errors/skipped, Maven 26.867 s.
+- Primer `clean verify`: FAIL ambiental, 66 tests alcanzados y 9 errors porque Docker Desktop estaba detenido (`Could not find a valid Docker environment`). Se inició Docker Desktop sin borrar recursos y se repitió el mismo gate.
+- `clean verify` final: PASS, 75 tests, 0 failures/errors/skipped, 01:18 min; PostgreSQL 15.12 Testcontainers, Flyway exactamente V1, Hibernate validate, JaCoCo sobre 221 clases y JAR generado.
+- Frontend: primer `npm ci` FAIL con `EPERM` porque un Vite/esbuild preexistente retenía `node_modules`. Sin detener el proceso del usuario, se apartó/restauró ese árbol y una instalación limpia pasó `npm ci`, lint sin warnings, 7 archivos/16 tests sin omitidos y build TypeScript/Vite de 2.264 módulos.
+- Compose local y productivo con placeholders no sensibles: PASS.
+- Imágenes `le-dance-backend:smoke-check` y `le-dance-frontend:smoke-check` con `--pull`: PASS.
+- El smoke corrige dos diferencias reales de PowerShell/host descubiertas antes de las corridas verdes: decide comandos nativos por exit code en PowerShell 5.1 y aísla variables Compose frente a un `SPRING_PROFILES_ACTIVE` heredado. Cada intento fallido limpió su proyecto completo.
+
+| Ejecución verde | Proyecto | Puertos PostgreSQL/backend/frontend | Duración | Resultado |
+| --- | --- | --- | --- | --- |
+| 1 | `ledance-smoke-21692-e608c2c9` | `60745` / `60746` / `60747` | `00:01:51` | 19 PASS, 0 fallos, sin recursos residuales |
+| 2 | `ledance-smoke-20344-716ba129` | `61952` / `61953` / `61954` | `00:01:37` | 19 PASS, 0 fallos, sin recursos residuales |
+
+- Ambas corridas construyeron imágenes, comenzaron con base vacía, aplicaron sólo Flyway V1, crearon un único usuario BCrypt `ADMINISTRADOR`, validaron 401/login/perfil/refresh y rechazo cruzado de tokens, apagaron el bootstrap y recrearon backend preservando la base.
+- El recorrido API cubrió catálogos mínimos, alumno/listado/búsqueda, inscripción sin duplicado y matrícula automática, cargo por concepto, pago parcial, retry idéntico, conflicto por payload distinto, pago restante, recibo/outbox, caja, egreso y reversión, stock/venta/retry/reversión y persistencia después de otro reinicio.
+- SQL fue sólo lectura dentro de `db`: historial Flyway, bootstrap/hash, ID de venta no expuesto por la respuesta del endpoint, unicidad, saldos, stock, outbox y auditorías canónicas de huérfanos/finanzas/estados.
+- Límite real: no existe un disparador HTTP/worker operativo de recibos en runtime. El smoke valida creación/unicidad del outbox y `ReciboOutboxPostgreSqlTest` valida claim/lease; no declara entrega SMTP exactly-once y R31 sigue abierto.
+- Integración CI: se agrega un job `smoke` separado, dependiente de `validate`, sin secretos ni servicios externos. La cobertura remota de este job queda pendiente hasta que exista un commit y un run futuros; esta sesión no hace commit ni push.
+- Compatibilidad del comando del job: `pwsh -NoProfile -File .\scripts\smoke-local.ps1` pasó localmente con proyecto `ledance-smoke-12072-da8f19ee`, puertos `55510/55511/55512`, 19 pasos, 0 fallos, cleanup completo y duración `00:01:39`.

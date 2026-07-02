@@ -119,6 +119,27 @@ En producción preferí el mecanismo de secretos del entorno. Una vez creado el
 usuario, detené el proceso y eliminá las variables del proceso o del secret
 store. Si la bandera continúa activa al reiniciar, la aplicación falla cerrado.
 
+El rol operativo de máximo privilegio actual es `ADMINISTRADOR`; no existe un
+rol `SUPER_ADMIN`. El bootstrap sólo crea ese usuario cuando `usuarios` está
+vacía, usa BCrypt y exige una clave externa de 12 a 72 bytes UTF-8. Después del
+primer arranque se debe recrear el backend con
+`APP_BOOTSTRAP_ADMIN_ENABLED=false`.
+
+## Smoke integrado local
+
+El smoke canónico construye y levanta un proyecto Compose único con puertos,
+red y volúmenes efímeros; no usa la base local ni se conecta a
+`localhost:5432`:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke-local.ps1
+```
+
+Ejecuta bootstrap, seguridad, login/refresh, reinicio con bootstrap apagado,
+alumno, inscripción/matrícula, cargo, pagos e idempotencia, recibo/outbox, caja,
+egreso/reversión, stock/reversión, persistencia tras reinicio y auditorías SQL de
+solo lectura. El detalle operativo está en [Smoke local](../testing/smoke-local.md).
+
 Los volúmenes `postgres_data` y `receipts_data` son persistentes. No se eliminan en setup, cleanup ni stop.
 
 PM2 no está soportado. Se retiró su configuración incompleta para no mantener dos mecanismos productivos divergentes.
@@ -188,6 +209,7 @@ Acciones recomendadas; todas usan `C:\laburo\le-dance` como directorio de ejecuc
 | Validar todo | `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\validate.ps1` |
 | Validar backend | `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\validate.ps1 -Scope Backend` |
 | Validar frontend | `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\validate.ps1 -Scope Frontend` |
+| Smoke integrado | `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke-local.ps1` |
 | Iniciar base | `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev\start-db.ps1` |
 | Iniciar backend | `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev\start-backend.ps1` |
 | Iniciar frontend | `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev\start-frontend.ps1` |

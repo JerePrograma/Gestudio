@@ -97,3 +97,17 @@ se recomienda el override de JVM para producción.
 | `FRONTEND_PORT` | `8081` |
 
 No configures SMTP/IMAP en Codex: el perfil `dev` usa email no-op.
+
+## Bootstrap y smoke
+
+`APP_BOOTSTRAP_ADMIN_ENABLED` es `false` por defecto. Al habilitarla, username y
+password no tienen fallback: el username debe tener de 1 a 100 caracteres y no
+puede ser sólo espacios; la password debe tener de 12 a 72 bytes UTF-8. El
+initializer exige la tabla `usuarios` vacía y el rol activo `ADMINISTRADOR`, que
+es el rol máximo actual. Si ya existe cualquier usuario, el arranque falla hasta
+deshabilitar la bandera; no actualiza credenciales ni roles.
+
+`scripts/smoke-local.ps1` genera valores temporales para PostgreSQL, JWT y el
+administrador, los escribe únicamente en un archivo de `%TEMP%`, restaura el
+entorno del proceso y elimina el archivo al terminar. No agregues esos valores a
+`.env.example`, `.env.local.example` ni a otro archivo versionado.
