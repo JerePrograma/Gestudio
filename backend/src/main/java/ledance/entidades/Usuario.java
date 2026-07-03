@@ -8,6 +8,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -17,6 +18,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 
 import java.util.Collection;
 import java.util.List;
+import java.time.Instant;
 
 @Entity
 @Getter
@@ -36,6 +38,13 @@ public class Usuario implements UserDetails {
     private Rol rol;
     @Column(nullable = false)
     private Boolean activo = true;
+    @Column(name = "auth_version", nullable = false)
+    private Long authVersion = 0L;
+    @Column(name = "password_changed_at")
+    private Instant passwordChangedAt;
+    @Version
+    @Column(nullable = false)
+    private Long version;
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {

@@ -6,7 +6,6 @@ import ledance.dto.cargo.response.CargoResponse;
 import ledance.entidades.Alumno;
 import ledance.entidades.Cargo;
 import ledance.entidades.Concepto;
-import ledance.entidades.EstadoAplicacionPago;
 import ledance.entidades.EstadoCargo;
 import ledance.entidades.Matricula;
 import ledance.entidades.Mensualidad;
@@ -14,10 +13,8 @@ import ledance.entidades.TipoCargo;
 import ledance.entidades.VentaStock;
 import ledance.infra.errores.TratadorDeErrores.OperacionNoPermitidaException;
 import ledance.repositorios.AlumnoRepositorio;
-import ledance.repositorios.AplicacionPagoRepositorio;
 import ledance.repositorios.CargoRepositorio;
 import ledance.repositorios.ConceptoRepositorio;
-import ledance.repositorios.MovimientoCreditoRepositorio;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.domain.Page;
@@ -32,23 +29,20 @@ import java.util.List;
 @Service
 public class CargoServicio {
     private final CargoRepositorio cargos;
-    private final AplicacionPagoRepositorio aplicaciones;
     private final AlumnoRepositorio alumnos;
     private final ConceptoRepositorio conceptos;
-    private final MovimientoCreditoRepositorio movimientosCredito;
+    private final CargoSaldoServicio saldos;
     private final Clock clock;
 
     public CargoServicio(CargoRepositorio cargos,
-                         AplicacionPagoRepositorio aplicaciones,
                          AlumnoRepositorio alumnos,
                          ConceptoRepositorio conceptos,
-                         MovimientoCreditoRepositorio movimientosCredito,
+                         CargoSaldoServicio saldos,
                          Clock clock) {
         this.cargos = cargos;
-        this.aplicaciones = aplicaciones;
         this.alumnos = alumnos;
         this.conceptos = conceptos;
-        this.movimientosCredito = movimientosCredito;
+        this.saldos = saldos;
         this.clock = clock;
     }
 
@@ -156,31 +150,23 @@ public class CargoServicio {
     }
 
     private CargoResponse respuesta(Cargo cargo) {
-        BigDecimal aplicado = cargo.getImporteOriginal().subtract(saldo(cargo));
+        SaldoCargo saldo = saldos.calcular(cargo);
         return new CargoResponse(cargo.getId(), cargo.getAlumno().getId(), cargo.getTipo().name(),
-                cargo.getDescripcion(), decimal(cargo.getImporteOriginal()), decimal(aplicado),
-                decimal(cargo.getImporteOriginal().subtract(aplicado)), cargo.getFechaEmision(),
+                cargo.getDescripcion(), decimal(saldo.importeOriginal()), decimal(saldo.aplicadoTotal()),
+                decimal(saldo.saldo()), cargo.getFechaEmision(),
                 cargo.getFechaVencimiento(), cargo.getEstado().name());
     }
 
     public BigDecimal saldo(Cargo cargo) {
-        BigDecimal pagosAplicados = aplicaciones.sumByCargoAndEstado(cargo.getId(), EstadoAplicacionPago.APLICADA);
-        BigDecimal creditoAplicado = movimientosCredito.sumAplicadoByCargoId(cargo.getId());
-        return cargo.getImporteOriginal().subtract(pagosAplicados).subtract(creditoAplicado)
-                .setScale(2, RoundingMode.UNNECESSARY);
+        return saldos.calcular(cargo).saldo();
     }
 
     public void actualizarEstado(Cargo cargo) {
-        BigDecimal saldo = saldo(cargo);
-        if (saldo.signum() < 0) {
-            throw new IllegalStateException("Saldo negativo para cargo " + cargo.getId());
-        }
+        SaldoCargo saldo = saldos.calcular(cargo);
         if (cargo.getEstado() == EstadoCargo.ANULADO) {
             return;
         }
-        cargo.setEstado(saldo.signum() == 0
-                ? EstadoCargo.PAGADO
-                : saldo.compareTo(cargo.getImporteOriginal()) == 0 ? EstadoCargo.PENDIENTE : EstadoCargo.PARCIAL);
+        cargo.setEstado(saldo.estadoEsperado());
     }
 
     private static String decimal(BigDecimal importe) {

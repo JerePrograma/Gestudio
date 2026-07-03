@@ -1,110 +1,96 @@
 package ledance.controladores;
 
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import ledance.dto.request.LoginRequest;
 import ledance.dto.usuario.response.UsuarioResponse;
-import ledance.entidades.Usuario;
-import ledance.infra.seguridad.TokenService;
-import ledance.infra.seguridad.InvalidTokenException;
-import ledance.infra.seguridad.TokenType;
-import ledance.infra.seguridad.VerifiedToken;
-import ledance.repositorios.UsuarioRepositorio;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import ledance.infra.configuracion.AppProperties;
+import ledance.infra.seguridad.AutenticacionService;
+import ledance.infra.seguridad.SecurityProperties;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.BadCredentialsException;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Objects;
+import java.time.Clock;
+import java.time.Duration;
+import java.util.Arrays;
 
 @RestController
 @RequestMapping("/api/login")
 @Validated
 public class AutenticacionControlador {
+    private final AutenticacionService autenticacion;
+    private final SecurityProperties.RefreshCookie cookie;
+    private final AppProperties app;
+    private final Clock clock;
 
-    private static final Logger log = LoggerFactory.getLogger(AutenticacionControlador.class);
-    private final AuthenticationManager authManager;
-    private final TokenService tokenService;
-    private final UsuarioRepositorio usuarioRepositorio;
-
-    public AutenticacionControlador(AuthenticationManager authManager,
-                                    TokenService tokenService,
-                                    UsuarioRepositorio usuarioRepositorio) {
-        this.authManager = authManager;
-        this.tokenService = tokenService;
-        this.usuarioRepositorio = usuarioRepositorio;
+    public AutenticacionControlador(AutenticacionService autenticacion, SecurityProperties security,
+                                    AppProperties app, Clock clock) {
+        this.autenticacion = autenticacion;
+        this.cookie = security.refreshCookie();
+        this.app = app;
+        this.clock = clock;
     }
 
     @PostMapping
-    public ResponseEntity<LoginResponseDTO> realizarLogin(@RequestBody @Valid LoginRequest datos) {
-        var authToken = new UsernamePasswordAuthenticationToken(datos.nombreUsuario(), datos.contrasena());
-        var usuarioAutenticado = authManager.authenticate(authToken);
-        var user = (Usuario) usuarioAutenticado.getPrincipal();
-        if (!Boolean.TRUE.equals(user.getActivo())
-                || user.getRol() == null
-                || !Boolean.TRUE.equals(user.getRol().getActivo())) {
-            throw new BadCredentialsException("Credenciales inválidas");
-        }
-        var accessToken = tokenService.generarAccessToken(user);
-        var refreshToken = tokenService.generarRefreshToken(user);
-
-        var usuarioResponse = new UsuarioResponse(
-                user.getId(),
-                user.getNombreUsuario(),
-                user.getRol().getDescripcion(),
-                user.getActivo()
-        );
-
-        return ResponseEntity.ok(new LoginResponseDTO(accessToken, refreshToken, usuarioResponse));
+    public ResponseEntity<LoginResponse> login(@RequestBody @Valid LoginRequest request,
+                                                HttpServletRequest http, HttpServletResponse response) {
+        return responder(autenticacion.login(request, http.getHeader("User-Agent"), http.getRemoteAddr()), response);
     }
 
     @PostMapping("/refresh")
-    public ResponseEntity<LoginResponseDTO> refreshToken(
-            @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
-        try {
-            String refreshToken = extractBearerToken(authorizationHeader);
-            VerifiedToken verified = tokenService.verify(refreshToken, TokenType.REFRESH);
-            var usuario = usuarioRepositorio.findById(verified.userId())
-                    .filter(user -> Objects.equals(user.getNombreUsuario(), verified.subject()))
-                    .filter(user -> Boolean.TRUE.equals(user.getActivo()))
-                    .filter(user -> user.getRol() != null && Boolean.TRUE.equals(user.getRol().getActivo()))
-                    .filter(user -> Objects.equals(user.getRol().getDescripcion(), verified.role()))
-                    .orElseThrow(InvalidTokenException::new);
-            var newAccess = tokenService.generarAccessToken(usuario);
-            var newRefresh = tokenService.generarRefreshToken(usuario);
-            var usuarioResponse = new UsuarioResponse(
-                    usuario.getId(),
-                    usuario.getNombreUsuario(),
-                    usuario.getRol().getDescripcion(),
-                    usuario.getActivo()
-            );
+    public ResponseEntity<LoginResponse> refresh(HttpServletRequest request, HttpServletResponse response) {
+        validarOrigin(request);
+        return responder(autenticacion.refresh(refreshCookie(request),
+                request.getHeader("User-Agent"), request.getRemoteAddr()), response);
+    }
 
-            return ResponseEntity.ok(new LoginResponseDTO(newAccess, newRefresh, usuarioResponse));
-        } catch (InvalidTokenException e) {
-            log.warn("Refresh token rechazado");
-            return ResponseEntity.status(401).build();
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(HttpServletRequest request, HttpServletResponse response) {
+        validarOrigin(request);
+        autenticacion.logout(refreshCookieOrNull(request));
+        response.addHeader(HttpHeaders.SET_COOKIE, cookie("", Duration.ZERO).toString());
+        return ResponseEntity.noContent().build();
+    }
+
+    private ResponseEntity<LoginResponse> responder(AutenticacionService.Resultado result,
+                                                     HttpServletResponse response) {
+        Duration maxAge = Duration.between(clock.instant(), result.refreshExpiresAt());
+        response.addHeader(HttpHeaders.SET_COOKIE, cookie(result.refreshToken(), maxAge).toString());
+        return ResponseEntity.ok(new LoginResponse(result.accessToken(), result.usuario()));
+    }
+
+    private ResponseCookie cookie(String value, Duration maxAge) {
+        ResponseCookie.ResponseCookieBuilder builder = ResponseCookie.from(cookie.name(), value)
+                .httpOnly(true).secure(cookie.secure()).sameSite(cookie.sameSite())
+                .path(cookie.path()).maxAge(maxAge);
+        if (cookie.domain() != null && !cookie.domain().isBlank()) builder.domain(cookie.domain());
+        return builder.build();
+    }
+
+    private String refreshCookie(HttpServletRequest request) {
+        String value = refreshCookieOrNull(request);
+        if (value == null) throw new ledance.infra.seguridad.InvalidTokenException();
+        return value;
+    }
+
+    private String refreshCookieOrNull(HttpServletRequest request) {
+        return request.getCookies() == null ? null : Arrays.stream(request.getCookies())
+                .filter(value -> cookie.name().equals(value.getName()))
+                .map(Cookie::getValue).findFirst().orElse(null);
+    }
+
+    private void validarOrigin(HttpServletRequest request) {
+        String origin = request.getHeader(HttpHeaders.ORIGIN);
+        if (origin == null || !app.corsAllowedOrigins().contains(origin)) {
+            throw new org.springframework.security.access.AccessDeniedException("Origin no permitido");
         }
     }
 
-    private String extractBearerToken(String authorizationHeader) {
-        if (authorizationHeader == null || !authorizationHeader.startsWith("Bearer ")) {
-            throw new InvalidTokenException();
-        }
-        String token = authorizationHeader.substring("Bearer ".length());
-        if (token.isBlank()) {
-            throw new InvalidTokenException();
-        }
-        return token;
+    public record LoginResponse(String accessToken, UsuarioResponse usuario) {
     }
-
-    public record LoginResponseDTO(
-            String accessToken,
-            String refreshToken,
-            UsuarioResponse usuario
-    ) {
-    }
-
 }

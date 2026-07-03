@@ -31,6 +31,7 @@ const ProfesoresPagina = lazy(() => import("../funcionalidades/profesores/Profes
 const ProfesoresFormulario = lazy(() => import("../funcionalidades/profesores/ProfesoresFormulario"));
 const DisciplinasPagina = lazy(() => import("../funcionalidades/disciplinas/DisciplinasPagina"));
 const DisciplinasFormulario = lazy(() => import("../funcionalidades/disciplinas/DisciplinasFormulario"));
+const TarifasDisciplinaPagina = lazy(() => import("../funcionalidades/disciplinas/TarifasDisciplinaPagina"));
 const AlumnosPagina = lazy(() => import("../funcionalidades/alumnos/AlumnosPagina"));
 const AlumnosFormulario = lazy(() => import("../funcionalidades/alumnos/AlumnosFormulario"));
 const SalonesPagina = lazy(() => import("../funcionalidades/salones/SalonesPagina"));
@@ -39,6 +40,7 @@ const BonificacionesPagina = lazy(() => import("../funcionalidades/bonificacione
 const BonificacionesFormulario = lazy(() => import("../funcionalidades/bonificaciones/BonificacionesFormulario"));
 const InscripcionesPagina = lazy(() => import("../funcionalidades/inscripciones/InscripcionesPagina"));
 const InscripcionesFormulario = lazy(() => import("../funcionalidades/inscripciones/InscripcionesFormulario"));
+const CondicionesEconomicasPagina = lazy(() => import("../funcionalidades/inscripciones/CondicionesEconomicasPagina"));
 const AsistenciaDiariaFormulario = lazy(() => import("../funcionalidades/asistencias-diarias/AsistenciaDiariaFormulario"));
 const AsistenciaMensualDetalle = lazy(() => import("../funcionalidades/asistencias-mensuales/AsistenciaMensualDetalle"));
 const PagosPagina = lazy(() => import("../funcionalidades/pagos/PagosPagina"));
@@ -62,6 +64,7 @@ export const otherProtectedRoutes = [
   { path: "/profesores/formulario", Component: ProfesoresFormulario },
   { path: "/disciplinas", Component: DisciplinasPagina },
   { path: "/disciplinas/formulario", Component: DisciplinasFormulario },
+  { path: "/disciplinas/:id/tarifas", Component: TarifasDisciplinaPagina },
   { path: "/alumnos", Component: AlumnosPagina },
   { path: "/alumnos/formulario", Component: AlumnosFormulario },
   { path: "/salones", Component: SalonesPagina },
@@ -70,6 +73,7 @@ export const otherProtectedRoutes = [
   { path: "/bonificaciones/formulario", Component: BonificacionesFormulario },
   { path: "/inscripciones", Component: InscripcionesPagina },
   { path: "/inscripciones/formulario", Component: InscripcionesFormulario },
+  { path: "/inscripciones/:id/condiciones-economicas", Component: CondicionesEconomicasPagina },
   { path: "/asistencias/alumnos", Component: AsistenciaDiariaFormulario },
   { path: "/asistencias-mensuales", Component: AsistenciaMensualDetalle },
   { path: "/pagos", Component: PagosPagina },

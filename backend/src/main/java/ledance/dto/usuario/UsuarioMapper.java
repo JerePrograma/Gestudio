@@ -1,7 +1,6 @@
 package ledance.dto.usuario;
 
 import ledance.dto.usuario.request.UsuarioRegistroRequest;
-import ledance.dto.usuario.request.UsuarioModificacionRequest;
 import ledance.dto.usuario.response.UsuarioResponse;
 import ledance.entidades.Usuario;
 import org.mapstruct.Mapper;
@@ -21,6 +20,9 @@ public interface UsuarioMapper {
     @Mapping(target = "rol", ignore = true)
     @Mapping(target = "activo", constant = "true")
     @Mapping(target = "authorities", ignore = true)
+    @Mapping(target = "authVersion", ignore = true)
+    @Mapping(target = "passwordChangedAt", ignore = true)
+    @Mapping(target = "version", ignore = true)
     Usuario toEntity(UsuarioRegistroRequest request);
 
     /**
@@ -34,14 +36,4 @@ public interface UsuarioMapper {
     @Mapping(target = "rol", expression = "java(usuario.getRol() != null ? usuario.getRol().getDescripcion() : null)")
     @Mapping(target = "activo", source = "activo")
     UsuarioResponse toDTO(Usuario usuario);
-
-    /**
-     * Actualiza una entidad Usuario con datos de UsuarioModificacionRequest.
-     * No se modifican id, contraseña ni rol.
-     */
-    @Mapping(target = "id", ignore = true)
-    @Mapping(target = "contrasena", ignore = true)
-    @Mapping(target = "rol", ignore = true)
-    @Mapping(target = "authorities", ignore = true)
-    void updateEntityFromRequest(UsuarioModificacionRequest request, @org.mapstruct.MappingTarget Usuario usuario);
 }

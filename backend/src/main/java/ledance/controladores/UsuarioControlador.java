@@ -25,15 +25,17 @@ public class UsuarioControlador {
     }
 
     @PostMapping("/registro")
-    public ResponseEntity<String> registrarUsuario(@RequestBody @Validated UsuarioRegistroRequest datosRegistro) {
-        String mensaje = usuarioService.registrarUsuario(datosRegistro);
+    public ResponseEntity<String> registrarUsuario(@RequestBody @Validated UsuarioRegistroRequest datosRegistro,
+                                                    @AuthenticationPrincipal Usuario actor) {
+        String mensaje = usuarioService.registrarUsuario(datosRegistro, actor);
         return ResponseEntity.ok(mensaje);
     }
 
     @PutMapping("/{id}")
     public ResponseEntity<String> editarUsuario(@PathVariable Long id,
-                                                @RequestBody @Validated UsuarioModificacionRequest modificacionRequest) {
-        usuarioService.editarUsuario(id, modificacionRequest);
+                                                @RequestBody @Validated UsuarioModificacionRequest modificacionRequest,
+                                                @AuthenticationPrincipal Usuario actor) {
+        usuarioService.editarUsuario(id, modificacionRequest, actor);
         return ResponseEntity.ok("Usuario actualizado correctamente.");
     }
 
@@ -53,8 +55,9 @@ public class UsuarioControlador {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<String> eliminarUsuario(@PathVariable Long id) {
-        usuarioService.eliminarUsuario(id);
+    public ResponseEntity<String> eliminarUsuario(@PathVariable Long id,
+                                                   @AuthenticationPrincipal Usuario actor) {
+        usuarioService.eliminarUsuario(id, actor);
         return ResponseEntity.ok("Usuario desactivado.");
     }
 

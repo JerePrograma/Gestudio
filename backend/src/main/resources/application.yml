@@ -43,13 +43,26 @@ server:
 
 jwt:
   issuer: ${JWT_ISSUER:le-dance-local}
-  access-token-hours: ${JWT_ACCESS_TOKEN_HOURS:2}
-  refresh-token-hours: ${JWT_REFRESH_TOKEN_HOURS:168}
+  audience: ${JWT_AUDIENCE:le-dance-web}
+  access-token-ttl: ${JWT_ACCESS_TOKEN_TTL:PT15M}
+  refresh-token-ttl: ${JWT_REFRESH_TOKEN_TTL:P7D}
 
 app:
   time-zone: ${APP_TIME_ZONE:America/Argentina/Buenos_Aires}
   cors-allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:8081}
   scheduling-enabled: ${APP_SCHEDULING_ENABLED:false}
+  security:
+    bcrypt-strength: ${APP_SECURITY_BCRYPT_STRENGTH:12}
+    refresh-cookie:
+      name: ${APP_SECURITY_REFRESH_COOKIE_NAME:ledance_refresh}
+      secure: ${APP_SECURITY_REFRESH_COOKIE_SECURE:true}
+      same-site: ${APP_SECURITY_REFRESH_COOKIE_SAME_SITE:Strict}
+      domain: ${APP_SECURITY_REFRESH_COOKIE_DOMAIN:}
+      path: ${APP_SECURITY_REFRESH_COOKIE_PATH:/api/login}
+  bootstrap-superadmin:
+    enabled: ${APP_BOOTSTRAP_SUPERADMIN_ENABLED:false}
+    username: ${APP_BOOTSTRAP_SUPERADMIN_USERNAME:}
+    password: ${APP_BOOTSTRAP_SUPERADMIN_PASSWORD:}
   bootstrap-admin:
     enabled: ${APP_BOOTSTRAP_ADMIN_ENABLED:false}
     username: ${APP_BOOTSTRAP_ADMIN_USERNAME:}

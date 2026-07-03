@@ -24,8 +24,10 @@ class TokenServiceTest {
 
     private static final String SECRET = "test-only-secret-with-at-least-32-characters";
     private static final String ISSUER = "le-dance-test";
+    private static final String AUDIENCE = "le-dance-web";
     private final Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
-    private final JwtProperties properties = new JwtProperties(SECRET, ISSUER, 1, 24);
+    private final JwtProperties properties = new JwtProperties(
+            SECRET, ISSUER, AUDIENCE, Duration.ofHours(1), Duration.ofHours(24));
     private final TokenService service = new TokenService(
             properties,
             Clock.fixed(now, ZoneOffset.UTC)
@@ -41,6 +43,7 @@ class TokenServiceTest {
         assertEquals(7L, verified.userId());
         assertEquals("tester", verified.subject());
         assertEquals("ADMINISTRADOR", verified.role());
+        assertEquals(0L, verified.authVersion());
         assertEquals(TokenType.ACCESS, verified.tokenType());
         assertEquals(now, verified.issuedAt());
         assertEquals(60, minutes);
@@ -53,7 +56,7 @@ class TokenServiceTest {
         assertThrows(InvalidTokenException.class,
                 () -> service.verify(service.generarAccessToken(usuario), TokenType.REFRESH));
         assertThrows(InvalidTokenException.class,
-                () -> service.verify(service.generarRefreshToken(usuario), TokenType.ACCESS));
+                () -> service.verify(service.generarRefreshToken(usuario, java.util.UUID.randomUUID()), TokenType.ACCESS));
     }
 
     @Test
@@ -61,8 +64,8 @@ class TokenServiceTest {
         Usuario usuario = usuarioActivo("ADMINISTRADOR");
 
         assertNotEquals(
-                service.generarRefreshToken(usuario),
-                service.generarRefreshToken(usuario)
+                service.generarRefreshToken(usuario, java.util.UUID.randomUUID()),
+                service.generarRefreshToken(usuario, java.util.UUID.randomUUID())
         );
     }
 
@@ -122,6 +125,7 @@ class TokenServiceTest {
         usuario.setNombreUsuario("tester");
         usuario.setRol(new Rol(1L, role, true));
         usuario.setActivo(true);
+        usuario.setAuthVersion(0L);
         return usuario;
     }
 
@@ -133,10 +137,13 @@ class TokenServiceTest {
             TokenType type) {
         return JWT.create()
                 .withIssuer(issuer)
+                .withAudience(AUDIENCE)
                 .withSubject("tester")
                 .withClaim("id", 7L)
                 .withClaim("rol", "ADMINISTRADOR")
                 .withClaim("type", type.name())
+                .withClaim("auth_version", 0L)
+                .withJWTId(java.util.UUID.randomUUID().toString())
                 .withIssuedAt(Date.from(issuedAt))
                 .withExpiresAt(Date.from(expiresAt))
                 .sign(Algorithm.HMAC256(secret));

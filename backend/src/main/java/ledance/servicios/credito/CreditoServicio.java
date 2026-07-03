@@ -18,11 +18,13 @@ import ledance.repositorios.CargoRepositorio;
 import ledance.repositorios.MovimientoCreditoRepositorio;
 import ledance.repositorios.UsuarioRepositorio;
 import ledance.servicios.cargo.CargoServicio;
+import ledance.cuotas.application.CargoEventoServicio;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.Map;
 
 @Service
 public class CreditoServicio {
@@ -31,14 +33,17 @@ public class CreditoServicio {
     private final CargoRepositorio cargos;
     private final UsuarioRepositorio usuarios;
     private final CargoServicio cargoServicio;
+    private final CargoEventoServicio eventos;
 
     public CreditoServicio(MovimientoCreditoRepositorio movimientos, AlumnoRepositorio alumnos,
-                           CargoRepositorio cargos, UsuarioRepositorio usuarios, CargoServicio cargoServicio) {
+                           CargoRepositorio cargos, UsuarioRepositorio usuarios, CargoServicio cargoServicio,
+                           CargoEventoServicio eventos) {
         this.movimientos = movimientos;
         this.alumnos = alumnos;
         this.cargos = cargos;
         this.usuarios = usuarios;
         this.cargoServicio = cargoServicio;
+        this.eventos = eventos;
     }
 
     @Transactional
@@ -72,6 +77,8 @@ public class CreditoServicio {
         if (importe.compareTo(cargoServicio.saldo(cargo)) > 0) {
             throw new OperacionNoPermitidaException("El consumo supera el saldo del cargo");
         }
+        var estadoAnterior = cargo.getEstado();
+        BigDecimal saldoAnterior = cargoServicio.saldo(cargo);
 
         MovimientoCredito movimiento = new MovimientoCredito();
         movimiento.setAlumno(alumno);
@@ -83,6 +90,10 @@ public class CreditoServicio {
         movimiento.setRequestHash(requestHash);
         movimientos.saveAndFlush(movimiento);
         cargoServicio.actualizarEstado(cargo);
+        eventos.registrar(cargo, "CREDITO_APLICADO", estadoAnterior, saldoAnterior,
+                cargoServicio.saldo(cargo), "MOVIMIENTO_CREDITO", movimiento.getId(),
+                "credito:" + request.idempotencyKey() + ":aplicado", usuario,
+                Map.of("importe", decimal(importe)));
         return respuesta(movimiento);
     }
 
@@ -114,17 +125,24 @@ public class CreditoServicio {
         }
         Cargo cargo = cargos.findByIdForUpdate(original.getCargo().getId())
                 .orElseThrow(() -> new EntityNotFoundException("Cargo no encontrado"));
+        var estadoAnterior = cargo.getEstado();
+        BigDecimal saldoAnterior = cargoServicio.saldo(cargo);
+        Usuario usuario = usuarioActivo(principal);
         MovimientoCredito reverso = new MovimientoCredito();
         reverso.setAlumno(alumno);
         reverso.setTipo(TipoMovimientoCredito.REVERSO);
         reverso.setImporte(original.getImporte());
         reverso.setMovimientoRevertido(original);
-        reverso.setUsuario(usuarioActivo(principal));
+        reverso.setUsuario(usuario);
         reverso.setIdempotencyKey(request.idempotencyKey());
         reverso.setRequestHash(requestHash);
         reverso.setMotivo(request.motivo());
         movimientos.saveAndFlush(reverso);
         cargoServicio.actualizarEstado(cargo);
+        eventos.registrar(cargo, "CREDITO_REVERTIDO", estadoAnterior, saldoAnterior,
+                cargoServicio.saldo(cargo), "MOVIMIENTO_CREDITO", reverso.getId(),
+                "credito:" + request.idempotencyKey() + ":revertido", usuario,
+                Map.of("importe", decimal(reverso.getImporte()), "movimientoOriginalId", original.getId()));
         return respuesta(reverso);
     }
 

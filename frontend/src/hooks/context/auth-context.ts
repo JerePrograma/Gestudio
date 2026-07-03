@@ -11,9 +11,8 @@ export interface AuthContextProps {
   isAuth: boolean;
   loading: boolean;
   login: (nombreUsuario: string, contrasena: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   accessToken: string | null;
-  refreshToken: string | null;
   user: UserProfile | null;
   hasRole: (role: string) => boolean;
 }

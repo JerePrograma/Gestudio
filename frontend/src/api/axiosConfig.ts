@@ -5,6 +5,7 @@ import axios, {
 import { toast } from "react-toastify";
 import { API_BASE_URL } from "../config/environment";
 import type { UsuarioResponse } from "../types/types";
+import { getAccessToken, setAccessToken } from "./authSession";
 
 interface RetriableRequestConfig extends InternalAxiosRequestConfig {
   _retry?: boolean;
@@ -12,7 +13,6 @@ interface RetriableRequestConfig extends InternalAxiosRequestConfig {
 
 interface RefreshResponse {
   accessToken: string;
-  refreshToken: string;
   usuario?: UsuarioResponse;
 }
 
@@ -24,6 +24,7 @@ export const AUTH_STORAGE_KEYS = [
 
 export function clearAuthStorage(): void {
   AUTH_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
+  setAccessToken(null);
 }
 
 const api = axios.create({
@@ -32,7 +33,7 @@ const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  const accessToken = localStorage.getItem("accessToken");
+  const accessToken = getAccessToken();
   if (accessToken) {
     config.headers.Authorization = `Bearer ${accessToken}`;
   }
@@ -72,33 +73,20 @@ api.interceptors.response.use(
     }
 
     originalRequest._retry = true;
-    const refreshToken = localStorage.getItem("refreshToken");
-    if (!refreshToken) {
-      clearAuthStorage();
-      redirectToLogin();
-      return Promise.reject(error);
-    }
-
     try {
       refreshPromise ??= axios
         .post<RefreshResponse>(
           `${API_BASE_URL}/login/refresh`,
           {},
           {
-            headers: {
-              Authorization: `Bearer ${refreshToken}`,
-              "Content-Type": "application/json",
-            },
+            withCredentials: true,
+            headers: { "Content-Type": "application/json" },
           }
         )
         .then((response) => response.data);
 
       const data = await refreshPromise;
-      localStorage.setItem("accessToken", data.accessToken);
-      localStorage.setItem("refreshToken", data.refreshToken);
-      if (data.usuario) {
-        localStorage.setItem("usuario", JSON.stringify(data.usuario));
-      }
+      setAccessToken(data.accessToken);
       originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
       return api(originalRequest);
     } catch (refreshError) {

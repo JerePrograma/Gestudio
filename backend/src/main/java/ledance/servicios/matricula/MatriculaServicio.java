@@ -4,7 +4,6 @@ import jakarta.persistence.EntityNotFoundException;
 import ledance.dto.matricula.response.MatriculaResponse;
 import ledance.entidades.Alumno;
 import ledance.entidades.Cargo;
-import ledance.entidades.EstadoAplicacionPago;
 import ledance.entidades.EstadoCargo;
 import ledance.entidades.EstadoInscripcion;
 import ledance.entidades.EstadoOrigenCargo;
@@ -12,11 +11,11 @@ import ledance.entidades.Inscripcion;
 import ledance.entidades.Matricula;
 import ledance.infra.errores.TratadorDeErrores.OperacionNoPermitidaException;
 import ledance.repositorios.AlumnoRepositorio;
-import ledance.repositorios.AplicacionPagoRepositorio;
 import ledance.repositorios.CargoRepositorio;
 import ledance.repositorios.InscripcionRepositorio;
 import ledance.repositorios.MatriculaRepositorio;
 import ledance.servicios.cargo.CargoServicio;
+import ledance.servicios.cargo.CargoSaldoServicio;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -40,23 +39,23 @@ public class MatriculaServicio {
     private final AlumnoRepositorio alumnos;
     private final InscripcionRepositorio inscripciones;
     private final CargoRepositorio cargos;
-    private final AplicacionPagoRepositorio aplicaciones;
     private final CargoServicio cargoServicio;
+    private final CargoSaldoServicio saldos;
     private final Clock clock;
 
     public MatriculaServicio(MatriculaRepositorio matriculas,
                              AlumnoRepositorio alumnos,
                              InscripcionRepositorio inscripciones,
                              CargoRepositorio cargos,
-                             AplicacionPagoRepositorio aplicaciones,
                              CargoServicio cargoServicio,
+                             CargoSaldoServicio saldos,
                              Clock clock) {
         this.matriculas = matriculas;
         this.alumnos = alumnos;
         this.inscripciones = inscripciones;
         this.cargos = cargos;
-        this.aplicaciones = aplicaciones;
         this.cargoServicio = cargoServicio;
+        this.saldos = saldos;
         this.clock = clock;
     }
 
@@ -88,8 +87,8 @@ public class MatriculaServicio {
                 .orElseThrow(() -> new EntityNotFoundException("Matrícula no encontrada"));
         Cargo cargo = cargos.findByMatriculaId(matriculaId)
                 .orElseThrow(() -> new IllegalStateException("Matrícula sin cargo"));
-        if (aplicaciones.sumByCargoAndEstado(cargo.getId(), EstadoAplicacionPago.APLICADA).signum() > 0) {
-            throw new OperacionNoPermitidaException("No puede anularse una matrícula con pagos aplicados");
+        if (saldos.calcular(cargo).aplicadoTotal().signum() > 0) {
+            throw new OperacionNoPermitidaException("No puede anularse una matrícula con pagos o crédito aplicados");
         }
         matricula.setEstado(EstadoOrigenCargo.ANULADA);
         cargo.setEstado(EstadoCargo.ANULADO);

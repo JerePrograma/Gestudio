@@ -17,6 +17,8 @@ public interface UsuarioRepositorio extends JpaRepository<Usuario, Long> {
 
     Optional<Usuario> findByNombreUsuario(String nombreUsuario);
 
+    Optional<Usuario> findByNombreUsuarioIgnoreCase(String nombreUsuario);
+
     List<Usuario> findByRolAndActivo(Rol rol, Boolean activo);
 
     List<Usuario> findByRol(Rol rol);
@@ -28,4 +30,12 @@ public interface UsuarioRepositorio extends JpaRepository<Usuario, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select u from Usuario u where u.id = :id")
     Optional<Usuario> findByIdForUpdate(@Param("id") Long id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+        select u from Usuario u join fetch u.rol r
+        where u.activo = true and upper(r.descripcion) = 'SUPERADMIN'
+        order by u.id
+        """)
+    List<Usuario> findActiveSuperadminsForUpdate();
 }

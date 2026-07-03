@@ -5,7 +5,6 @@ import ledance.dto.mensualidad.request.MensualidadRegistroRequest;
 import ledance.dto.mensualidad.response.MensualidadResponse;
 import ledance.entidades.Bonificacion;
 import ledance.entidades.Cargo;
-import ledance.entidades.EstadoAplicacionPago;
 import ledance.entidades.EstadoCargo;
 import ledance.entidades.EstadoInscripcion;
 import ledance.entidades.EstadoOrigenCargo;
@@ -13,13 +12,14 @@ import ledance.entidades.Inscripcion;
 import ledance.entidades.Mensualidad;
 import ledance.entidades.Recargo;
 import ledance.infra.errores.TratadorDeErrores.OperacionNoPermitidaException;
-import ledance.repositorios.AplicacionPagoRepositorio;
 import ledance.repositorios.BonificacionRepositorio;
 import ledance.repositorios.CargoRepositorio;
 import ledance.repositorios.InscripcionRepositorio;
 import ledance.repositorios.MensualidadRepositorio;
 import ledance.repositorios.RecargoRepositorio;
 import ledance.servicios.cargo.CargoServicio;
+import ledance.servicios.cargo.CargoSaldoServicio;
+import ledance.servicios.cargo.SaldoCargo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -45,8 +45,8 @@ public class MensualidadServicio {
     private final BonificacionRepositorio bonificaciones;
     private final RecargoRepositorio recargos;
     private final CargoRepositorio cargos;
-    private final AplicacionPagoRepositorio aplicaciones;
     private final CargoServicio cargoServicio;
+    private final CargoSaldoServicio saldos;
     private final Clock clock;
 
     public MensualidadServicio(MensualidadRepositorio mensualidades,
@@ -54,16 +54,16 @@ public class MensualidadServicio {
                                BonificacionRepositorio bonificaciones,
                                RecargoRepositorio recargos,
                                CargoRepositorio cargos,
-                               AplicacionPagoRepositorio aplicaciones,
                                CargoServicio cargoServicio,
+                               CargoSaldoServicio saldos,
                                Clock clock) {
         this.mensualidades = mensualidades;
         this.inscripciones = inscripciones;
         this.bonificaciones = bonificaciones;
         this.recargos = recargos;
         this.cargos = cargos;
-        this.aplicaciones = aplicaciones;
         this.cargoServicio = cargoServicio;
+        this.saldos = saldos;
         this.clock = clock;
     }
 
@@ -91,8 +91,8 @@ public class MensualidadServicio {
                 .orElseThrow(() -> new EntityNotFoundException("Mensualidad no encontrada"));
         Cargo cargo = cargos.findByMensualidadId(id)
                 .orElseThrow(() -> new IllegalStateException("Mensualidad sin cargo"));
-        if (aplicaciones.sumByCargoAndEstado(cargo.getId(), EstadoAplicacionPago.APLICADA).signum() > 0) {
-            throw new OperacionNoPermitidaException("No puede anularse una mensualidad con pagos aplicados");
+        if (saldos.calcular(cargo).aplicadoTotal().signum() > 0) {
+            throw new OperacionNoPermitidaException("No puede anularse una mensualidad con pagos o crédito aplicados");
         }
         mensualidad.setEstado(EstadoOrigenCargo.ANULADA);
         cargo.setEstado(EstadoCargo.ANULADO);
@@ -171,13 +171,12 @@ public class MensualidadServicio {
 
     private MensualidadResponse respuesta(Mensualidad mensualidad) {
         Cargo cargo = cargos.findByMensualidadId(mensualidad.getId()).orElse(null);
-        BigDecimal aplicado = cargo == null ? BigDecimal.ZERO
-                : aplicaciones.sumByCargoAndEstado(cargo.getId(), EstadoAplicacionPago.APLICADA);
+        SaldoCargo saldo = cargo == null ? null : saldos.calcular(cargo);
         return new MensualidadResponse(mensualidad.getId(), mensualidad.getInscripcion().getId(), mensualidad.getAnio(),
                 mensualidad.getMes(), mensualidad.getFechaGeneracion(), mensualidad.getFechaVencimiento(),
                 mensualidad.getEstado().name(), mensualidad.getDescripcion(), cargo == null ? null : cargo.getId(),
-                cargo == null ? "0.00" : decimal(cargo.getImporteOriginal()),
-                cargo == null ? "0.00" : decimal(cargo.getImporteOriginal().subtract(aplicado)));
+                saldo == null ? "0.00" : decimal(saldo.importeOriginal()),
+                saldo == null ? "0.00" : decimal(saldo.saldo()));
     }
 
     private static String decimal(BigDecimal valor) {

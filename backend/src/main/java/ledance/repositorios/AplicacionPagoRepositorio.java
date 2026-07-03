@@ -17,4 +17,13 @@ public interface AplicacionPagoRepositorio extends JpaRepository<AplicacionPago,
 
     @Query("select coalesce(sum(a.importeAplicado), 0) from AplicacionPago a where a.cargo.id = :cargoId and a.estado = :estado")
     BigDecimal sumByCargoAndEstado(@Param("cargoId") Long cargoId, @Param("estado") EstadoAplicacionPago estado);
+
+    @Query("""
+        select a.cargo.id, sum(a.importeAplicado)
+        from AplicacionPago a
+        where a.cargo.id in :cargoIds and a.estado = :estado
+        group by a.cargo.id
+        """)
+    List<Object[]> sumByCargoIdsAndEstado(@Param("cargoIds") List<Long> cargoIds,
+                                          @Param("estado") EstadoAplicacionPago estado);
 }

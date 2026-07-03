@@ -43,4 +43,22 @@ public interface MovimientoCreditoRepositorio extends JpaRepository<MovimientoCr
                and r.cargo.id = :cargoId)
         """)
     BigDecimal sumAplicadoByCargoId(@Param("cargoId") Long cargoId);
+
+    @Query(value = """
+        SELECT cargo_id, sum(importe)
+        FROM (
+            SELECT cargo_id, importe
+            FROM movimientos_credito
+            WHERE tipo = 'CONSUMO' AND cargo_id IN (:cargoIds)
+            UNION ALL
+            SELECT original.cargo_id, -reverso.importe
+            FROM movimientos_credito reverso
+            JOIN movimientos_credito original ON original.id = reverso.movimiento_revertido_id
+            WHERE reverso.tipo = 'REVERSO'
+              AND original.tipo = 'CONSUMO'
+              AND original.cargo_id IN (:cargoIds)
+        ) aplicaciones_credito
+        GROUP BY cargo_id
+        """, nativeQuery = true)
+    List<Object[]> sumAplicadoByCargoIds(@Param("cargoIds") List<Long> cargoIds);
 }

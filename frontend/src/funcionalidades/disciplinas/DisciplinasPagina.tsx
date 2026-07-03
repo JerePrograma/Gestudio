@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 import Tabla from "../../componentes/comunes/Tabla";
 import api from "../../api/axiosConfig";
 import Boton from "../../componentes/comunes/Boton";
-import { PlusCircle, Pencil, Trash2 } from "lucide-react";
+import { PlusCircle, Pencil, Trash2, BadgeDollarSign } from "lucide-react";
 import disciplinasApi from "../../api/disciplinasApi";
 import { toast } from "react-toastify";
 import ListaConCargaManual from "../../componentes/comunes/ListaConCargaManual";
@@ -170,6 +170,14 @@ const Disciplinas = () => {
           ]}
           actions={(fila: Disciplina) => (
             <div className="flex gap-2">
+              <Boton
+                onClick={() => navigate(`/disciplinas/${fila.id}/tarifas`)}
+                className="inline-flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/90"
+                aria-label={`Ver tarifas de ${fila.nombre}`}
+              >
+                <BadgeDollarSign className="w-4 h-4" />
+                Tarifas
+              </Boton>
               <Boton
                 onClick={() =>
                   navigate(`/disciplinas/formulario?id=${fila.id}`)

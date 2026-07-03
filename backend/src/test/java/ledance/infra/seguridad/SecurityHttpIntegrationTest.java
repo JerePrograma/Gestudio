@@ -39,8 +39,13 @@ import java.time.ZoneId;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
+import java.time.Duration;
+import java.util.UUID;
+import jakarta.servlet.http.Cookie;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -76,7 +81,7 @@ class SecurityHttpIntegrationTest {
     @MockitoBean
     private UsuarioRepositorio usuarioRepositorio;
     @MockitoBean
-    private AuthenticationManager authenticationManager;
+    private AutenticacionService autenticacionService;
     @MockitoBean
     private UsuarioServicio usuarioServicio;
     @MockitoBean
@@ -125,8 +130,8 @@ class SecurityHttpIntegrationTest {
     @Test
     void loginValidoEntregaAmbosTokensYLoginInvalidoDevuelve401() throws Exception {
         Usuario user = usuario(1L, "admin", "ADMINISTRADOR", true);
-        when(authenticationManager.authenticate(any(UsernamePasswordAuthenticationToken.class)))
-                .thenReturn(new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities()))
+        when(autenticacionService.login(any(), nullable(String.class), anyString()))
+                .thenReturn(resultado(user))
                 .thenThrow(new BadCredentialsException("detalle interno que no debe exponerse"));
 
         String loginJson = """
@@ -137,7 +142,8 @@ class SecurityHttpIntegrationTest {
                         .content(loginJson))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").isString())
-                .andExpect(jsonPath("$.refreshToken").isString());
+                .andExpect(jsonPath("$.refreshToken").doesNotExist())
+                .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("HttpOnly")));
 
         mockMvc.perform(post("/api/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -149,45 +155,26 @@ class SecurityHttpIntegrationTest {
     }
 
     @Test
-    void accessUsadoComoRefreshRefreshVencidoYUsuarioInactivoDevuelven401() throws Exception {
-        Usuario active = usuario(1L, "admin", "ADMINISTRADOR", true);
-        String access = tokenService.generarAccessToken(active);
+    void refreshSinCookieDevuelve401() throws Exception {
+        when(autenticacionService.refresh(anyString(), nullable(String.class), anyString()))
+                .thenThrow(new InvalidTokenException());
         mockMvc.perform(post("/api/login/refresh")
-                        .header(HttpHeaders.AUTHORIZATION, bearer(access)))
-                .andExpect(status().isUnauthorized());
-
-        Instant now = Instant.now();
-        String expiredRefresh = rawToken(
-                SECRET,
-                ISSUER,
-                now.minusSeconds(120),
-                now.minusSeconds(60),
-                "REFRESH",
-                1L,
-                "ADMINISTRADOR"
-        );
-        mockMvc.perform(post("/api/login/refresh")
-                        .header(HttpHeaders.AUTHORIZATION, bearer(expiredRefresh)))
-                .andExpect(status().isUnauthorized());
-
-        Usuario inactive = usuario(1L, "admin", "ADMINISTRADOR", false);
-        when(usuarioRepositorio.findById(1L)).thenReturn(Optional.of(inactive));
-        mockMvc.perform(post("/api/login/refresh")
-                        .header(HttpHeaders.AUTHORIZATION, bearer(tokenService.generarRefreshToken(active))))
+                        .header(HttpHeaders.ORIGIN, "https://app.example.test"))
                 .andExpect(status().isUnauthorized());
     }
 
     @Test
     void refreshValidoRotaAccessYRefresh() throws Exception {
         Usuario active = usuario(1L, "admin", "ADMINISTRADOR", true);
-        when(usuarioRepositorio.findById(1L)).thenReturn(Optional.of(active));
+        when(autenticacionService.refresh(anyString(), nullable(String.class), anyString()))
+                .thenReturn(resultado(active));
 
         mockMvc.perform(post("/api/login/refresh")
-                        .header(HttpHeaders.AUTHORIZATION,
-                                bearer(tokenService.generarRefreshToken(active))))
+                        .header(HttpHeaders.ORIGIN, "https://app.example.test")
+                        .cookie(new Cookie("ledance_refresh", "refresh-raw")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").isString())
-                .andExpect(jsonPath("$.refreshToken").isString())
+                .andExpect(jsonPath("$.refreshToken").doesNotExist())
                 .andExpect(jsonPath("$.usuario.activo").value(true));
     }
 
@@ -207,7 +194,7 @@ class SecurityHttpIntegrationTest {
     void refreshUsadoComoAccessDevuelve401() throws Exception {
         Usuario user = usuario(1L, "admin", "ADMINISTRADOR", true);
 
-        assertUnauthorized(tokenService.generarRefreshToken(user));
+        assertUnauthorized(tokenService.generarRefreshToken(user, UUID.randomUUID()));
     }
 
     @Test
@@ -224,7 +211,7 @@ class SecurityHttpIntegrationTest {
     }
 
     @Test
-    void usuarioSinPermisoRecibe403YAdministradorAccede() throws Exception {
+    void usuariosRequiereSuperadminYLaJerarquiaConservaAccesoAdministrativo() throws Exception {
         Usuario operator = usuario(2L, "operator", "OPERADOR", true);
         when(usuarioRepositorio.findById(2L)).thenReturn(Optional.of(operator));
         String operatorToken = tokenService.generarAccessToken(operator);
@@ -240,7 +227,16 @@ class SecurityHttpIntegrationTest {
         when(usuarioRepositorio.findById(1L)).thenReturn(Optional.of(admin));
         mockMvc.perform(get("/api/usuarios")
                         .header(HttpHeaders.AUTHORIZATION, bearer(tokenService.generarAccessToken(admin))))
+                .andExpect(status().isForbidden());
+
+        Usuario superadmin = usuario(3L, "root", "SUPERADMIN", true);
+        when(usuarioRepositorio.findById(3L)).thenReturn(Optional.of(superadmin));
+        mockMvc.perform(get("/api/usuarios")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(tokenService.generarAccessToken(superadmin))))
                 .andExpect(status().isOk());
+        mockMvc.perform(get("/api/pagos/recibo/999")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(tokenService.generarAccessToken(superadmin))))
+                .andExpect(result -> assertThat(result.getResponse().getStatus()).isNotIn(401, 403));
     }
 
     @Test
@@ -332,14 +328,14 @@ class SecurityHttpIntegrationTest {
 
     @Test
     void errorInternoNoExponeDetalleDeLaExcepcion() throws Exception {
-        Usuario admin = usuario(1L, "admin", "ADMINISTRADOR", true);
-        when(usuarioRepositorio.findById(1L)).thenReturn(Optional.of(admin));
+        Usuario superadmin = usuario(1L, "root", "SUPERADMIN", true);
+        when(usuarioRepositorio.findById(1L)).thenReturn(Optional.of(superadmin));
         when(usuarioServicio.listarUsuarios(isNull(), isNull()))
                 .thenThrow(new RuntimeException("cadena interna sensible"));
 
         mockMvc.perform(get("/api/usuarios")
                         .header(HttpHeaders.AUTHORIZATION,
-                                bearer(tokenService.generarAccessToken(admin))))
+                                bearer(tokenService.generarAccessToken(superadmin))))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.status").value(500))
                 .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"))
@@ -365,6 +361,7 @@ class SecurityHttpIntegrationTest {
         usuario.setContrasena("encoded-password");
         usuario.setRol(new Rol(id, role, true));
         usuario.setActivo(active);
+        usuario.setAuthVersion(0L);
         return usuario;
     }
 
@@ -378,10 +375,13 @@ class SecurityHttpIntegrationTest {
             String role) {
         return JWT.create()
                 .withIssuer(issuer)
+                .withAudience("le-dance-web")
                 .withSubject("admin")
                 .withClaim("id", userId)
                 .withClaim("rol", role)
                 .withClaim("type", type)
+                .withClaim("auth_version", 0L)
+                .withJWTId(UUID.randomUUID().toString())
                 .withIssuedAt(Date.from(issuedAt))
                 .withExpiresAt(Date.from(expiresAt))
                 .sign(Algorithm.HMAC256(secret));
@@ -392,7 +392,13 @@ class SecurityHttpIntegrationTest {
 
         @Bean
         JwtProperties jwtProperties() {
-            return new JwtProperties(SECRET, ISSUER, 1, 24);
+            return new JwtProperties(SECRET, ISSUER, "le-dance-web", Duration.ofHours(1), Duration.ofHours(24));
+        }
+
+        @Bean
+        SecurityProperties securityProperties() {
+            return new SecurityProperties(4,
+                    new SecurityProperties.RefreshCookie("ledance_refresh", true, "Strict", "", "/api/login"));
         }
 
         @Bean
@@ -408,5 +414,11 @@ class SecurityHttpIntegrationTest {
                     List.of("https://app.example.test")
             );
         }
+    }
+
+    private AutenticacionService.Resultado resultado(Usuario user) {
+        return new AutenticacionService.Resultado("access-token", "refresh-token",
+                Instant.now().plusSeconds(3600),
+                new UsuarioResponse(user.getId(), user.getNombreUsuario(), user.getRol().getDescripcion(), user.getActivo()));
     }
 }

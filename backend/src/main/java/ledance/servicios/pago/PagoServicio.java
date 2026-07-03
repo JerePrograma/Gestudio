@@ -37,6 +37,7 @@ import ledance.repositorios.ReciboPendienteRepositorio;
 import ledance.repositorios.ReciboRepositorio;
 import ledance.repositorios.UsuarioRepositorio;
 import ledance.servicios.cargo.CargoServicio;
+import ledance.cuotas.application.CargoEventoServicio;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -52,6 +53,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class PagoServicio {
@@ -70,6 +72,7 @@ public class PagoServicio {
     private final ReciboPendienteRepositorio recibosPendientes;
     private final Clock clock;
     private final CargoServicio cargoServicio;
+    private final CargoEventoServicio eventos;
 
     public PagoServicio(PagoRepositorio pagos,
                         CargoRepositorio cargos,
@@ -82,6 +85,7 @@ public class PagoServicio {
                         ReciboRepositorio recibos,
                         ReciboPendienteRepositorio recibosPendientes,
                         CargoServicio cargoServicio,
+                        CargoEventoServicio eventos,
                         Clock clock) {
         this.pagos = pagos;
         this.cargos = cargos;
@@ -94,6 +98,7 @@ public class PagoServicio {
         this.recibos = recibos;
         this.recibosPendientes = recibosPendientes;
         this.cargoServicio = cargoServicio;
+        this.eventos = eventos;
         this.clock = clock;
     }
 
@@ -135,6 +140,8 @@ public class PagoServicio {
 
         BigDecimal totalAplicado = CERO;
         List<BigDecimal> importes = new ArrayList<>(solicitadas.size());
+        List<BigDecimal> saldosAnteriores = new ArrayList<>(solicitadas.size());
+        List<EstadoCargo> estadosAnteriores = new ArrayList<>(solicitadas.size());
         for (int i = 0; i < solicitadas.size(); i++) {
             AplicacionPagoRequest solicitada = solicitadas.get(i);
             Cargo cargo = cargosBloqueados.get(i);
@@ -149,6 +156,8 @@ public class PagoServicio {
             }
             totalAplicado = totalAplicado.add(importe);
             importes.add(importe);
+            saldosAnteriores.add(saldo);
+            estadosAnteriores.add(cargo.getEstado());
         }
         if (totalAplicado.compareTo(monto) > 0) {
             throw new OperacionNoPermitidaException("La suma aplicada supera el monto recibido");
@@ -183,6 +192,10 @@ public class PagoServicio {
             aplicacion.setFecha(hoy);
             aplicaciones.save(aplicacion);
             cargoServicio.actualizarEstado(cargo);
+            eventos.registrar(cargo, "PAGO_APLICADO", estadosAnteriores.get(i), saldosAnteriores.get(i),
+                    saldosAnteriores.get(i).subtract(importes.get(i)), "APLICACION_PAGO", aplicacion.getId(),
+                    "pago:" + request.idempotencyKey() + ":cargo:" + cargo.getId() + ":aplicado", usuario,
+                    Map.of("importe", decimal(importes.get(i)), "pagoId", pago.getId()));
         }
 
         MovimientoCaja ingreso = new MovimientoCaja();
@@ -251,6 +264,10 @@ public class PagoServicio {
         if (cargosBloqueados.size() != activas.size()) {
             throw new IllegalStateException("No fue posible bloquear todos los cargos del pago");
         }
+        Map<Long, BigDecimal> saldosAnteriores = cargosBloqueados.stream().collect(
+                java.util.stream.Collectors.toMap(Cargo::getId, cargoServicio::saldo));
+        Map<Long, EstadoCargo> estadosAnteriores = cargosBloqueados.stream().collect(
+                java.util.stream.Collectors.toMap(Cargo::getId, Cargo::getEstado));
 
         List<MovimientoCredito> creditosPago = movimientosCredito.findByPagoId(pagoId).stream()
                 .filter(m -> m.getTipo() == TipoMovimientoCredito.GENERACION)
@@ -269,6 +286,10 @@ public class PagoServicio {
         }
         for (Cargo cargo : cargosBloqueados) {
             cargoServicio.actualizarEstado(cargo);
+            eventos.registrar(cargo, "PAGO_REVERTIDO", estadosAnteriores.get(cargo.getId()),
+                    saldosAnteriores.get(cargo.getId()), cargoServicio.saldo(cargo), "PAGO", pago.getId(),
+                    "pago:" + request.idempotencyKey() + ":cargo:" + cargo.getId() + ":revertido", usuario,
+                    Map.of("motivo", request.motivo()));
         }
 
         MovimientoCaja original = movimientosCaja.findByPagoIdAndTipo(pagoId, TipoMovimientoCaja.INGRESO_PAGO)

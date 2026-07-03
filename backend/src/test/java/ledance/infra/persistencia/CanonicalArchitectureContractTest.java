@@ -30,11 +30,12 @@ class CanonicalArchitectureContractTest {
     private final Path root = repositoryRoot();
 
     @Test
-    void conservaUnaSolaMigracionCanonica() throws IOException {
+    void conservaV1CongeladaYAvanzaConMigracionesForwardOnly() throws IOException {
         Path migrations = root.resolve("backend/src/main/resources/db/migration");
         try (Stream<Path> files = Files.list(migrations)) {
             assertThat(files.filter(Files::isRegularFile).map(path -> path.getFileName().toString()).toList())
-                    .containsExactly("V1__canonical_schema.sql");
+                    .containsExactly("V1__canonical_schema.sql", "V2__security_superadmin_sessions_audit.sql",
+                            "V3__effective_dated_pricing.sql", "V4__cargo_liquidations_and_events.sql");
         }
     }
 

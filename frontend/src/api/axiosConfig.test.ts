@@ -6,6 +6,7 @@ import axios, {
 } from "axios";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import api from "./axiosConfig";
+import { getAccessToken, setAccessToken } from "./authSession";
 
 function response(
   config: InternalAxiosRequestConfig,
@@ -28,9 +29,10 @@ function rejectWith(status: number, config: InternalAxiosRequestConfig): never {
 describe("interceptor de autenticación", () => {
   beforeEach(() => {
     window.history.replaceState({}, "", "/login");
-    localStorage.setItem("accessToken", "old-access");
-    localStorage.setItem("refreshToken", "valid-refresh");
-    localStorage.setItem("usuario", "{}");
+    setAccessToken("old-access");
+    localStorage.setItem("accessToken", "legacy-access");
+    localStorage.setItem("refreshToken", "legacy-refresh");
+    localStorage.setItem("usuario", "legacy-user");
     localStorage.setItem("unrelated", "keep-me");
     vi.restoreAllMocks();
   });
@@ -45,7 +47,7 @@ describe("interceptor de autenticación", () => {
     ).rejects.toBeInstanceOf(AxiosError);
 
     expect(refresh).not.toHaveBeenCalled();
-    expect(localStorage.getItem("accessToken")).toBe("old-access");
+    expect(getAccessToken()).toBe("old-access");
     expect(localStorage.getItem("unrelated")).toBe("keep-me");
   });
 
@@ -53,7 +55,6 @@ describe("interceptor de autenticación", () => {
     const refresh = vi.spyOn(axios, "post").mockResolvedValue({
       data: {
         accessToken: "new-access",
-        refreshToken: "new-refresh",
         usuario: { id: 1, nombreUsuario: "admin", rol: "ADMINISTRADOR", activo: true },
       },
     });
@@ -72,7 +73,12 @@ describe("interceptor de autenticación", () => {
 
     expect(results.map((result) => result.data)).toEqual([{ ok: true }, { ok: true }]);
     expect(refresh).toHaveBeenCalledTimes(1);
-    expect(localStorage.getItem("accessToken")).toBe("new-access");
+    expect(getAccessToken()).toBe("new-access");
+    expect(refresh).toHaveBeenCalledWith(
+      expect.stringContaining("/login/refresh"),
+      {},
+      expect.objectContaining({ withCredentials: true }),
+    );
   });
 
   it("rechaza, limpia sólo claves propias y no entra en loop si falla refresh", async () => {
@@ -87,6 +93,7 @@ describe("interceptor de autenticación", () => {
     expect(localStorage.getItem("accessToken")).toBeNull();
     expect(localStorage.getItem("refreshToken")).toBeNull();
     expect(localStorage.getItem("usuario")).toBeNull();
+    expect(getAccessToken()).toBeNull();
     expect(localStorage.getItem("unrelated")).toBe("keep-me");
   });
 

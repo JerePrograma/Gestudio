@@ -26,11 +26,13 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
             "mensualidades", "metodo_pagos", "movimientos_caja", "movimientos_credito",
             "movimientos_stock", "notificaciones", "observaciones_profesores", "pagos", "profesores",
             "recargos", "recibos", "recibos_pendientes", "roles", "salones", "stocks",
-            "sub_conceptos", "usuarios", "ventas_stock");
+            "sub_conceptos", "usuarios", "ventas_stock", "refresh_sessions",
+            "bootstrap_ejecuciones", "auditoria_eventos", "disciplina_tarifas",
+            "inscripcion_condiciones_economicas", "cargo_liquidaciones", "cargo_eventos");
 
     @Test
-    void aplicaSoloV1ValidaHibernateYCumpleElContratoDelCatalogo() throws Exception {
-        String databaseName = "ledance_v1_" + UUID.randomUUID().toString().replace("-", "");
+    void aplicaFlywayDesdeVacioValidaHibernateYCumpleElContratoDelCatalogo() throws Exception {
+        String databaseName = "ledance_schema_" + UUID.randomUUID().toString().replace("-", "");
         String jdbcUrl = POSTGRESQL.getJdbcUrl().replace(POSTGRESQL.getDatabaseName(), databaseName);
         crearBase(databaseName);
         try {
@@ -41,10 +43,10 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
                     .baselineOnMigrate(false)
                     .load();
 
-            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(1);
+            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(4);
             ValidateResult validation = flyway.validateWithResult();
             assertThat(flyway.info().current()).isNotNull();
-            assertThat(flyway.info().current().getVersion()).isEqualTo(MigrationVersion.fromVersion("1"));
+            assertThat(flyway.info().current().getVersion()).isEqualTo(MigrationVersion.fromVersion("4"));
             assertThat(validation.validationSuccessful)
                     .withFailMessage(validation.getAllErrorMessages())
                     .isTrue();
@@ -59,7 +61,7 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
                           AND (column_name ~ '(importe|monto|precio|saldo|credito|valor_cuota|matricula|clase_suelta|clase_prueba|recargo|porcentaje)')
                           AND data_type <> 'numeric'
                           AND column_name !~ '(_id|^id)$'
-                          AND column_name NOT IN ('importe_revertido')
+                          AND column_name NOT IN ('importe_revertido', 'origen_precio')
                         """)).as("toda columna monetaria o porcentual es NUMERIC").isZero();
                 assertThat(contar(connection, """
                         SELECT count(*)
@@ -69,7 +71,7 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
                         JOIN information_schema.columns c
                           ON c.table_schema = kcu.table_schema AND c.table_name = kcu.table_name AND c.column_name = kcu.column_name
                         WHERE tc.table_schema = 'public' AND tc.constraint_type = 'PRIMARY KEY'
-                          AND tc.table_name <> 'flyway_schema_history'
+                          AND tc.table_name NOT IN ('flyway_schema_history', 'refresh_sessions', 'bootstrap_ejecuciones')
                           AND c.data_type <> 'bigint'
                         """)).as("toda PK es BIGINT").isZero();
                 assertThat(contar(connection, """

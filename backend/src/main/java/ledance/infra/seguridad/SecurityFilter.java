@@ -38,6 +38,7 @@ public class SecurityFilter extends OncePerRequestFilter {
                         .filter(user -> Boolean.TRUE.equals(user.getActivo()))
                         .filter(user -> user.getRol() != null && Boolean.TRUE.equals(user.getRol().getActivo()))
                         .filter(user -> Objects.equals(user.getRol().getDescripcion(), verified.role()))
+                        .filter(user -> Objects.equals(user.getAuthVersion(), verified.authVersion()))
                         .orElseThrow(InvalidTokenException::new);
                 var authentication = new UsernamePasswordAuthenticationToken(
                         userEntity, null, userEntity.getAuthorities());

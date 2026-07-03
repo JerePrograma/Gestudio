@@ -1,6 +1,5 @@
 package ledance.controladores;
 
-import ledance.dto.rol.request.RolRegistroRequest;
 import ledance.dto.rol.response.RolResponse;
 import ledance.servicios.rol.RolServicio;
 import org.springframework.http.ResponseEntity;
@@ -18,12 +17,6 @@ public class RolControlador {
 
     public RolControlador(RolServicio rolService) {
         this.rolService = rolService;
-    }
-
-    @PostMapping
-    public ResponseEntity<RolResponse> registrarRol(@RequestBody @Validated RolRegistroRequest request) {
-        RolResponse response = rolService.registrarRol(request);
-        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/{id}")

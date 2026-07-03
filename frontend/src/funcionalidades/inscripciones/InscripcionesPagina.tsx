@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Pencil, PlusCircle } from "lucide-react";
+import { BadgePercent, Pencil, PlusCircle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import inscripcionesApi from "../../api/inscripcionesApi";
 import Boton from "../../componentes/comunes/Boton";
@@ -34,7 +34,7 @@ const InscripcionesPagina = () => {
           headers={["ID", "Alumno", "Disciplina", "Fecha", "Estado", "Costo particular"]}
           data={rows}
           customRender={(row) => [row.id, row.alumno, row.disciplina, row.fechaInscripcion, row.estado, row.costoParticular ?? "-"]}
-          actions={(row) => <Boton onClick={() => navigate(`/inscripciones/formulario?id=${row.id}`)} className="page-button-secondary"><Pencil className="w-4 h-4" /> Editar</Boton>}
+          actions={(row) => <div className="flex gap-2"><Boton onClick={() => navigate(`/inscripciones/${row.id}/condiciones-economicas`)} className="page-button-secondary"><BadgePercent className="w-4 h-4" /> Condiciones</Boton><Boton onClick={() => navigate(`/inscripciones/formulario?id=${row.id}`)} className="page-button-secondary"><Pencil className="w-4 h-4" /> Editar</Boton></div>}
         />
       </div>
       <div><Boton disabled={page === 0} onClick={() => setPage((value) => value - 1)} className="page-button-secondary">Anterior</Boton><span> Página {page + 1} de {Math.max(data?.totalPages ?? 1, 1)} </span><Boton disabled={!data || page + 1 >= data.totalPages} onClick={() => setPage((value) => value + 1)} className="page-button-secondary">Siguiente</Boton></div>

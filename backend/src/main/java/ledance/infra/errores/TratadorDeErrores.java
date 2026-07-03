@@ -18,6 +18,10 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
+import ledance.infra.seguridad.InvalidTokenException;
+import ledance.infra.seguridad.RefreshTokenReuseException;
+import ledance.tarifas.application.TarifaDisciplinaServicio.TarifaHistoricaNoDefinidaException;
+import ledance.tarifas.application.CondicionEconomicaServicio.CondicionHistoricaNoDefinidaException;
 
 import java.time.Clock;
 import java.util.List;
@@ -74,6 +78,23 @@ public class TratadorDeErrores {
     public ResponseEntity<ApiErrorResponse> unauthorized(RuntimeException exception) {
         log.warn("Autenticación rechazada type={}", exception.getClass().getSimpleName());
         return response(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "Credenciales inválidas");
+    }
+
+    @ExceptionHandler(InvalidTokenException.class)
+    public ResponseEntity<ApiErrorResponse> invalidToken(InvalidTokenException exception) {
+        return response(HttpStatus.UNAUTHORIZED, "INVALID_TOKEN", "Token inválido o expirado");
+    }
+
+    @ExceptionHandler(RefreshTokenReuseException.class)
+    public ResponseEntity<ApiErrorResponse> refreshReuse(RefreshTokenReuseException exception) {
+        return response(HttpStatus.CONFLICT, "REFRESH_TOKEN_REUSE_DETECTED",
+                "Se detectó reutilización del refresh token; la sesión fue revocada");
+    }
+
+    @ExceptionHandler({TarifaHistoricaNoDefinidaException.class, CondicionHistoricaNoDefinidaException.class})
+    public ResponseEntity<ApiErrorResponse> historicalPricing(RuntimeException exception) {
+        return response(HttpStatus.CONFLICT, "HISTORICAL_PRICING_NOT_DEFINED",
+                safeMessage(exception, "No existe una tarifa histórica verificable"));
     }
 
     @ExceptionHandler(AccessDeniedException.class)
@@ -149,6 +170,8 @@ public class TratadorDeErrores {
         if (detail.contains("uq_inscripciones_activas")) return "DUPLICATE_ACTIVE_ENROLLMENT";
         if (detail.contains("uq_mensualidades_periodo")) return "DUPLICATE_MONTHLY_FEE";
         if (detail.contains("uq_matriculas_periodo")) return "DUPLICATE_REGISTRATION";
+        if (detail.contains("uq_disciplina_tarifas_inicio")) return "DUPLICATE_EFFECTIVE_DATE";
+        if (detail.contains("uq_inscripcion_condicion_inicio")) return "DUPLICATE_EFFECTIVE_DATE";
         if (detail.contains("ck_aplicaciones") || detail.contains("ck_pagos_monto")) return "OVERAPPLICATION";
         if (detail.contains("ck_movimientos_credito")) return "INSUFFICIENT_CREDIT";
         if (detail.contains("ck_stocks") || detail.contains("ck_movimientos_stock")) return "INSUFFICIENT_STOCK";
@@ -161,6 +184,7 @@ public class TratadorDeErrores {
             case "DUPLICATE_ACTIVE_ENROLLMENT" -> "Ya existe una inscripción activa equivalente";
             case "DUPLICATE_MONTHLY_FEE" -> "La mensualidad del período ya existe";
             case "DUPLICATE_REGISTRATION" -> "La matrícula del período ya existe";
+            case "DUPLICATE_EFFECTIVE_DATE" -> "Ya existe una condición para la misma fecha efectiva";
             case "OVERAPPLICATION" -> "La aplicación excede el importe disponible";
             case "INSUFFICIENT_CREDIT" -> "El crédito disponible es insuficiente";
             case "INSUFFICIENT_STOCK" -> "El stock disponible es insuficiente";

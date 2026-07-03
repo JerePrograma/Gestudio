@@ -13,8 +13,9 @@ class JwtPropertiesContextTest {
             .withUserConfiguration(JwtConfiguration.class)
             .withPropertyValues(
                     "jwt.issuer=le-dance-test",
-                    "jwt.access-token-hours=2",
-                    "jwt.refresh-token-hours=168"
+                    "jwt.audience=le-dance-web",
+                    "jwt.access-token-ttl=PT2H",
+                    "jwt.refresh-token-ttl=P7D"
             );
 
     @Test

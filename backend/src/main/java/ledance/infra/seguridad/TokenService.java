@@ -8,14 +8,13 @@ import ledance.entidades.Usuario;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.UUID;
 
 @Service
 public class TokenService {
-
     private final JwtProperties properties;
     private final Clock clock;
     private final Algorithm algorithm;
@@ -27,82 +26,69 @@ public class TokenService {
         this.algorithm = Algorithm.HMAC256(properties.secret());
         this.verifier = JWT.require(algorithm)
                 .withIssuer(properties.issuer())
+                .withAudience(properties.audience())
                 .build();
     }
 
     public String generarAccessToken(Usuario usuario) {
-        return generarToken(usuario, properties.accessTokenHours(), TokenType.ACCESS);
+        return generarToken(usuario, UUID.randomUUID(), properties.accessTokenTtl(), TokenType.ACCESS);
     }
 
-    public String generarRefreshToken(Usuario usuario) {
-        return generarToken(usuario, properties.refreshTokenHours(), TokenType.REFRESH);
+    public String generarRefreshToken(Usuario usuario, UUID sessionId) {
+        return generarToken(usuario, sessionId, properties.refreshTokenTtl(), TokenType.REFRESH);
     }
 
-    private String generarToken(Usuario usuario, long horas, TokenType tipo) {
-        if (usuario.getId() == null || usuario.getNombreUsuario() == null || usuario.getRol() == null) {
+    public Instant refreshExpiresAt(Instant issuedAt) {
+        return issuedAt.plus(properties.refreshTokenTtl());
+    }
+
+    private String generarToken(Usuario usuario, UUID jwtId, Duration ttl, TokenType tipo) {
+        if (usuario.getId() == null || usuario.getNombreUsuario() == null || usuario.getRol() == null
+                || usuario.getAuthVersion() == null) {
             throw new IllegalArgumentException("No se puede generar un token para un usuario incompleto");
         }
-        try {
-            Instant issuedAt = clock.instant();
-            return JWT.create()
-                    .withIssuer(properties.issuer())
-                    .withSubject(usuario.getNombreUsuario())
-                    .withClaim("id", usuario.getId())
-                    .withClaim("type", tipo.name())
-                    .withClaim("rol", usuario.getRol().getDescripcion())
-                    .withJWTId(UUID.randomUUID().toString())
-                    .withIssuedAt(Date.from(issuedAt))
-                    .withExpiresAt(Date.from(generarFechaExpiracion(issuedAt, horas)))
-                    .sign(algorithm);
-        } catch (Exception e) {
-            throw new RuntimeException("Error al generar el token", e);
-        }
+        Instant issuedAt = clock.instant();
+        return JWT.create()
+                .withIssuer(properties.issuer())
+                .withAudience(properties.audience())
+                .withSubject(usuario.getNombreUsuario())
+                .withClaim("id", usuario.getId())
+                .withClaim("type", tipo.name())
+                .withClaim("rol", usuario.getRol().getDescripcion())
+                .withClaim("auth_version", usuario.getAuthVersion())
+                .withJWTId(jwtId.toString())
+                .withIssuedAt(Date.from(issuedAt))
+                .withExpiresAt(Date.from(issuedAt.plus(ttl)))
+                .sign(algorithm);
     }
 
     public VerifiedToken verify(String token, TokenType expectedType) {
-        VerifiedToken verifiedToken = verify(token);
-        if (verifiedToken.tokenType() != expectedType) {
-            throw new InvalidTokenException();
-        }
-        return verifiedToken;
+        VerifiedToken verified = verify(token);
+        if (verified.tokenType() != expectedType) throw new InvalidTokenException();
+        return verified;
     }
 
     public VerifiedToken verify(String token) {
-        if (token == null || token.isBlank()) {
-            throw new InvalidTokenException();
-        }
+        if (token == null || token.isBlank()) throw new InvalidTokenException();
         try {
             DecodedJWT decoded = verifier.verify(token);
             String subject = decoded.getSubject();
             Long userId = decoded.getClaim("id").asLong();
             String role = decoded.getClaim("rol").asString();
-            String rawType = decoded.getClaim("type").asString();
+            Long authVersion = decoded.getClaim("auth_version").asLong();
+            String type = decoded.getClaim("type").asString();
+            String jwtId = decoded.getId();
             Date issuedAt = decoded.getIssuedAt();
             Date expiresAt = decoded.getExpiresAt();
-            if (subject == null || subject.isBlank()
-                    || userId == null
-                    || role == null || role.isBlank()
-                    || rawType == null
-                    || issuedAt == null
-                    || expiresAt == null) {
-                throw new InvalidTokenException();
-            }
-            return new VerifiedToken(
-                    subject,
-                    userId,
-                    role,
-                    TokenType.valueOf(rawType),
-                    issuedAt.toInstant(),
-                    expiresAt.toInstant()
-            );
+            if (subject == null || subject.isBlank() || userId == null || role == null || role.isBlank()
+                    || authVersion == null || type == null || jwtId == null
+                    || issuedAt == null || expiresAt == null) throw new InvalidTokenException();
+            return new VerifiedToken(subject, userId, role, authVersion, jwtId,
+                    TokenType.valueOf(type), issuedAt.toInstant(), expiresAt.toInstant());
         } catch (InvalidTokenException e) {
             throw e;
         } catch (RuntimeException e) {
             throw new InvalidTokenException(e);
         }
-    }
-
-    private Instant generarFechaExpiracion(Instant issuedAt, long horas) {
-        return issuedAt.plus(horas, ChronoUnit.HOURS);
     }
 }
