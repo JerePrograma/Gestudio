@@ -35,6 +35,7 @@ Los archivos versionados `.env.example` y `.env.local.example` contienen plantil
 | `APP_BOOTSTRAP_ADMIN_ENABLED` | bootstrap único | no | `false`; habilitar sólo en el primer arranque controlado. |
 | `APP_BOOTSTRAP_ADMIN_USERNAME` | bootstrap único | si se habilita | nombre explícito del primer administrador. |
 | `APP_BOOTSTRAP_ADMIN_PASSWORD` | bootstrap único | si se habilita | secreto externo de 12 a 72 bytes UTF-8. |
+| `APP_BOOTSTRAP_ADMIN_RESET_EXISTING_PASSWORD` | sólo `dev` | no | `false`; restablece una vez el BCrypt del `ADMINISTRADOR` indicado e invalida sus sesiones. |
 | `SERVER_PORT` | todos | no | `8080` |
 | `LOGGING_LEVEL_ROOT` | todos | no | `INFO` |
 
@@ -106,6 +107,14 @@ puede ser sólo espacios; la password debe tener de 12 a 72 bytes UTF-8. El
 initializer exige la tabla `usuarios` vacía y el rol activo `ADMINISTRADOR`, que
 es el rol máximo actual. Si ya existe cualquier usuario, el arranque falla hasta
 deshabilitar la bandera; no actualiza credenciales ni roles.
+
+Para recuperar una contraseña local existente, use el perfil `dev`, mantenga
+`APP_BOOTSTRAP_ADMIN_ENABLED=false` y habilite temporalmente
+`APP_BOOTSTRAP_ADMIN_RESET_EXISTING_PASSWORD=true` con el username y la clave en
+`APP_BOOTSTRAP_ADMIN_USERNAME` y `APP_BOOTSTRAP_ADMIN_PASSWORD`. El reset sólo
+acepta un `ADMINISTRADOR` activo, no reescribe un BCrypt que ya coincide e
+invalida las sesiones anteriores. Deshabilite la bandera y reinicie después de
+un arranque exitoso. El bean no existe fuera del perfil `dev`.
 
 `scripts/smoke-local.ps1` genera valores temporales para PostgreSQL, JWT y el
 administrador, los escribe únicamente en un archivo de `%TEMP%`, restaura el

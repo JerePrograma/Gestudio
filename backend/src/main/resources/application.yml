@@ -67,6 +67,7 @@ app:
     enabled: ${APP_BOOTSTRAP_ADMIN_ENABLED:false}
     username: ${APP_BOOTSTRAP_ADMIN_USERNAME:}
     password: ${APP_BOOTSTRAP_ADMIN_PASSWORD:}
+    reset-existing-password: ${APP_BOOTSTRAP_ADMIN_RESET_EXISTING_PASSWORD:false}
 
 logging:
   level:

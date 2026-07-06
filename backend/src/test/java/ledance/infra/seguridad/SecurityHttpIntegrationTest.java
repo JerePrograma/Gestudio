@@ -128,7 +128,7 @@ class SecurityHttpIntegrationTest {
     }
 
     @Test
-    void loginValidoEntregaAmbosTokensYLoginInvalidoDevuelve401() throws Exception {
+    void loginSinJwtNoEsBloqueadoYCredencialesInvalidasDevuelven401() throws Exception {
         Usuario user = usuario(1L, "admin", "ADMINISTRADOR", true);
         when(autenticacionService.login(any(), nullable(String.class), anyString()))
                 .thenReturn(resultado(user))
