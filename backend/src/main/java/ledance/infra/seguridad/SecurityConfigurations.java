@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.authorization.AuthorityAuthorizationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -30,18 +31,18 @@ import java.util.List;
 @EnableWebSecurity
 public class SecurityConfigurations {
 
-    private final SecurityFilter securityFilter;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
-    public SecurityConfigurations(SecurityFilter securityFilter, ObjectMapper objectMapper, Clock clock) {
-        this.securityFilter = securityFilter;
+    public SecurityConfigurations(ObjectMapper objectMapper, Clock clock) {
         this.objectMapper = objectMapper;
         this.clock = clock;
     }
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http, RoleHierarchy roleHierarchy) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, RoleHierarchy roleHierarchy,
+                                                   SecurityFilter securityFilter,
+                                                   AuthenticationEntryPoint authenticationEntryPoint) throws Exception {
         AuthorityAuthorizationManager<RequestAuthorizationContext> administrador =
                 AuthorityAuthorizationManager.hasRole("ADMINISTRADOR");
         administrador.setRoleHierarchy(roleHierarchy);
@@ -52,8 +53,7 @@ public class SecurityConfigurations {
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(errors -> errors
-                        .authenticationEntryPoint((request, response, exception) ->
-                                writeError(response, HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "Autenticación requerida"))
+                        .authenticationEntryPoint(authenticationEntryPoint)
                         .accessDeniedHandler((request, response, exception) ->
                                 writeError(response, HttpStatus.FORBIDDEN, "FORBIDDEN", "Permisos insuficientes")))
                 .authorizeHttpRequests(req -> {
@@ -71,6 +71,12 @@ public class SecurityConfigurations {
                 })
                 .addFilterBefore(securityFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
+    }
+
+    @Bean
+    public AuthenticationEntryPoint authenticationEntryPoint() {
+        return (request, response, exception) ->
+                writeError(response, HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "Autenticación requerida");
     }
 
     private void writeError(jakarta.servlet.http.HttpServletResponse response, HttpStatus status,

@@ -11,6 +11,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.Map;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -64,6 +65,57 @@ class AuditServicePostgreSqlTest extends PostgreSqlIntegrationTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("no admite secretos");
         assertThat(count(key)).isZero();
+    }
+
+    @Test
+    void rechazaSecretosTambienPorValorEscalarBajoClavesInocuas() {
+        List<String> secrets = List.of(
+                "Bearer eyJhbGciOiJIUzI1NiJ9.payload.signature",
+                "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiJ9.signature",
+                "password=no-debe-persistirse",
+                "client_secret=no-debe-persistirse",
+                "authorization: Basic no-debe-persistirse",
+                "token=no-debe-persistirse",
+                "jwt=no-debe-persistirse",
+                "SECRET_VALUE");
+
+        secrets.forEach(secret -> {
+            String key = "audit-secret-value:" + UUID.randomUUID();
+            assertThatThrownBy(() -> audit.registrar("SEGURIDAD", "PRUEBA_SECRETO", null, null,
+                    null, key, Map.of("detalle", secret)))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessage("La auditoría no admite secretos");
+            assertThat(count(key)).isZero();
+        });
+    }
+
+    @Test
+    void conservaClasificacionesLegitimasNoSensibles() {
+        String key = "audit-classification:" + UUID.randomUUID();
+
+        audit.registrar("SEGURIDAD", "PRUEBA_CLASIFICACION", null, null,
+                null, key, Map.of("motivo", "TOKEN_INVALIDO"));
+
+        assertThat(count(key)).isOne();
+    }
+
+    @Test
+    void rechazaSecretosEnEstadosAnteriorYNuevo() {
+        String previousKey = "audit-secret-previous:" + UUID.randomUUID();
+        assertThatThrownBy(() -> audit.registrar("SEGURIDAD", "PRUEBA_SECRETO", null, null,
+                null, UUID.randomUUID(), previousKey,
+                Map.of("detalle", "password=no-debe-persistirse"), Map.of(), Map.of()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("La auditoría no admite secretos");
+        assertThat(count(previousKey)).isZero();
+
+        String newKey = "audit-secret-new:" + UUID.randomUUID();
+        assertThatThrownBy(() -> audit.registrar("SEGURIDAD", "PRUEBA_SECRETO", null, null,
+                null, UUID.randomUUID(), newKey,
+                Map.of(), Map.of("detalle", "token=no-debe-persistirse"), Map.of()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("La auditoría no admite secretos");
+        assertThat(count(newKey)).isZero();
     }
 
     private int count(String key) {

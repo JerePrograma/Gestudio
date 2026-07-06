@@ -4,16 +4,10 @@ import axios, {
 } from "axios";
 import { toast } from "react-toastify";
 import { API_BASE_URL } from "../config/environment";
-import type { UsuarioResponse } from "../types/types";
-import { getAccessToken, setAccessToken } from "./authSession";
+import { clearAuthSession, getAccessToken, refreshSession } from "./authSession";
 
 interface RetriableRequestConfig extends InternalAxiosRequestConfig {
   _retry?: boolean;
-}
-
-interface RefreshResponse {
-  accessToken: string;
-  usuario?: UsuarioResponse;
 }
 
 export const AUTH_STORAGE_KEYS = [
@@ -24,7 +18,7 @@ export const AUTH_STORAGE_KEYS = [
 
 export function clearAuthStorage(): void {
   AUTH_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
-  setAccessToken(null);
+  clearAuthSession();
 }
 
 const api = axios.create({
@@ -39,8 +33,6 @@ api.interceptors.request.use((config) => {
   }
   return config;
 });
-
-let refreshPromise: Promise<RefreshResponse> | null = null;
 
 function isRefreshRequest(config: InternalAxiosRequestConfig): boolean {
   return config.url?.replace(API_BASE_URL, "").startsWith("/login/refresh") ?? false;
@@ -73,29 +65,23 @@ api.interceptors.response.use(
     }
 
     originalRequest._retry = true;
+    const currentAccessToken = getAccessToken();
+    if (
+      currentAccessToken &&
+      originalRequest.headers.Authorization !== `Bearer ${currentAccessToken}`
+    ) {
+      originalRequest.headers.Authorization = `Bearer ${currentAccessToken}`;
+      return api(originalRequest);
+    }
     try {
-      refreshPromise ??= axios
-        .post<RefreshResponse>(
-          `${API_BASE_URL}/login/refresh`,
-          {},
-          {
-            withCredentials: true,
-            headers: { "Content-Type": "application/json" },
-          }
-        )
-        .then((response) => response.data);
-
-      const data = await refreshPromise;
-      setAccessToken(data.accessToken);
-      originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
+      const session = await refreshSession();
+      originalRequest.headers.Authorization = `Bearer ${session.accessToken}`;
       return api(originalRequest);
     } catch (refreshError) {
       clearAuthStorage();
       toast.error("La sesión expiró. Iniciá sesión nuevamente.");
       redirectToLogin();
       return Promise.reject(refreshError);
-    } finally {
-      refreshPromise = null;
     }
   }
 );

@@ -2,24 +2,25 @@ import React, { useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import api, { clearAuthStorage } from "../../api/axiosConfig";
-import { setAccessToken as setSessionAccessToken } from "../../api/authSession";
+import {
+  getAuthSession,
+  refreshSession,
+  setAuthSession,
+  subscribeAuthSession,
+} from "../../api/authSession";
 import { AuthContext, type UserProfile } from "./auth-context";
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [isAuth, setIsAuth] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [accessToken, setAccessToken] = useState<string | null>(null);
-  const [user, setUser] = useState<UserProfile | null>(null);
+  const [session, setSession] = useState(getAuthSession);
   const navigate = useNavigate();
+  const isAuth = session.accessToken !== null && session.user !== null;
+  const user: UserProfile | null = session.user;
+
+  useEffect(() => subscribeAuthSession(setSession), []);
 
   useEffect(() => {
-    api.post("/login/refresh", {}, { withCredentials: true })
-      .then(({ data }) => {
-        setSessionAccessToken(data.accessToken);
-        setAccessToken(data.accessToken);
-        setUser(data.usuario);
-        setIsAuth(true);
-      })
+    refreshSession()
       .catch(() => clearAuthStorage())
       .finally(() => setLoading(false));
   }, []);
@@ -35,10 +36,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         { nombreUsuario, contrasena },
         { withCredentials: true },
       );
-      setSessionAccessToken(data.accessToken);
-      setAccessToken(data.accessToken);
-      setIsAuth(true);
-      setUser(data.usuario);
+      setAuthSession(data.accessToken, data.usuario);
     } catch (error) {
       toast.error("Error al iniciar sesión");
       throw error;
@@ -50,9 +48,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       await api.post("/login/logout", {}, { withCredentials: true });
     } finally {
       clearAuthStorage();
-      setAccessToken(null);
-      setIsAuth(false);
-      setUser(null);
       navigate("/login");
     }
   };
@@ -62,7 +57,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   return (
     <AuthContext.Provider value={{
-      isAuth, loading, login, logout, accessToken, user, hasRole,
+      isAuth, loading, login, logout, accessToken: session.accessToken, user, hasRole,
     }}>
       {children}
     </AuthContext.Provider>

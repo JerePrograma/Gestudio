@@ -5,8 +5,10 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import ledance.repositorios.UsuarioRepositorio;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
@@ -17,10 +19,13 @@ public class SecurityFilter extends OncePerRequestFilter {
 
     private final TokenService tokenService;
     private final UsuarioRepositorio usuarioRepositorio;
+    private final AuthenticationEntryPoint authenticationEntryPoint;
 
-    public SecurityFilter(TokenService tokenService, UsuarioRepositorio usuarioRepositorio) {
+    public SecurityFilter(TokenService tokenService, UsuarioRepositorio usuarioRepositorio,
+                          AuthenticationEntryPoint authenticationEntryPoint) {
         this.tokenService = tokenService;
         this.usuarioRepositorio = usuarioRepositorio;
+        this.authenticationEntryPoint = authenticationEntryPoint;
     }
 
     @Override
@@ -45,7 +50,8 @@ public class SecurityFilter extends OncePerRequestFilter {
                 SecurityContextHolder.getContext().setAuthentication(authentication);
             } catch (InvalidTokenException ex) {
                 SecurityContextHolder.clearContext();
-                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                authenticationEntryPoint.commence(request, response,
+                        new BadCredentialsException("Token inválido", ex));
                 return;
             }
         }

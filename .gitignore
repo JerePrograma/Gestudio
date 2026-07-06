@@ -75,6 +75,15 @@ logs/
 *.temp
 *~
 
+# Local database and operational artifacts
+/*.dump
+/*.backup*
+/backup*.sql
+/basebackup*/
+/backup-*/
+/output*.txt
+/backend/backup-*/
+
 # Coverage Reports
 coverage/
 lcov-report/

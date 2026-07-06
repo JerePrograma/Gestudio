@@ -13,11 +13,15 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 @Service
 public class AuditService {
     private static final Set<String> SECRET_FRAGMENTS = Set.of(
-            "password", "contrasena", "contraseña", "token", "secret", "jwt", "authorization");
+            "password", "contrasena", "contraseña", "token", "secret", "jwt", "authorization", "bearer");
+    private static final Set<String> NON_SECRET_CLASSIFICATIONS = Set.of("TOKEN_INVALIDO");
+    private static final Pattern JWT = Pattern.compile(
+            "^[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}$");
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
     private final Clock clock;
@@ -91,6 +95,18 @@ public class AuditService {
             });
         } else if (value instanceof Collection<?> values) {
             values.forEach(this::validarSinSecretos);
+        } else if (value instanceof CharSequence text && esValorSensible(text.toString())) {
+            throw new IllegalArgumentException("La auditoría no admite secretos");
         }
+    }
+
+    private boolean esValorSensible(String value) {
+        String trimmed = value.trim();
+        if (trimmed.isEmpty() || NON_SECRET_CLASSIFICATIONS.contains(trimmed)) {
+            return false;
+        }
+        String normalized = trimmed.toLowerCase(Locale.ROOT);
+        return JWT.matcher(trimmed).matches()
+                || SECRET_FRAGMENTS.stream().anyMatch(normalized::contains);
     }
 }

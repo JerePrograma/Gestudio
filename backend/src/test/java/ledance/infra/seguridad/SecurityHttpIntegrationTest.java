@@ -347,7 +347,12 @@ class SecurityHttpIntegrationTest {
     private void assertUnauthorized(String token) throws Exception {
         mockMvc.perform(get("/api/usuarios/perfil")
                         .header(HttpHeaders.AUTHORIZATION, bearer(token)))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"))
+                .andExpect(jsonPath("$.message").value("Autenticación requerida"))
+                .andExpect(jsonPath("$.fieldErrors").isEmpty());
     }
 
     private String bearer(String token) {

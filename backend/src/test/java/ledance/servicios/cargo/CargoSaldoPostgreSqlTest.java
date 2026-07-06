@@ -12,6 +12,7 @@ import ledance.entidades.EstadoCargo;
 import ledance.entidades.Usuario;
 import ledance.infra.errores.TratadorDeErrores.OperacionNoPermitidaException;
 import ledance.infra.persistencia.PostgreSqlIntegrationTest;
+import ledance.repositorios.CargoRepositorio;
 import ledance.repositorios.UsuarioRepositorio;
 import ledance.servicios.credito.CreditoServicio;
 import ledance.servicios.matricula.MatriculaServicio;
@@ -44,6 +45,7 @@ class CargoSaldoPostgreSqlTest extends PostgreSqlIntegrationTest {
     @Autowired private MatriculaServicio matriculas;
     @Autowired private ReporteServicio reportes;
     @Autowired private UsuarioRepositorio usuarios;
+    @Autowired private CargoRepositorio cargoRepositorio;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private Clock clock;
     @Autowired private EntityManagerFactory entityManagerFactory;
@@ -163,6 +165,81 @@ class CargoSaldoPostgreSqlTest extends PostgreSqlIntegrationTest {
         assertThat(batch.get(pendiente.cargoId()).estadoEsperado()).isEqualTo(EstadoCargo.PENDIENTE);
     }
 
+    @Test
+    void runtimeYVistaSqlCoincidenConPagosCreditoReversoYRecargo() {
+        Fixture fixture = fixture("100.00", "40.00");
+        var pendiente = mensualidades.crearMensualidad(
+                new MensualidadRegistroRequest(fixture.inscripcion(), 2026, 8, null, null));
+        var parcial = mensualidades.crearMensualidad(
+                new MensualidadRegistroRequest(fixture.inscripcion(), 2026, 9, null, null));
+        var pagada = mensualidades.crearMensualidad(
+                new MensualidadRegistroRequest(fixture.inscripcion(), 2026, 10, null, null));
+        registrarLiquidacion(pendiente.cargoId(), "2026-08-01");
+        registrarLiquidacion(parcial.cargoId(), "2026-09-01");
+        registrarLiquidacion(pagada.cargoId(), "2026-10-01");
+
+        pagos.registrarPago(new PagoRegistroRequest(
+                fixture.alumno(), fixture.metodo(), "30.00", key("pago-parcial"), null,
+                List.of(new AplicacionPagoRequest(parcial.cargoId(), "30.00")), false), fixture.usuario());
+        creditos.ajustar(new CreditoAjusteRequest(
+                fixture.alumno(), "20.00", "CREDITO", "alineación vista", key("ajuste")), fixture.usuario());
+        var consumo = creditos.consumir(new CreditoConsumoRequest(
+                fixture.alumno(), parcial.cargoId(), "20.00", key("consumo")), fixture.usuario());
+
+        VistaCuota conCredito = assertVistaCoincide(parcial.cargoId());
+        assertThat(conCredito.aplicadoPagos()).isEqualByComparingTo("30.00");
+        assertThat(conCredito.aplicadoCredito()).isEqualByComparingTo("20.00");
+        assertThat(conCredito.estado()).isEqualTo("PARCIAL");
+
+        creditos.revertirConsumo(consumo.id(),
+                new CreditoReversionRequest(key("reverso-credito"), "alineación vista"), fixture.usuario());
+        VistaCuota conCreditoRevertido = assertVistaCoincide(parcial.cargoId());
+        assertThat(conCreditoRevertido.aplicadoCredito()).isEqualByComparingTo("0.00");
+        assertThat(conCreditoRevertido.saldo()).isEqualByComparingTo("70.00");
+
+        pagos.registrarPago(new PagoRegistroRequest(
+                fixture.alumno(), fixture.metodo(), "100.00", key("pago-total"), null,
+                List.of(new AplicacionPagoRequest(pagada.cargoId(), "100.00")), false), fixture.usuario());
+        var cargoPendiente = cargoRepositorio.findById(pendiente.cargoId()).orElseThrow();
+        var recargo = cargos.crearRecargo(cargoPendiente, new BigDecimal("15.00"),
+                "Recargo de alineación", key("recargo"));
+
+        VistaCuota vistaPendiente = assertVistaCoincide(pendiente.cargoId());
+        assertThat(vistaPendiente.estado()).isEqualTo("PENDIENTE");
+        assertThat(vistaPendiente.recargos()).isEqualByComparingTo("15.00");
+        assertThat(vistaPendiente.saldoTotal()).isEqualByComparingTo(
+                saldos.calcular(pendiente.cargoId()).saldo().add(saldos.calcular(recargo).saldo()));
+        assertThat(assertVistaCoincide(pagada.cargoId()).estado()).isEqualTo("PAGADO");
+    }
+
+    private VistaCuota assertVistaCoincide(Long cargoId) {
+        SaldoCargo runtime = saldos.calcular(cargoId);
+        VistaCuota vista = jdbc.queryForObject("""
+                SELECT aplicado_pagos, aplicado_credito, saldo_cuota, recargos_vinculados,
+                       saldo_total_periodo, estado_esperado
+                FROM v_cuotas_seguimiento WHERE cargo_id = ?
+                """, (rs, row) -> new VistaCuota(
+                rs.getBigDecimal("aplicado_pagos"), rs.getBigDecimal("aplicado_credito"),
+                rs.getBigDecimal("saldo_cuota"), rs.getBigDecimal("recargos_vinculados"),
+                rs.getBigDecimal("saldo_total_periodo"), rs.getString("estado_esperado")), cargoId);
+
+        assertThat(vista).isNotNull();
+        assertThat(vista.aplicadoPagos()).isEqualByComparingTo(runtime.aplicadoPagos());
+        assertThat(vista.aplicadoCredito()).isEqualByComparingTo(runtime.aplicadoCredito());
+        assertThat(vista.saldo()).isEqualByComparingTo(runtime.saldo());
+        assertThat(vista.estado()).isEqualTo(runtime.estadoEsperado().name());
+        return vista;
+    }
+
+    private void registrarLiquidacion(Long cargoId, String periodoDesde) {
+        jdbc.update("""
+                INSERT INTO cargo_liquidaciones(
+                    cargo_id, periodo_desde, origen_precio, importe_base, importe_final, formula_version)
+                SELECT id, ?::date, 'MANUAL_HISTORICO', importe_original, importe_original, 1
+                FROM cargos WHERE id = ?
+                """, periodoDesde, cargoId);
+    }
+
     private void aplicarCredito(Fixture fixture, Long cargoId, String importe) {
         creditos.ajustar(new CreditoAjusteRequest(
                 fixture.alumno(), importe, "CREDITO", "caracterización", key("ajuste")), fixture.usuario());
@@ -214,5 +291,10 @@ class CargoSaldoPostgreSqlTest extends PostgreSqlIntegrationTest {
 
     private record Fixture(Long alumno, Long profesor, Long disciplina, Long inscripcion,
                            Long metodo, Usuario usuario) {
+    }
+
+    private record VistaCuota(BigDecimal aplicadoPagos, BigDecimal aplicadoCredito,
+                              BigDecimal saldo, BigDecimal recargos, BigDecimal saldoTotal,
+                              String estado) {
     }
 }

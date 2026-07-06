@@ -6,7 +6,11 @@ import axios, {
 } from "axios";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import api from "./axiosConfig";
-import { getAccessToken, setAccessToken } from "./authSession";
+import {
+  getAccessToken,
+  refreshSession,
+  setAuthSession,
+} from "./authSession";
 
 function response(
   config: InternalAxiosRequestConfig,
@@ -29,12 +33,53 @@ function rejectWith(status: number, config: InternalAxiosRequestConfig): never {
 describe("interceptor de autenticación", () => {
   beforeEach(() => {
     window.history.replaceState({}, "", "/login");
-    setAccessToken("old-access");
+    setAuthSession("old-access", {
+      id: 1,
+      nombreUsuario: "admin",
+      rol: "ADMINISTRADOR",
+      activo: true,
+    });
     localStorage.setItem("accessToken", "legacy-access");
     localStorage.setItem("refreshToken", "legacy-refresh");
     localStorage.setItem("usuario", "legacy-user");
     localStorage.setItem("unrelated", "keep-me");
     vi.restoreAllMocks();
+  });
+
+  it("comparte el refresh de bootstrap con el retry de un 401", async () => {
+    let completeRefresh!: () => void;
+    let signalFirst401!: () => void;
+    const first401 = new Promise<void>((resolve) => {
+      signalFirst401 = resolve;
+    });
+    const pendingRefresh = new Promise<AxiosResponse>((resolve) => {
+      completeRefresh = () => resolve(response(
+        { headers: new AxiosHeaders() },
+        200,
+        {
+          accessToken: "new-access",
+          usuario: { id: 1, nombreUsuario: "admin", rol: "ADMINISTRADOR", activo: true },
+        },
+      ));
+    });
+    const refresh = vi.spyOn(axios, "post").mockImplementation(() => pendingRefresh);
+    const adapter = async (config: InternalAxiosRequestConfig) => {
+      const headers = AxiosHeaders.from(config.headers);
+      if (headers.get("Authorization") === "Bearer new-access") {
+        return response(config, 200, { ok: true });
+      }
+      signalFirst401();
+      return rejectWith(401, config);
+    };
+
+    const bootstrap = refreshSession();
+    const request = api.get("/private", { adapter });
+    await first401;
+    completeRefresh();
+
+    await expect(Promise.all([bootstrap, request])).resolves.toHaveLength(2);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(getAccessToken()).toBe("new-access");
   });
 
   it("conserva la sesión y no refresca ante 403", async () => {
