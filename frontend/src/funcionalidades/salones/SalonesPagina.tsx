@@ -65,6 +65,7 @@ const Salones = () => {
         <Tabla
           headers={["ID", "Nombre", "Descripcion", "Acciones"]}
           data={salones.content}
+          getRowKey={(row) => row.id}
           actions={(fila) => (
             <Boton
               onClick={() => navigate(`/salones/formulario?id=${fila.id}`)}

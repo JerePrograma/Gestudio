@@ -7,19 +7,28 @@ export interface AuthSession {
   user: UsuarioResponse | null;
 }
 
+interface ActiveAuthSession {
+  accessToken: string;
+  user: UsuarioResponse;
+}
+
 interface RefreshResponse {
   accessToken: string;
   usuario: UsuarioResponse;
 }
 
 let session: AuthSession = { accessToken: null, user: null };
-let refreshPromise: Promise<AuthSession> | null = null;
+let refreshPromise: Promise<ActiveAuthSession> | null = null;
 const listeners = new Set<(session: AuthSession) => void>();
 
 export const getAuthSession = (): AuthSession => session;
+
 export const getAccessToken = (): string | null => session.accessToken;
 
-export function setAuthSession(accessToken: string, user: UsuarioResponse): void {
+export function setAuthSession(
+  accessToken: string,
+  user: UsuarioResponse,
+): void {
   session = { accessToken, user };
   listeners.forEach((listener) => listener(session));
 }
@@ -29,12 +38,14 @@ export function clearAuthSession(): void {
   listeners.forEach((listener) => listener(session));
 }
 
-export function subscribeAuthSession(listener: (session: AuthSession) => void): () => void {
+export function subscribeAuthSession(
+  listener: (session: AuthSession) => void,
+): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
 
-export function refreshSession(): Promise<AuthSession> {
+export function refreshSession(): Promise<ActiveAuthSession> {
   refreshPromise ??= axios
     .post<RefreshResponse>(
       `${API_BASE_URL}/login/refresh`,
@@ -45,11 +56,18 @@ export function refreshSession(): Promise<AuthSession> {
       },
     )
     .then(({ data }) => {
-      setAuthSession(data.accessToken, data.usuario);
-      return session;
+      const activeSession: ActiveAuthSession = {
+        accessToken: data.accessToken,
+        user: data.usuario,
+      };
+
+      setAuthSession(activeSession.accessToken, activeSession.user);
+
+      return activeSession;
     })
     .finally(() => {
       refreshPromise = null;
     });
+
   return refreshPromise;
 }

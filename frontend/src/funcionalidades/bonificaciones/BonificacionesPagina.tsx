@@ -86,6 +86,7 @@ const Bonificaciones = () => {
             "Acciones",
           ]}
           data={currentItems}
+          getRowKey={(row) => row.id}
           customRender={(fila) => [
             fila.id,
             fila.descripcion,

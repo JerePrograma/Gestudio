@@ -4,8 +4,17 @@ import { BadgePercent, Pencil, PlusCircle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import inscripcionesApi from "../../api/inscripcionesApi";
 import Boton from "../../componentes/comunes/Boton";
+import ErrorState from "../../componentes/comunes/ErrorState";
+import FilterBar from "../../componentes/comunes/FilterBar";
+import LoadingState from "../../componentes/comunes/LoadingState";
+import PageHeader from "../../componentes/comunes/PageHeader";
+import PaginationControls from "../../componentes/comunes/PaginationControls";
+import RowActions from "../../componentes/comunes/RowActions";
+import SearchInput from "../../componentes/comunes/SearchInput";
+import StatusBadge from "../../componentes/comunes/StatusBadge";
 import Tabla from "../../componentes/comunes/Tabla";
 import { queryKeys } from "../../hooks/queryKeys";
+import { formatMoney } from "../../utils/money";
 
 const PAGE_SIZE = 50;
 
@@ -13,31 +22,34 @@ const InscripcionesPagina = () => {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
-  const { data, isLoading, isError } = useQuery({
+  const inscripciones = useQuery({
     queryKey: queryKeys.inscripciones(page, PAGE_SIZE, search),
     queryFn: () => inscripcionesApi.listar(page, PAGE_SIZE, search.trim()),
   });
-  const rows = data?.content ?? [];
 
-  if (isLoading) return <div className="text-center py-4">Cargando...</div>;
-  if (isError) return <div className="text-center py-4 text-destructive">No se pudieron cargar las inscripciones.</div>;
+  if (inscripciones.isLoading) return <LoadingState message="Cargando inscripciones..." />;
+  if (inscripciones.isError) return <ErrorState message="No se pudieron cargar las inscripciones." onRetry={() => void inscripciones.refetch()} />;
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div><h1 className="text-3xl font-bold tracking-tight">Inscripciones</h1><p className="text-sm text-gray-600">{data?.totalElements ?? 0} registros</p></div>
-        <Boton onClick={() => navigate("/inscripciones/formulario")} className="page-button"><PlusCircle className="w-4 h-4" /> Nueva</Boton>
-      </div>
-      <input className="form-input max-w-md" placeholder="Buscar alumno o disciplina" value={search} onChange={(event) => { setPage(0); setSearch(event.target.value); }} />
-      <div className="page-card overflow-x-auto">
+    <div className="page-container">
+      <PageHeader eyebrow="Gestión académica" title="Inscripciones" description="Seguimiento de altas, condiciones y estado de cursada." count={inscripciones.data?.totalElements ?? 0}
+        actions={<Boton onClick={() => navigate("/inscripciones/formulario")} className="page-button"><PlusCircle className="size-4" /> Nueva inscripción</Boton>} />
+      <FilterBar label="Buscar inscripciones">
+        <SearchInput id="buscar-inscripcion" label="Buscar inscripción" placeholder="Buscar por alumno o disciplina" value={search} onChange={(event) => { setPage(0); setSearch(event.target.value); }} />
+      </FilterBar>
+      <div>
         <Tabla
           headers={["ID", "Alumno", "Disciplina", "Fecha", "Estado", "Costo particular"]}
-          data={rows}
-          customRender={(row) => [row.id, row.alumno, row.disciplina, row.fechaInscripcion, row.estado, row.costoParticular ?? "-"]}
-          actions={(row) => <div className="flex gap-2"><Boton onClick={() => navigate(`/inscripciones/${row.id}/condiciones-economicas`)} className="page-button-secondary"><BadgePercent className="w-4 h-4" /> Condiciones</Boton><Boton onClick={() => navigate(`/inscripciones/formulario?id=${row.id}`)} className="page-button-secondary"><Pencil className="w-4 h-4" /> Editar</Boton></div>}
+          data={inscripciones.data?.content ?? []}
+          getRowKey={(row) => row.id}
+          customRender={(row) => [row.id, <span className="font-semibold" key="alumno">{row.alumno}</span>, row.disciplina, row.fechaInscripcion, <StatusBadge key="estado" tone={row.estado === "ACTIVA" ? "success" : "neutral"}>{row.estado}</StatusBadge>, <span className="numeric-cell block" key="costo">{row.costoParticular ? `$ ${formatMoney(row.costoParticular)}` : "—"}</span>]}
+          actions={(row) => <RowActions label={`Acciones de inscripción ${row.id}`} actions={[
+            { label: "Condiciones", icon: BadgePercent, onSelect: () => navigate(`/inscripciones/${row.id}/condiciones-economicas`) },
+            { label: "Editar", icon: Pencil, onSelect: () => navigate(`/inscripciones/formulario?id=${row.id}`) },
+          ]} />}
         />
       </div>
-      <div><Boton disabled={page === 0} onClick={() => setPage((value) => value - 1)} className="page-button-secondary">Anterior</Boton><span> Página {page + 1} de {Math.max(data?.totalPages ?? 1, 1)} </span><Boton disabled={!data || page + 1 >= data.totalPages} onClick={() => setPage((value) => value + 1)} className="page-button-secondary">Siguiente</Boton></div>
+      <PaginationControls page={page} totalPages={inscripciones.data?.totalPages ?? 0} onPageChange={setPage} disabled={inscripciones.isFetching} />
     </div>
   );
 };

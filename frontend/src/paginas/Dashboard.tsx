@@ -1,5 +1,3 @@
-"use client";
-
 import type React from "react";
 import { Link } from "react-router-dom";
 import { navigationItems, type NavigationItem } from "../config/navigation";
@@ -18,8 +16,9 @@ import {
 } from "../componentes/ui/collapsible";
 import { Button } from "../componentes/ui/button";
 import { ScrollArea } from "../componentes/ui/scroll-area";
-import { cn } from "../componentes/lib/utils";
+import { cn } from "../lib/utils";
 import { useAuth } from "../hooks/context/useAuth";
+import PageHeader from "../componentes/comunes/PageHeader";
 
 // Función utilitaria para filtrar los ítems de navegación de forma inmutable.
 const filterNavigationItems = (
@@ -40,19 +39,19 @@ const SingleCard: React.FC<{ item: NavigationItem }> = ({ item }) => {
   const Icon = item.icon;
   return (
     <Link to={item.href ?? "#"} className="block h-full">
-      <Card className="group h-full transition-all hover:shadow-lg hover:-translate-y-1 duration-300">
+      <Card className="group h-full transition-colors hover:border-primary/35 hover:shadow-md">
         <CardHeader>
           <div className="flex items-center space-x-4">
             {Icon && (
               <div className="rounded-xl bg-primary/10 p-3 transition-colors group-hover:bg-primary/20">
-                <Icon className="h-6 w-6 text-primary transition-transform group-hover:scale-110" />
+                <Icon className="size-6 text-primary" />
               </div>
             )}
             <CardTitle className="line-clamp-2">{item.label}</CardTitle>
           </div>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center text-sm font-medium text-primary opacity-0 transition-opacity group-hover:opacity-100">
+          <div className="flex items-center text-sm font-semibold text-primary">
             Acceder
             <ExternalLink className="ml-1 h-4 w-4 transition-transform group-hover:translate-x-1" />
           </div>
@@ -136,20 +135,13 @@ const Dashboard: React.FC = () => {
   );
 
   return (
-    <div className="w-full max-w-[var(--content-max-width)] mx-auto px-[var(--container-padding)] py-8 space-y-8">
-      <div className="space-y-2">
-        <h1 className="text-3xl font-bold tracking-tight sm:text-4xl md:text-5xl">
-          Panel de Control
-        </h1>
-        <p className="text-lg text-muted-foreground">
-          Bienvenido al sistema de gestión LE DANCE
-        </p>
-      </div>
+    <div className="page-container">
+      <PageHeader eyebrow="LE DANCE" title="Panel de control" description="Accesos rápidos a la operación diaria y la administración del sistema." />
       {/* Accesos Directos */}
       {singleItems.length > 0 && (
         <section className="space-y-4">
-          <h2 className="text-2xl font-semibold tracking-tight">
-            Accesos Directos
+          <h2 className="text-xl font-semibold tracking-tight">
+            Accesos frecuentes
           </h2>
           <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
             {singleItems.map((item) => (
@@ -160,8 +152,8 @@ const Dashboard: React.FC = () => {
       )}
       {/* Categorías */}
       <section className="space-y-4">
-        <h2 className="text-2xl font-semibold tracking-tight">
-          Gestión del Sistema
+        <h2 className="text-xl font-semibold tracking-tight">
+          Gestión del sistema
         </h2>
         <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4">
           {categories.map((category) => (

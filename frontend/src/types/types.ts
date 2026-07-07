@@ -259,16 +259,7 @@ export interface AsistenciasActivasResponse {
   detalles: string[];
 }
 
-// Para manejo de paginación (por ejemplo, en consultas de asistencias diarias)
-export interface PageResponse<T> {
-  content: T[];
-  totalPages: number;
-  totalElements: number;
-  size: number;
-  number: number;
-  first: boolean;
-  last: boolean;
-}
+export type PageResponse<T> = Page<T>;
 
 // ==========================================
 // INSCRIPCIÓN

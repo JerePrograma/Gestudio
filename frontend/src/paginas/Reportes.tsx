@@ -112,7 +112,7 @@ const Reportes = () => {
       </div>
       {loading && <p>Cargando...</p>}
       {!loading && datos.length === 0 && <p>No hay resultados para el rango consultado.</p>}
-      {datos.length > 0 && <div className="page-card"><p>Total informado por backend: {datos.length}</p><Tabla headers={["Cargo", "Fecha", "Alumno", "Disciplina", "Profesor", "Original", "Cobrado", "Saldo", "Estado"]} data={datos} customRender={(fila) => [fila.cargoId, fila.fechaEmision, fila.alumno, fila.disciplina, fila.profesor, fila.importeOriginal, fila.importeCobrado, fila.saldo, fila.estado]} /></div>}
+      {datos.length > 0 && <div className="page-card"><p>Total informado por backend: {datos.length}</p><Tabla headers={["Cargo", "Fecha", "Alumno", "Disciplina", "Profesor", "Original", "Cobrado", "Saldo", "Estado"]} data={datos} getRowKey={(fila) => fila.cargoId} customRender={(fila) => [fila.cargoId, fila.fechaEmision, fila.alumno, fila.disciplina, fila.profesor, fila.importeOriginal, fila.importeCobrado, fila.saldo, fila.estado]} /></div>}
     </div>
   );
 };

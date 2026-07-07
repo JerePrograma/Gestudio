@@ -88,6 +88,7 @@ const SubConceptos = () => {
         <Tabla
           headers={["ID", "Descripcion", "Acciones"]}
           data={currentItems}
+          getRowKey={(row) => row.id}
           customRender={(fila: SubConceptoResponse) => [
             fila.id,
             fila.descripcion,

@@ -47,6 +47,7 @@ const Recargos = () => {
                 <Tabla
                     headers={["ID", "Descripcion", "Acciones"]}
                     data={recargos}
+                    getRowKey={(row) => row.id}
                     actions={(fila) => (
                         <div className="flex gap-2">
                             <Boton

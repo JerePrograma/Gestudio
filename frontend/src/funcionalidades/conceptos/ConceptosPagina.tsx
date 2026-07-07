@@ -9,6 +9,11 @@ import { PlusCircle, Pencil, Trash2 } from "lucide-react";
 import type { ConceptoResponse } from "../../types/types";
 import { toast } from "react-toastify";
 import ListaConCargaManual from "../../componentes/comunes/ListaConCargaManual";
+import ErrorState from "../../componentes/comunes/ErrorState";
+import LoadingState from "../../componentes/comunes/LoadingState";
+import PageHeader from "../../componentes/comunes/PageHeader";
+import RowActions from "../../componentes/comunes/RowActions";
+import { formatMoney } from "../../utils/money";
 
 const itemsPerPage = 25;
 
@@ -68,53 +73,35 @@ const ConceptosPagina = () => {
   };
 
   if (loading && conceptos.length === 0)
-    return <div className="text-center py-4">Cargando...</div>;
+    return <LoadingState message="Cargando conceptos..." />;
   if (error)
-    return <div className="text-center py-4 text-destructive">{error}</div>;
+    return <ErrorState message={error} onRetry={() => void fetchConceptos()} />;
 
   return (
     <div className="page-container">
-      <h1 className="page-title">Conceptos</h1>
-      <div className="page-button-group flex justify-end mb-4">
-        <Boton
+      <PageHeader eyebrow="Administración" title="Conceptos" description="Conceptos facturables y valores vigentes." count={conceptos.length}
+        actions={<Boton
           onClick={() => navigate("/conceptos/formulario-concepto")}
           className="page-button"
           aria-label="Registrar nuevo concepto"
         >
-          <PlusCircle className="w-5 h-5 mr-2" />
-          Registrar Nuevo Concepto
-        </Boton>
-      </div>
-      <div className="page-card">
+          <PlusCircle className="size-4" /> Nuevo concepto
+        </Boton>} />
+      <div>
         <Tabla
-          headers={["ID", "Descripcion", "Precio", "SubConcepto", "Acciones"]}
+          headers={["ID", "Descripción", "Precio", "Subconcepto"]}
           data={currentItems}
+          getRowKey={(row) => row.id}
           actions={(fila: ConceptoResponse) => (
-            <div className="flex gap-2">
-              <Boton
-                onClick={() =>
-                  navigate(`/conceptos/formulario-concepto?id=${fila.id}`)
-                }
-                className="page-button-secondary"
-                aria-label={`Editar concepto ${fila.descripcion}`}
-              >
-                <Pencil className="w-4 h-4 mr-2" />
-                Editar
-              </Boton>
-              <Boton
-                className="page-button-danger"
-                aria-label={`Eliminar concepto ${fila.descripcion}`}
-                onClick={() => handleEliminarConcepto(fila.id)}
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Eliminar
-              </Boton>
-            </div>
+            <RowActions label={`Acciones de ${fila.descripcion}`} actions={[
+              { label: "Editar", icon: Pencil, onSelect: () => navigate(`/conceptos/formulario-concepto?id=${fila.id}`) },
+              { label: "Eliminar", icon: Trash2, destructive: true, onSelect: () => void handleEliminarConcepto(fila.id) },
+            ]} />
           )}
           customRender={(fila: ConceptoResponse) => [
             fila.id,
             fila.descripcion,
-            fila.precio,
+            <span className="numeric-cell block" key="precio">$ {formatMoney(fila.precio)}</span>,
             fila.subConcepto.descripcion,
           ]}
         />

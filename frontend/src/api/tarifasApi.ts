@@ -26,9 +26,9 @@ export interface CrearTarifaDisciplina {
 
 const tarifasApi = {
   listar: async (disciplinaId: number): Promise<TarifaDisciplina[]> =>
-    (await api.get(`/disciplinas/${disciplinaId}/tarifas`)).data,
+    (await api.get<TarifaDisciplina[]>(`/disciplinas/${disciplinaId}/tarifas`)).data,
   crear: async (disciplinaId: number, request: CrearTarifaDisciplina): Promise<TarifaDisciplina> =>
-    (await api.post(`/disciplinas/${disciplinaId}/tarifas`, request)).data,
+    (await api.post<TarifaDisciplina>(`/disciplinas/${disciplinaId}/tarifas`, request)).data,
 };
 
 export default tarifasApi;

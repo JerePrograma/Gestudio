@@ -11,5 +11,8 @@ describe("queryKeys paginadas", () => {
     expect(queryKeys.caja("2026-01-01", "2026-01-31", 2, 50)).toEqual([
       "caja", "2026-01-01", "2026-01-31", 2, 50, "fecha,asc;id,asc",
     ]);
+    expect(queryKeys.inscripcion(42)).toEqual(["inscripciones", "detalle", 42]);
+    expect(queryKeys.stock(7)).toEqual(["stocks", "detalle", 7]);
+    expect(queryKeys.all.alumnos).toEqual(["alumnos"]);
   });
 });

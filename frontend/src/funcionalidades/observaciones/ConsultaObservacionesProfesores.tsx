@@ -184,6 +184,7 @@ const ConsultaObservacionesProfesores: React.FC = () => {
           <Tabla
             headers={["ID", "Fecha", "Observación"]}
             data={observaciones}
+            getRowKey={(row) => row.id}
             customRender={(obs) => [obs.id, obs.fecha, obs.observacion]}
             emptyMessage="No hay observaciones para el rango seleccionado."
           />

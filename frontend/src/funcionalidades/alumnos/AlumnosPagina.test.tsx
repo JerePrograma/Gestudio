@@ -17,6 +17,7 @@ import AlumnosPagina from "./AlumnosPagina";
 describe("AlumnosPagina paginada", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(window, "confirm").mockReturnValue(true);
     listar.mockImplementation((page: number) => Promise.resolve(page === 0
       ? pagina([alumno(1)], 123, 3, 0)
       : pagina([], 123, 3, page)));
@@ -34,7 +35,7 @@ describe("AlumnosPagina paginada", () => {
     fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
     await waitFor(() => expect(listar).toHaveBeenCalledWith(1, 50));
 
-    fireEvent.change(await screen.findByPlaceholderText("Buscar por nombre"), { target: { value: "Ana" } });
+    fireEvent.change(await screen.findByLabelText("Buscar"), { target: { value: "Ana" } });
     await waitFor(() => expect(buscarPorNombre).toHaveBeenCalledWith("Ana", 0, 50));
     expect(screen.queryByRole("row", { name: /Ana/ })).not.toBeInTheDocument();
   });
@@ -43,7 +44,8 @@ describe("AlumnosPagina paginada", () => {
     const queryClient = renderPage();
     const invalidate = vi.spyOn(queryClient, "invalidateQueries");
 
-    fireEvent.click((await screen.findAllByRole("button", { name: "Baja" }))[0]);
+    fireEvent.pointerDown((await screen.findAllByRole("button", { name: "Acciones de Ana Prueba" }))[0]);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Dar de baja" }));
 
     await waitFor(() => expect(darBaja).toHaveBeenCalledWith(1));
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["alumnos"] });

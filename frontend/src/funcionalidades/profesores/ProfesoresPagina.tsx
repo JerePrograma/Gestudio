@@ -9,6 +9,13 @@ import { PlusCircle, Pencil, Trash2 } from "lucide-react"
 import type { ProfesorListadoResponse } from "../../types/types"
 import { toast } from "react-toastify"
 import ListaConCargaManual from "../../componentes/comunes/ListaConCargaManual"
+import ErrorState from "../../componentes/comunes/ErrorState"
+import FilterBar from "../../componentes/comunes/FilterBar"
+import LoadingState from "../../componentes/comunes/LoadingState"
+import PageHeader from "../../componentes/comunes/PageHeader"
+import RowActions from "../../componentes/comunes/RowActions"
+import SearchInput from "../../componentes/comunes/SearchInput"
+import StatusBadge from "../../componentes/comunes/StatusBadge"
 
 const itemsPerPage = 25
 
@@ -98,89 +105,63 @@ const Profesores = () => {
   }
 
   if (loading && profesores.length === 0)
-    return <div className="text-center py-4">Cargando...</div>
-  if (error) return <div className="text-center py-4 text-destructive">{error}</div>
+    return <LoadingState message="Cargando profesores..." />
+  if (error) return <ErrorState message={error} onRetry={() => void fetchProfesores()} />
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-tight">Profesores</h1>
-        <Boton
+    <div className="page-container">
+      <PageHeader eyebrow="Gestión académica" title="Profesores" description="Equipo docente, estado y datos de contacto." count={profesoresFiltradosYOrdenados.length}
+        actions={<Boton
           onClick={() => navigate("/profesores/formulario")}
-          className="inline-flex items-center"
+          className="page-button"
           aria-label="Registrar nuevo profesor"
         >
-          <PlusCircle className="w-5 h-5 mr-2" />
-          Registrar Nuevo Profesor
-        </Boton>
-      </div>
+          <PlusCircle className="size-4" /> Nuevo profesor
+        </Boton>} />
 
-      {/* Controles de búsqueda y orden */}
-      <div className="flex flex-col sm:flex-row sm:justify-between gap-4">
-        <div>
-          <label htmlFor="search" className="mr-2 font-medium">
-            Buscar por nombre:
-          </label>
-          <input
+      <FilterBar label="Filtrar profesores">
+          <SearchInput
             id="search"
             list="nombres"
-            type="text"
+            label="Buscar profesor"
             value={searchTerm}
             onChange={handleSearchChange}
-            placeholder="Escribe o selecciona un nombre..."
-            className="border rounded px-2 py-1"
+            placeholder="Buscar por nombre o apellido"
           />
           <datalist id="nombres">
             {nombresUnicos.map((nombre) => (
               <option key={nombre} value={nombre} />
             ))}
           </datalist>
-        </div>
-        <div>
-          <label htmlFor="sortOrder" className="mr-2 font-medium">
-            Orden:
-          </label>
+        <label className="field-group sm:w-52" htmlFor="sortOrder">Orden
           <select
             id="sortOrder"
             value={sortOrder}
             onChange={(e) => setSortOrder(e.target.value as "asc" | "desc")}
-            className="border rounded px-2 py-1"
+            className="form-input"
           >
             <option value="asc">Ascendente</option>
             <option value="desc">Descendente</option>
           </select>
-        </div>
-      </div>
+        </label>
+      </FilterBar>
 
-      <div className="rounded-lg border bg-card text-card-foreground shadow-sm">
+      <div>
         <Tabla
-          headers={["ID", "Nombre", "Apellido", "Acciones", "Activo"]}
+          headers={["ID", "Nombre", "Apellido", "Estado"]}
           data={currentItems}
+          getRowKey={(row) => row.id}
           customRender={(fila) => [
             fila.id,
             fila.nombre,
             fila.apellido,
-            fila.activo ? "Si" : "No",
+            <StatusBadge key="estado" tone={fila.activo ? "success" : "neutral"}>{fila.activo ? "Activo" : "Baja"}</StatusBadge>,
           ]}
           actions={(fila) => (
-            <div className="flex gap-2">
-              <Boton
-                onClick={() => navigate(`/profesores/formulario?id=${fila.id}`)}
-                className="inline-flex items-center"
-                aria-label={`Editar profesor ${fila.nombre} ${fila.apellido}`}
-              >
-                <Pencil className="w-4 h-4 mr-2" />
-                Editar
-              </Boton>
-              <Boton
-                className="inline-flex items-center bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                aria-label={`Eliminar profesor ${fila.nombre} ${fila.apellido}`}
-                onClick={() => handleEliminarProfesor(fila.id)}
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Eliminar
-              </Boton>
-            </div>
+            <RowActions label={`Acciones de ${fila.nombre} ${fila.apellido}`} actions={[
+              { label: "Editar", icon: Pencil, onSelect: () => navigate(`/profesores/formulario?id=${fila.id}`) },
+              { label: "Eliminar", icon: Trash2, destructive: true, onSelect: () => void handleEliminarProfesor(fila.id) },
+            ]} />
           )}
         />
 

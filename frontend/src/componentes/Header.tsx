@@ -1,19 +1,33 @@
-"use client";
-
 import { useState } from "react";
 import { useTheme } from "next-themes";
 import { useSidebar } from "../hooks/context/useSidebar";
-import { Search, Bell, Menu, Moon, Sun } from "lucide-react";
-import { cn } from "../componentes/lib/utils";
+import { Bell, Menu, Moon, Sun } from "lucide-react";
+import { useLocation } from "react-router-dom";
+import { cn } from "../lib/utils";
 import NotificacionesModal from "./NotificacionesModal";
+import { useAuth } from "../hooks/context/useAuth";
+import { navigationItems, type NavigationItem } from "../config/navigation";
+
+const findCurrentLabel = (items: NavigationItem[], pathname: string): string | undefined => {
+  for (const item of items) {
+    if (item.href && (pathname === item.href || pathname.startsWith(`${item.href}/`))) return item.label;
+    const childLabel = item.items && findCurrentLabel(item.items, pathname);
+    if (childLabel) return childLabel;
+  }
+  return pathname === "/" ? "Inicio" : undefined;
+};
 
 export default function Header() {
   const unreadCount = 0;
   const { isExpanded, setMobileSidebarOpen } = useSidebar();
-  const { theme, setTheme } = useTheme();
+  const { resolvedTheme, setTheme } = useTheme();
+  const { user } = useAuth();
+  const location = useLocation();
   const [showModal, setShowModal] = useState(false);
+  const currentLabel = findCurrentLabel(navigationItems, location.pathname) ?? "Panel administrativo";
+  const initial = user?.nombreUsuario.trim().charAt(0).toUpperCase() || "L";
 
-  const toggleTheme = () => setTheme(theme === "light" ? "dark" : "light");
+  const toggleTheme = () => setTheme(resolvedTheme === "dark" ? "light" : "dark");
 
   const handleModalOpen = () => setShowModal(true);
   const handleModalClose = () => setShowModal(false);
@@ -22,68 +36,64 @@ export default function Header() {
     <>
       <header
         className={cn(
-          "fixed top-0 right-0 z-40 flex h-[var(--header-height)] items-center border-b border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 backdrop-blur-md px-4 transition-all duration-300",
-          "left-0", // por defecto en móvil, left = 0
+          "topbar fixed right-0 top-0 z-30 flex h-[var(--header-height)] items-center px-4 transition-[left] duration-300 sm:px-6",
+          "left-0",
           {
             "md:left-[var(--sidebar-width)]": isExpanded,
-            "md:left-[4.5rem]": !isExpanded,
+            "md:left-[var(--sidebar-width-collapsed)]": !isExpanded,
           }
         )}
       >
-        {/* Botón para abrir el menú móvil */}
         <button
           onClick={() => setMobileSidebarOpen(true)}
-          className="md:hidden p-2 rounded-md hover:bg-[hsl(var(--muted))] mr-2"
+          className="icon-button mr-2 md:hidden"
           aria-label="Abrir menú"
         >
-          <Menu className="w-5 h-5" />
+          <Menu className="size-5" />
         </button>
 
-        <div className="flex-1 flex items-center justify-between">
-          <h1 className="text-xl font-bold text-[hsl(var(--foreground))]">
-            Panel de Gestión - LE DANCE
-          </h1>
+        <div className="flex min-w-0 flex-1 items-center justify-between gap-4">
+          <div className="min-w-0">
+            <p className="truncate text-xs font-bold uppercase tracking-[0.1em] text-primary">LE DANCE</p>
+            <p className="truncate text-sm font-semibold text-foreground sm:text-base">{currentLabel}</p>
+          </div>
 
-          <div className="flex items-center gap-4">
-            <div className="relative hidden md:block">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[hsl(var(--muted-foreground))] w-4 h-4" />
-              <input
-                type="text"
-                placeholder="Buscar..."
-                className="pl-10 pr-4 py-2 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--muted))] focus:outline-none focus:border-[hsl(var(--primary))] focus:ring-2 focus:ring-[hsl(var(--primary))]/10 w-64"
-              />
-            </div>
-
+          <div className="flex items-center gap-1 sm:gap-2">
             <button
               onClick={toggleTheme}
-              className="p-2 rounded-full hover:bg-[hsl(var(--muted))] relative flex items-center justify-center"
-              aria-label="Toggle theme"
+              className="icon-button"
+              aria-label={resolvedTheme === "dark" ? "Usar tema claro" : "Usar tema oscuro"}
             >
-              {theme === "light" ? (
-                <Sun className="h-5 w-5" />
+              {resolvedTheme === "dark" ? (
+                <Sun className="size-5" />
               ) : (
-                <Moon className="h-5 w-5" />
+                <Moon className="size-5" />
               )}
-              <span className="sr-only">Toggle theme</span>
             </button>
 
             <button
               onClick={handleModalOpen}
-              className="p-2 rounded-full hover:bg-[hsl(var(--muted))] relative"
+              className="icon-button relative"
               aria-label="Notificaciones"
             >
-              <Bell className="w-5 h-5" />
+              <Bell className="size-5" />
               {unreadCount > 0 && (
                 <span className="absolute top-1 right-1 w-4 h-4 flex items-center justify-center bg-[hsl(var(--destructive))] rounded-full text-xs text-white">
                   {unreadCount > 9 ? "9+" : unreadCount}
                 </span>
               )}
             </button>
+            <div className="ml-1 hidden items-center gap-2 border-l border-border pl-3 sm:flex">
+              <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">{initial}</span>
+              <div className="hidden max-w-36 lg:block">
+                <p className="truncate text-sm font-semibold">{user?.nombreUsuario ?? "Usuario"}</p>
+                <p className="truncate text-xs text-muted-foreground">{user?.rol ?? "Gestión"}</p>
+              </div>
+            </div>
           </div>
         </div>
       </header>
 
-      {/* Renderizado del Modal de Notificaciones */}
       <NotificacionesModal isOpen={showModal} onClose={handleModalClose} />
     </>
   );

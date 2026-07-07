@@ -8,12 +8,6 @@ import React, {
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import { Check, X } from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "../../componentes/ui/card";
 import { Button } from "../../componentes/ui/button";
 import {
   Table,
@@ -36,6 +30,12 @@ import {
   DisciplinaDetalleResponse,
 } from "../../types/types";
 import { debounce } from "../../utils/debounce";
+import Boton from "../../componentes/comunes/Boton";
+import EmptyState from "../../componentes/comunes/EmptyState";
+import ErrorState from "../../componentes/comunes/ErrorState";
+import LoadingState from "../../componentes/comunes/LoadingState";
+import PageHeader from "../../componentes/comunes/PageHeader";
+import SectionCard from "../../componentes/comunes/SectionCard";
 
 interface Disciplina {
   id: number;
@@ -356,24 +356,22 @@ const AsistenciaDiariaFormAdaptado: React.FC = () => {
   };
 
   return (
-    <div className="container mx-auto py-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Asistencia Diaria</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {/* Filtros: búsqueda de disciplina y selección de fecha */}
-          <div className="mb-4" ref={searchWrapperRef}>
-            <label
-              htmlFor="searchDiscipline"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
-              Selecciona la disciplina:
-            </label>
+    <div className="page-container">
+      <PageHeader
+        eyebrow="Gestión académica"
+        title="Asistencia diaria"
+        description="Elegí una disciplina y una fecha para registrar la asistencia del grupo."
+        actions={<Boton onClick={() => navigate("/asistencias-mensuales")} className="page-button-secondary">Volver</Boton>}
+      />
+
+      <SectionCard title="Seleccionar clase" description="La fecha debe corresponder a un día de cursada de la disciplina.">
+        <div className="grid gap-4 lg:grid-cols-[minmax(16rem,1fr)_minmax(12rem,0.55fr)_auto] lg:items-end">
+          <div className="field-group" ref={searchWrapperRef}>
+            <label htmlFor="searchDiscipline">Disciplina</label>
             <div className="relative">
               <Input
                 id="searchDiscipline"
-                placeholder="Escribe el nombre..."
+                placeholder="Buscar disciplina"
                 value={disciplineFilter}
                 onChange={(e) => {
                   setDisciplineFilter(e.target.value);
@@ -384,15 +382,15 @@ const AsistenciaDiariaFormAdaptado: React.FC = () => {
                 className="form-input w-full"
               />
               {showSuggestions && filteredDisciplinas.length > 0 && (
-                <ul className="sugerencias-lista absolute z-10 w-full bg-white text-black border">
+                <ul className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-lg" role="listbox">
                   {filteredDisciplinas.map((disciplina, index) => (
                     <li
                       key={disciplina.id}
                       onClick={() => handleSeleccionarDisciplina(disciplina)}
                       onMouseEnter={() => setActiveSuggestionIndex(index)}
-                      className={`p-2 cursor-pointer ${
-                        index === activeSuggestionIndex ? "bg-gray-200" : ""
-                      }`}
+                      className={`cursor-pointer rounded-lg px-3 py-2 text-sm ${index === activeSuggestionIndex ? "bg-accent text-accent-foreground" : ""}`}
+                      role="option"
+                      aria-selected={index === activeSuggestionIndex}
                     >
                       {disciplina.nombre}
                     </li>
@@ -400,121 +398,75 @@ const AsistenciaDiariaFormAdaptado: React.FC = () => {
                 </ul>
               )}
             </div>
-            <Button
-              onClick={limpiarDisciplina}
-              variant="outline"
-              size="sm"
-              className="mt-2"
-            >
-              Limpiar
-            </Button>
+            {selectedDisciplineId && (
+              <Button onClick={limpiarDisciplina} variant="outline" size="sm" className="mt-1 w-fit">Limpiar</Button>
+            )}
           </div>
 
-          <div className="mb-4">
-            <label
-              htmlFor="datePicker"
-              className="block text-sm font-medium text-gray-700"
-            >
-              Selecciona la fecha:
-            </label>
+          <div className="field-group">
+            <label htmlFor="datePicker">Fecha</label>
             <DatePicker
               id="datePicker"
               selected={selectedDate}
-              onChange={(date: Date | null) =>
-                date && setSelectedDate(new Date(date))
-              }
+              onChange={(date: Date | null) => date && setSelectedDate(new Date(date))}
               dateFormat="dd/MM/yyyy"
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+              className="form-input w-full"
             />
           </div>
 
-          <div className="mb-4">
-            <Button onClick={handleBuscarAsistencia}>Buscar asistencia</Button>
-          </div>
+          <Boton onClick={handleBuscarAsistencia} disabled={!selectedDisciplineId}>Buscar asistencia</Boton>
+        </div>
+      </SectionCard>
 
-          {!loading && selectedDate && !isValidClassDay && (
-            <div className="text-center text-red-500 mb-4">
-              No hay clases este día
-            </div>
-          )}
+      {!loading && selectedDisciplineId && selectedDate && !isValidClassDay && (
+        <EmptyState title="No hay clase ese día" message="Probá otra fecha programada para la disciplina seleccionada." />
+      )}
+      {loading && <LoadingState message="Cargando asistencia..." />}
+      {error && <ErrorState message={error} />}
 
-          {loading && (
-            <div className="text-center py-4">Cargando asistencia...</div>
-          )}
-          {error && (
-            <div className="text-center py-4 text-red-500">{error}</div>
-          )}
-
-          {monthlyDetail && (
-            <Table key={selectedDate.toISOString()}>
+      {monthlyDetail && dailyRecords.length > 0 && (
+        <SectionCard title="Lista de asistencia" description={`${dailyRecords.length} alumnos · ${formatHeaderDate(selectedDate)}`} className="p-0 [&_.section-card-header]:m-0 [&_.section-card-header]:p-5">
+          <div className="data-table-scroll">
+            <Table key={selectedDate.toISOString()} className="data-table">
               <TableHeader>
                 <TableRow>
                   <TableHead>Alumno</TableHead>
-                  <TableHead className="text-center">
-                    {selectedDate ? formatHeaderDate(selectedDate) : "Acción"}
-                  </TableHead>
+                  <TableHead className="text-center">{formatHeaderDate(selectedDate)}</TableHead>
                   <TableHead>Observación</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {dailyRecords.map((record) => (
                   <TableRow key={record.alumnoId}>
-                    <TableCell>{`${record.alumnoApellido}, ${record.alumnoNombre}`}</TableCell>
+                    <TableCell className="font-semibold">{`${record.alumnoApellido}, ${record.alumnoNombre}`}</TableCell>
                     <TableCell className="text-center">
                       <Button
                         size="sm"
-                        variant={
-                          record.asistenciaDiaria &&
-                          record.asistenciaDiaria.estado ===
-                            EstadoAsistencia.PRESENTE
-                            ? "default"
-                            : "outline"
-                        }
-                        onClick={() =>
-                          toggleAsistencia(
-                            record.alumnoId,
-                            record.asistenciaDiaria
-                          )
-                        }
+                        variant={record.asistenciaDiaria?.estado === EstadoAsistencia.PRESENTE ? "default" : "outline"}
+                        onClick={() => toggleAsistencia(record.alumnoId, record.asistenciaDiaria)}
+                        aria-label={`${record.asistenciaDiaria?.estado === EstadoAsistencia.PRESENTE ? "Marcar ausente" : "Marcar presente"} a ${record.alumnoNombre} ${record.alumnoApellido}`}
                       >
-                        {record.asistenciaDiaria &&
-                        record.asistenciaDiaria.estado ===
-                          EstadoAsistencia.PRESENTE ? (
-                          <Check className="h-4 w-4" />
-                        ) : (
-                          <X className="h-4 w-4" />
-                        )}
+                        {record.asistenciaDiaria?.estado === EstadoAsistencia.PRESENTE ? <Check className="size-4" /> : <X className="size-4" />}
                       </Button>
                     </TableCell>
                     <TableCell>
                       <Input
-                        placeholder="Escribe observación..."
-                        value={
-                          monthlyDetail.alumnos.find(
-                            (a) => a.id === record.alumnoId
-                          )?.observacion || ""
-                        }
-                        onChange={(e) =>
-                          handleObservacionChange(
-                            record.alumnoId,
-                            e.target.value
-                          )
-                        }
+                        className="form-input"
+                        placeholder="Agregar observación"
+                        value={monthlyDetail.alumnos.find((a) => a.id === record.alumnoId)?.observacion || ""}
+                        onChange={(e) => handleObservacionChange(record.alumnoId, e.target.value)}
                       />
                     </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
-          )}
-
-          <div className="mt-6 flex justify-end space-x-4">
-            <Button onClick={() => navigate("/asistencias-mensuales")}>
-              Volver
-            </Button>
           </div>
-        </CardContent>
-      </Card>
+        </SectionCard>
+      )}
+
+      {monthlyDetail && dailyRecords.length === 0 && <EmptyState title="Sin alumnos para registrar" message="La disciplina no tiene alumnos disponibles para esta fecha." />}
+      {!monthlyDetail && !loading && !error && !selectedDisciplineId && <EmptyState title="Prepará la asistencia" message="Seleccioná una disciplina y una fecha para comenzar." />}
     </div>
   );
 };

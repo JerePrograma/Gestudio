@@ -1,15 +1,28 @@
-import { type FormEvent, useEffect, useState } from "react";
+import { useMemo } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Form, Formik, type FormikHelpers } from "formik";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "react-toastify";
+import { getApiErrorMessage, getFieldErrors } from "../../api/apiError";
 import bonificacionesApi from "../../api/bonificacionesApi";
 import disciplinasApi from "../../api/disciplinasApi";
 import inscripcionesApi from "../../api/inscripcionesApi";
 import Boton from "../../componentes/comunes/Boton";
-import type {
-  BonificacionResponse,
-  DisciplinaResponse,
-  InscripcionRegistroRequest,
-} from "../../types/types";
+import ErrorState from "../../componentes/comunes/ErrorState";
+import FormField from "../../componentes/comunes/FormField";
+import LoadingState from "../../componentes/comunes/LoadingState";
+import MoneyInput from "../../componentes/comunes/MoneyInput";
+import { queryKeys } from "../../hooks/queryKeys";
+import type { InscripcionRegistroRequest } from "../../types/types";
+import { normalizeMoneyInput } from "../../utils/money";
+import { inscripcionEsquema } from "../../validaciones/inscripcionEsquema";
+import PageHeader from "../../componentes/comunes/PageHeader";
+import SectionCard from "../../componentes/comunes/SectionCard";
+
+const positiveId = (value: string | null): number => {
+  const id = Number(value);
+  return Number.isInteger(id) && id > 0 ? id : 0;
+};
 
 const emptyRequest: InscripcionRegistroRequest = {
   alumnoId: 0,
@@ -21,96 +34,76 @@ const emptyRequest: InscripcionRegistroRequest = {
 
 const InscripcionesFormulario = () => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
-  const id = Number(searchParams.get("id")) || null;
-  const presetAlumnoId = Number(searchParams.get("alumnoId")) || 0;
-  const [values, setValues] = useState<InscripcionRegistroRequest>({
-    ...emptyRequest,
-    alumnoId: presetAlumnoId,
-  });
-  const [disciplinas, setDisciplinas] = useState<DisciplinaResponse[]>([]);
-  const [bonificaciones, setBonificaciones] = useState<BonificacionResponse[]>([]);
-  const [saving, setSaving] = useState(false);
+  const id = positiveId(searchParams.get("id"));
+  const presetAlumnoId = positiveId(searchParams.get("alumnoId"));
+  const disciplinas = useQuery({ queryKey: queryKeys.disciplinas, queryFn: disciplinasApi.listarDisciplinas });
+  const bonificaciones = useQuery({ queryKey: queryKeys.bonificaciones, queryFn: bonificacionesApi.listarBonificaciones });
+  const detalle = useQuery({ queryKey: queryKeys.inscripcion(id), queryFn: () => inscripcionesApi.obtenerPorId(id), enabled: id > 0 });
+  const initialValues = useMemo<InscripcionRegistroRequest>(() => detalle.data ? {
+    id: detalle.data.id,
+    alumnoId: detalle.data.alumnoId,
+    disciplinaId: detalle.data.disciplinaId,
+    bonificacionId: detalle.data.bonificacionId ?? null,
+    fechaInscripcion: detalle.data.fechaInscripcion,
+    costoParticular: detalle.data.costoParticular ?? "",
+  } : { ...emptyRequest, alumnoId: presetAlumnoId }, [detalle.data, presetAlumnoId]);
 
-  useEffect(() => {
-    Promise.all([
-      disciplinasApi.listarDisciplinas(),
-      bonificacionesApi.listarBonificaciones(),
-    ])
-      .then(([disciplinasData, bonificacionesData]) => {
-        setDisciplinas(disciplinasData);
-        setBonificaciones(bonificacionesData.filter((item) => item.activo));
-      })
-      .catch(() => toast.error("No se pudieron cargar los datos del formulario."));
-  }, []);
-
-  useEffect(() => {
-    if (!id) return;
-    inscripcionesApi
-      .obtenerPorId(id)
-      .then((inscripcion) =>
-        setValues({
-          id: inscripcion.id,
-          alumnoId: inscripcion.alumnoId,
-          disciplinaId: inscripcion.disciplinaId,
-          bonificacionId: inscripcion.bonificacionId ?? null,
-          fechaInscripcion: inscripcion.fechaInscripcion,
-          costoParticular: inscripcion.costoParticular ?? "",
-        })
-      )
-      .catch(() => toast.error("No se pudo cargar la inscripción."));
-  }, [id]);
-
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    setSaving(true);
+  const submit = async (values: InscripcionRegistroRequest, helpers: FormikHelpers<InscripcionRegistroRequest>) => {
+    const costo = values.costoParticular?.trim();
+    const request = { ...values, costoParticular: costo ? normalizeMoneyInput(costo) ?? costo : undefined };
     try {
-      if (id) await inscripcionesApi.actualizar(id, values);
-      else await inscripcionesApi.crear(values);
+      if (id) await inscripcionesApi.actualizar(id, request);
+      else await inscripcionesApi.crear(request);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.all.inscripciones });
       toast.success("Inscripción guardada correctamente.");
       navigate("/inscripciones");
-    } catch {
-      toast.error("No se pudo guardar la inscripción.");
+    } catch (error) {
+      helpers.setErrors(getFieldErrors(error));
+      toast.error(getApiErrorMessage(error, "No se pudo guardar la inscripción."));
     } finally {
-      setSaving(false);
+      helpers.setSubmitting(false);
     }
   };
 
+  if (detalle.isLoading || disciplinas.isLoading || bonificaciones.isLoading) return <LoadingState message="Cargando formulario..." />;
+  if (detalle.isError || disciplinas.isError || bonificaciones.isError) return <ErrorState message="No se pudieron cargar los datos del formulario." />;
+
   return (
     <div className="page-container">
-      <h1 className="page-title">{id ? "Editar inscripción" : "Nueva inscripción"}</h1>
-      <form onSubmit={submit} className="formulario max-w-4xl mx-auto">
-        <div className="form-grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <label className="auth-label">Alumno ID<input className="form-input" type="number" min="1" required value={values.alumnoId || ""} onChange={(event) => setValues({ ...values, alumnoId: Number(event.target.value) })} /></label>
-          <label className="auth-label">
-            Disciplina
-            <select className="form-input" required value={values.disciplinaId} onChange={(event) => setValues({ ...values, disciplinaId: Number(event.target.value) })}>
-              <option value={0}>Seleccione una disciplina</option>
-              {disciplinas.filter((item) => item.activo).map((disciplina) => <option key={disciplina.id} value={disciplina.id}>{disciplina.nombre}</option>)}
-            </select>
-          </label>
-          <label className="auth-label">
-            Bonificación opcional
-            <select className="form-input" value={values.bonificacionId ?? ""} onChange={(event) => setValues({ ...values, bonificacionId: event.target.value ? Number(event.target.value) : null })}>
-              <option value="">Sin bonificación</option>
-              {bonificaciones.map((bonificacion) => <option key={bonificacion.id} value={bonificacion.id}>{bonificacion.descripcion}</option>)}
-            </select>
-          </label>
-          <label className="auth-label">
-            Fecha de inscripción
-            <input className="form-input" type="date" required value={values.fechaInscripcion} onChange={(event) => setValues({ ...values, fechaInscripcion: event.target.value })} />
-          </label>
-          <label className="auth-label">
-            Costo particular opcional
-            <input className="form-input" type="text" inputMode="decimal" value={values.costoParticular ?? ""} onChange={(event) => setValues({ ...values, costoParticular: event.target.value })} />
-          </label>
-        </div>
-        <p className="text-sm text-gray-600 mt-4">El backend calcula los cargos y saldos; este formulario sólo registra la inscripción y sus referencias explícitas.</p>
-        <div className="form-acciones">
-          <Boton type="submit" disabled={saving || values.alumnoId === 0 || values.disciplinaId === 0} className="page-button">Guardar</Boton>
-          <Boton type="button" onClick={() => navigate("/inscripciones")} className="page-button-secondary">Cancelar</Boton>
-        </div>
-      </form>
+      <PageHeader eyebrow="Inscripciones" title={id ? "Editar inscripción" : "Nueva inscripción"} description="Relacioná alumno y disciplina. El backend conserva la autoridad sobre cargos y saldos." />
+      <Formik initialValues={initialValues} validationSchema={inscripcionEsquema} enableReinitialize onSubmit={submit}>
+        {({ values, errors, isSubmitting, setFieldValue }) => (
+          <Form className="mx-auto max-w-5xl space-y-5" noValidate>
+            <SectionCard title="Datos de inscripción" description="Seleccioná las referencias y la fecha de alta.">
+            <div className="form-grid">
+              <FormField id="alumnoId" name="alumnoId" label="Alumno ID" type="number" min="1" required value={values.alumnoId || ""} error={errors.alumnoId} onChange={(event) => void setFieldValue("alumnoId", Number(event.target.value))} />
+              <label className="auth-label" htmlFor="disciplinaId">Disciplina
+                <select id="disciplinaId" name="disciplinaId" className="form-input" required value={values.disciplinaId} aria-invalid={Boolean(errors.disciplinaId)} onChange={(event) => void setFieldValue("disciplinaId", Number(event.target.value))}>
+                  <option value={0}>Seleccione una disciplina</option>
+                  {(disciplinas.data ?? []).filter((item) => item.activo).map((disciplina) => <option key={disciplina.id} value={disciplina.id}>{disciplina.nombre}</option>)}
+                </select>
+                {errors.disciplinaId && <span className="auth-error">{errors.disciplinaId}</span>}
+              </label>
+              <label className="auth-label" htmlFor="bonificacionId">Bonificación opcional
+                <select id="bonificacionId" name="bonificacionId" className="form-input" value={values.bonificacionId ?? ""} onChange={(event) => void setFieldValue("bonificacionId", event.target.value ? Number(event.target.value) : null)}>
+                  <option value="">Sin bonificación</option>
+                  {(bonificaciones.data ?? []).filter((item) => item.activo).map((bonificacion) => <option key={bonificacion.id} value={bonificacion.id}>{bonificacion.descripcion}</option>)}
+                </select>
+              </label>
+              <FormField id="fechaInscripcion" name="fechaInscripcion" label="Fecha de inscripción" type="date" required value={values.fechaInscripcion} error={errors.fechaInscripcion} onChange={(event) => void setFieldValue("fechaInscripcion", event.target.value)} />
+              <MoneyInput id="costoParticular" label="Costo particular opcional" value={values.costoParticular ?? ""} error={errors.costoParticular} onChange={(value) => void setFieldValue("costoParticular", value)} />
+            </div>
+            <p className="mt-4 rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground">El costo particular es opcional. Los cargos y saldos finales se calculan en el backend.</p>
+            </SectionCard>
+            <div className="form-acciones">
+              <Boton type="button" onClick={() => navigate("/inscripciones")} className="page-button-secondary">Cancelar</Boton>
+              <Boton type="submit" disabled={isSubmitting} className="page-button">{isSubmitting ? "Guardando..." : "Guardar inscripción"}</Boton>
+            </div>
+          </Form>
+        )}
+      </Formik>
     </div>
   );
 };

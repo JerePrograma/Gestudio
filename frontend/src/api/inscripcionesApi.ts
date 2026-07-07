@@ -7,17 +7,17 @@ import type {
 } from "../types/types";
 
 const crear = async (request: InscripcionRegistroRequest): Promise<InscripcionResponse> => {
-  const response = await api.post("/inscripciones", request);
+  const response = await api.post<InscripcionResponse>("/inscripciones", request);
   return response.data;
 };
 
 const listar = async (page = 0, size = 50, filtro = ""): Promise<Page<InscripcionResponse>> => {
-  const response = await api.get("/inscripciones", { params: { page, size, filtro } });
+  const response = await api.get<Page<InscripcionResponse>>("/inscripciones", { params: { page, size, filtro } });
   return response.data;
 };
 
 const obtenerPorId = async (id: number): Promise<InscripcionResponse> => {
-  const response = await api.get(`/inscripciones/${id}`);
+  const response = await api.get<InscripcionResponse>(`/inscripciones/${id}`);
   return response.data;
 };
 
@@ -25,7 +25,7 @@ const actualizar = async (
   id: number,
   request: InscripcionRegistroRequest
 ): Promise<InscripcionResponse> => {
-  const response = await api.put(`/inscripciones/${id}`, request);
+  const response = await api.put<InscripcionResponse>(`/inscripciones/${id}`, request);
   return response.data;
 };
 

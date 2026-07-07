@@ -9,17 +9,17 @@ const recargosApi = {
   crearRecargo: async (
     recargo: RecargoRegistroRequest
   ): Promise<RecargoResponse> => {
-    const response = await api.post("/recargos", recargo);
+    const response = await api.post<RecargoResponse>("/recargos", recargo);
     return response.data;
   },
 
   listarRecargos: async (): Promise<RecargoResponse[]> => {
-    const response = await api.get("/recargos");
+    const response = await api.get<RecargoResponse[]>("/recargos");
     return response.data;
   },
 
   obtenerRecargoPorId: async (id: number): Promise<RecargoResponse> => {
-    const response = await api.get(`/recargos/${id}`);
+    const response = await api.get<RecargoResponse>(`/recargos/${id}`);
     return response.data;
   },
 
@@ -27,7 +27,7 @@ const recargosApi = {
     id: number,
     recargo: RecargoModificacionRequest
   ): Promise<RecargoResponse> => {
-    const response = await api.put(`/recargos/${id}`, recargo);
+    const response = await api.put<RecargoResponse>(`/recargos/${id}`, recargo);
     return response.data;
   },
 

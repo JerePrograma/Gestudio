@@ -10,10 +10,12 @@ import {
   TableRow,
   TableFooter,
 } from "../ui/table";
+import EmptyState from "./EmptyState";
 
 interface TablaProps<T extends object> {
   headers: string[];
   data: T[];
+  getRowKey: (row: T) => React.Key;
   actions?: (row: T) => ReactNode;
   customRender?: (row: T) => (string | number | ReactNode)[];
   footer?: ReactNode;
@@ -24,100 +26,86 @@ interface TablaProps<T extends object> {
 const Tabla = <T extends object>({
   headers,
   data,
+  getRowKey,
   actions,
   customRender,
   footer,
   emptyMessage = "No hay datos disponibles",
   className = "",
 }: TablaProps<T>) => {
+  if (data.length === 0) {
+    return <EmptyState message={emptyMessage} />;
+  }
+
   return (
-    <div className={`w-full h-full flex flex-col ${className}`}>
+    <div className={`w-full ${className}`}>
       {/* Versión para pantallas medianas y grandes */}
-      <div className="hidden sm:block rounded-lg border h-full overflow-auto">
+      <div className="data-table-shell hidden sm:block">
         <Table>
-          <TableHeader className="sticky top-0 bg-background/95 backdrop-blur-sm z-10">
-            <TableRow className="border-b border-border hover:bg-transparent">
+          <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur-sm">
+            <TableRow className="hover:bg-transparent">
               {headers.map((header, idx) => (
                 <TableHead
-                  key={idx}
-                  className="text-center whitespace-nowrap px-fluid-2 py-fluid-1 text-muted-foreground font-medium"
+                  key={`${header}-${idx}`}
+                  className="h-11 whitespace-nowrap px-4 text-left text-xs font-bold uppercase tracking-[0.06em] text-muted-foreground"
                 >
                   {header}
                 </TableHead>
               ))}
               {actions && (
-                <TableHead className="text-center whitespace-nowrap px-fluid-2 py-fluid-1 text-muted-foreground font-medium">
+                <TableHead className="h-11 whitespace-nowrap px-4 text-right text-xs font-bold uppercase tracking-[0.06em] text-muted-foreground">
                   Acciones
                 </TableHead>
               )}
             </TableRow>
           </TableHeader>
           <TableBody>
-            {data.length > 0 ? (
-              data.map((row, index) => (
+            {data.map((row) => {
+                const cells = customRender ? customRender(row) : Object.values(row);
+                return (
                 <TableRow
-                  key={index}
-                  className="border-b border-border/50 transition-colors hover:bg-muted/30"
+                  key={getRowKey(row)}
+                  className="group border-b border-border/70 transition-colors hover:bg-muted/45"
                 >
-                  {customRender
-                    ? customRender(row).map((value, idx) => (
+                  {cells.map((value, idx) => (
                         <TableCell
                           key={idx}
-                          className="text-center whitespace-nowrap px-fluid-2 py-fluid-1"
-                        >
-                          {value}
-                        </TableCell>
-                      ))
-                    : Object.values(row).map((value, idx) => (
-                        <TableCell
-                          key={idx}
-                          className="text-center whitespace-nowrap px-fluid-2 py-fluid-1"
+                          className="whitespace-nowrap px-4 py-3"
                         >
                           {typeof value === "object" ? value : String(value)}
                         </TableCell>
                       ))}
                   {actions && (
-                    <TableCell className="text-center whitespace-nowrap px-fluid-2 py-fluid-1">
-                      <div className="flex items-center justify-center gap-fluid-sm">
+                    <TableCell className="whitespace-nowrap px-3 py-2 text-right">
+                      <div className="row-actions">
                         {actions(row)}
                       </div>
                     </TableCell>
                   )}
                 </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell
-                  colSpan={headers.length + (actions ? 1 : 0)}
-                  className="h-24 text-center text-muted-foreground"
-                >
-                  {emptyMessage}
-                </TableCell>
-              </TableRow>
-            )}
+              )})}
           </TableBody>
           {footer && <TableFooter>{footer}</TableFooter>}
         </Table>
       </div>
 
       {/* Versión para móviles (cards en lugar de tabla) */}
-      <div className="sm:hidden space-y-fluid-md overflow-auto h-full">
-        {data.length > 0 ? (
-          data.map((row, rowIndex) => (
-            <div key={rowIndex} className="card card-hover">
+      <div className="space-y-3 sm:hidden">
+        {data.map((row) => {
+            const cells = customRender ? customRender(row) : Object.values(row);
+            return (
+            <article key={getRowKey(row)} className="section-card space-y-3">
               {headers.map((header, headerIndex) => {
-                const value = customRender
-                  ? customRender(row)[headerIndex]
-                  : Object.values(row)[headerIndex];
+                const value = cells[headerIndex];
                 return (
                   <div
-                    key={headerIndex}
-                    className="flex flex-col items-center justify-center whitespace-nowrap mb-fluid-2 last:mb-0"
+                    key={`${header}-${headerIndex}`}
+                    className="grid grid-cols-[minmax(7rem,0.8fr)_1fr] items-start gap-3 border-b border-border/60 pb-2 last:border-0 last:pb-0"
                   >
-                    <span className="text-xs font-medium text-muted-foreground">
+                    <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
                       {header}
                     </span>
-                    <div className="mt-1 text-center">
+                    <div className="min-w-0 text-right text-sm font-medium">
                       {typeof value === "object" ? (
                         value
                       ) : (
@@ -128,22 +116,15 @@ const Tabla = <T extends object>({
                 );
               })}
               {actions && (
-                <div className="pt-fluid-2 mt-fluid-2 border-t border-border">
-                  <span className="text-xs font-medium text-muted-foreground block text-center">
-                    Acciones
-                  </span>
-                  <div className="mt-2 flex flex-wrap justify-center gap-fluid-sm">
+                <div className="flex items-center justify-between border-t border-border pt-3">
+                  <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Acciones</span>
+                  <div className="row-actions">
                     {actions(row)}
                   </div>
                 </div>
               )}
-            </div>
-          ))
-        ) : (
-          <div className="card text-center p-fluid text-muted-foreground">
-            {emptyMessage}
-          </div>
-        )}
+            </article>
+          )})}
       </div>
     </div>
   );

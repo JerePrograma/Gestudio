@@ -1,8 +1,8 @@
 import axios, {
+  AxiosHeaders,
   type AxiosError,
   type InternalAxiosRequestConfig,
 } from "axios";
-import { toast } from "react-toastify";
 import { API_BASE_URL } from "../config/environment";
 import { clearAuthSession, getAccessToken, refreshSession } from "./authSession";
 
@@ -26,16 +26,58 @@ const api = axios.create({
   headers: { "Content-Type": "application/json" },
 });
 
-api.interceptors.request.use((config) => {
-  const accessToken = getAccessToken();
-  if (accessToken) {
-    config.headers.Authorization = `Bearer ${accessToken}`;
-  }
-  return config;
-});
+function normalizeHeaders(config: InternalAxiosRequestConfig): AxiosHeaders {
+  const headers = AxiosHeaders.from(config.headers);
+  config.headers = headers;
+  return headers;
+}
 
-function isRefreshRequest(config: InternalAxiosRequestConfig): boolean {
-  return config.url?.replace(API_BASE_URL, "").startsWith("/login/refresh") ?? false;
+function requestPath(config: InternalAxiosRequestConfig): string {
+  const url = config.url ?? "";
+
+  if (/^https?:\/\//i.test(url)) {
+    return new URL(url).pathname;
+  }
+
+  const baseUrl = config.baseURL ?? API_BASE_URL;
+  return new URL(url, `${baseUrl.replace(/\/$/, "")}/`).pathname;
+}
+
+function isAuthEndpoint(config: InternalAxiosRequestConfig): boolean {
+  const path = requestPath(config);
+
+  return (
+    path === "/api/login" ||
+    path === "/api/login/refresh" ||
+    path === "/api/login/logout" ||
+    path === "/login" ||
+    path === "/login/refresh" ||
+    path === "/login/logout"
+  );
+}
+
+function removeAuthorizationHeader(config: InternalAxiosRequestConfig): void {
+  const headers = normalizeHeaders(config);
+  headers.delete("Authorization");
+  headers.delete("authorization");
+}
+
+function setAuthorizationHeader(
+  config: InternalAxiosRequestConfig,
+  accessToken: string,
+): void {
+  const headers = normalizeHeaders(config);
+  headers.set("Authorization", `Bearer ${accessToken}`);
+}
+
+function getAuthorizationHeader(config: InternalAxiosRequestConfig): string | null {
+  const value = normalizeHeaders(config).get("Authorization");
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  return null;
 }
 
 function redirectToLogin(): void {
@@ -44,46 +86,61 @@ function redirectToLogin(): void {
   }
 }
 
+api.interceptors.request.use((config) => {
+  if (isAuthEndpoint(config)) {
+    removeAuthorizationHeader(config);
+    return config;
+  }
+
+  const accessToken = getAccessToken();
+
+  if (accessToken !== null) {
+    setAuthorizationHeader(config, accessToken);
+  }
+
+  return config;
+});
+
 api.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
     const originalRequest = error.config as RetriableRequestConfig | undefined;
     const status = error.response?.status;
 
-    if (status === 403) {
-      toast.warn("No tenés permisos para realizar esta acción.");
-      return Promise.reject(error);
-    }
-
     if (
       status !== 401 ||
       !originalRequest ||
       originalRequest._retry ||
-      isRefreshRequest(originalRequest)
+      isAuthEndpoint(originalRequest)
     ) {
       return Promise.reject(error);
     }
 
     originalRequest._retry = true;
+
     const currentAccessToken = getAccessToken();
+    const requestAuthorization = getAuthorizationHeader(originalRequest);
+
     if (
-      currentAccessToken &&
-      originalRequest.headers.Authorization !== `Bearer ${currentAccessToken}`
+      currentAccessToken !== null &&
+      requestAuthorization !== `Bearer ${currentAccessToken}`
     ) {
-      originalRequest.headers.Authorization = `Bearer ${currentAccessToken}`;
+      setAuthorizationHeader(originalRequest, currentAccessToken);
       return api(originalRequest);
     }
+
     try {
-      const session = await refreshSession();
-      originalRequest.headers.Authorization = `Bearer ${session.accessToken}`;
+      const refreshedSession = await refreshSession();
+
+      setAuthorizationHeader(originalRequest, refreshedSession.accessToken);
+
       return api(originalRequest);
     } catch (refreshError) {
       clearAuthStorage();
-      toast.error("La sesión expiró. Iniciá sesión nuevamente.");
       redirectToLogin();
       return Promise.reject(refreshError);
     }
-  }
+  },
 );
 
 export default api;

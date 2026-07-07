@@ -80,6 +80,7 @@ const RolesPagina = () => {
         <Tabla
           headers={["ID", "Descripcion", "Acciones"]}
           data={currentItems}
+          getRowKey={(row) => row.id}
           actions={(fila) => (
             <div className="flex gap-2">
               <Boton

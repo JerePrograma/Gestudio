@@ -9,11 +9,11 @@ const Reportes = lazy(() => import("../paginas/Reportes"));
 
 export const publicRoutes = [
   { path: "/login", Component: Login },
-  { path: "/unauthorized", Component: Unauthorized },
 ];
 export const protectedRoutes = [
   { path: "/", Component: Dashboard },
   { path: "/reportes", Component: Reportes },
+  { path: "/unauthorized", Component: Unauthorized },
 ];
 
 const UsuariosPagina = lazy(() => import("../funcionalidades/usuarios/UsuariosPagina"));

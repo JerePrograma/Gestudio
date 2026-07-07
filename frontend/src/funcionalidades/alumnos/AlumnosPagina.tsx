@@ -1,10 +1,19 @@
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CreditCard, Pencil, PlusCircle, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import alumnosApi from "../../api/alumnosApi";
+import { getApiErrorMessage } from "../../api/apiError";
 import Boton from "../../componentes/comunes/Boton";
+import ErrorState from "../../componentes/comunes/ErrorState";
+import FilterBar from "../../componentes/comunes/FilterBar";
+import LoadingState from "../../componentes/comunes/LoadingState";
+import PageHeader from "../../componentes/comunes/PageHeader";
+import PaginationControls from "../../componentes/comunes/PaginationControls";
+import RowActions from "../../componentes/comunes/RowActions";
+import SearchInput from "../../componentes/comunes/SearchInput";
+import StatusBadge from "../../componentes/comunes/StatusBadge";
 import Tabla from "../../componentes/comunes/Tabla";
 import { queryKeys } from "../../hooks/queryKeys";
 
@@ -17,28 +26,84 @@ const AlumnosPagina = () => {
   const [search, setSearch] = useState("");
   const alumnos = useQuery({
     queryKey: queryKeys.alumnos(page, PAGE_SIZE, search),
-    queryFn: () => search.trim() ? alumnosApi.buscarPorNombre(search.trim(), page, PAGE_SIZE) : alumnosApi.listar(page, PAGE_SIZE),
+    queryFn: () => search.trim()
+      ? alumnosApi.buscarPorNombre(search.trim(), page, PAGE_SIZE)
+      : alumnosApi.listar(page, PAGE_SIZE),
   });
-  const baja = async (id: number) => {
-    try {
-      await alumnosApi.darBaja(id);
-      await queryClient.invalidateQueries({ queryKey: ["alumnos"] });
+  const baja = useMutation({
+    mutationFn: (id: number) => alumnosApi.darBaja(id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.all.alumnos });
       toast.success("Alumno dado de baja.");
-    } catch {
-      toast.error("No se pudo dar de baja el alumno.");
-    }
+    },
+    onError: (error) => toast.error(getApiErrorMessage(error, "No se pudo dar de baja el alumno.")),
+  });
+
+  const confirmarBaja = (id: number, nombre: string) => {
+    if (window.confirm(`¿Dar de baja a ${nombre}?`)) baja.mutate(id);
   };
 
-  if (alumnos.isLoading) return <div className="text-center py-4">Cargando...</div>;
-  if (alumnos.isError) return <div className="text-center py-4 text-destructive">No se pudieron cargar alumnos.</div>;
-  return <div className="page-container">
-    <div className="flex justify-between"><div><h1 className="page-title">Alumnos</h1><p>{alumnos.data?.totalElements ?? 0} registros</p></div><Boton onClick={() => navigate("/alumnos/formulario")} className="page-button"><PlusCircle className="w-4 h-4" /> Nuevo</Boton></div>
-    <input className="form-input max-w-md my-4" placeholder="Buscar por nombre" value={search} onChange={(event) => { setPage(0); setSearch(event.target.value); }} />
-    <div className="page-card"><Tabla headers={["ID", "Nombre", "Apellido", "Estado"]} data={alumnos.data?.content ?? []}
-      customRender={(row) => [row.id, row.nombre, row.apellido, row.activo ? "Activo" : "Baja"]}
-      actions={(row) => <div className="flex gap-2"><Boton onClick={() => navigate(`/alumnos/formulario?id=${row.id}`)} className="page-button-secondary"><Pencil className="w-4 h-4" /> Editar</Boton><Boton onClick={() => navigate(`/cobranza/${row.id}`)} className="page-button-secondary"><CreditCard className="w-4 h-4" /> Cobranza</Boton>{row.activo && <Boton onClick={() => baja(row.id)} className="page-button-danger"><Trash2 className="w-4 h-4" /> Baja</Boton>}</div>} /></div>
-    <div className="mt-4"><Boton disabled={page === 0} onClick={() => setPage((value) => value - 1)} className="page-button-secondary">Anterior</Boton><span> Página {page + 1} de {Math.max(alumnos.data?.totalPages ?? 1, 1)} </span><Boton disabled={!alumnos.data || page + 1 >= alumnos.data.totalPages} onClick={() => setPage((value) => value + 1)} className="page-button-secondary">Siguiente</Boton></div>
-  </div>;
+  if (alumnos.isLoading) return <LoadingState message="Cargando alumnos..." />;
+  if (alumnos.isError) {
+    return <ErrorState message="No se pudieron cargar alumnos." onRetry={() => void alumnos.refetch()} />;
+  }
+
+  return (
+    <div className="page-container">
+      <PageHeader
+        eyebrow="Gestión académica"
+        title="Alumnos"
+        description="Consultá perfiles, estado y accesos rápidos de cada alumno."
+        count={alumnos.data?.totalElements ?? 0}
+        actions={(
+          <Boton onClick={() => navigate("/alumnos/formulario")} className="page-button">
+            <PlusCircle className="size-4" /> Nuevo alumno
+          </Boton>
+        )}
+      />
+      <FilterBar label="Buscar alumnos">
+        <SearchInput
+          id="buscar-alumno"
+          label="Buscar"
+          placeholder="Buscar por nombre o apellido"
+          value={search}
+          onChange={(event) => {
+            setPage(0);
+            setSearch(event.target.value);
+          }}
+        />
+      </FilterBar>
+      <div>
+        <Tabla
+          headers={["ID", "Nombre", "Apellido", "Estado"]}
+          data={alumnos.data?.content ?? []}
+          getRowKey={(row) => row.id}
+          customRender={(row) => [
+            row.id,
+            <span className="font-semibold" key="nombre">{row.nombre}</span>,
+            row.apellido,
+            <StatusBadge key="estado" tone={row.activo ? "success" : "neutral"}>{row.activo ? "Activo" : "Baja"}</StatusBadge>,
+          ]}
+          actions={(row) => (
+            <RowActions
+              label={`Acciones de ${row.nombre} ${row.apellido}`}
+              actions={[
+                { label: "Editar", icon: Pencil, onSelect: () => navigate(`/alumnos/formulario?id=${row.id}`) },
+                { label: "Ver pagos", icon: CreditCard, onSelect: () => navigate(`/pagos?alumnoId=${row.id}`) },
+                ...(row.activo ? [{ label: "Dar de baja", icon: Trash2, destructive: true, disabled: baja.isPending, onSelect: () => confirmarBaja(row.id, `${row.nombre} ${row.apellido}`) }] : []),
+              ]}
+            />
+          )}
+        />
+      </div>
+      <PaginationControls
+        page={page}
+        totalPages={alumnos.data?.totalPages ?? 0}
+        onPageChange={setPage}
+        disabled={alumnos.isFetching}
+      />
+    </div>
+  );
 };
 
 export default AlumnosPagina;

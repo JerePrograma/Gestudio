@@ -4,6 +4,8 @@ import { toast } from "react-toastify";
 import alumnosApi from "../../api/alumnosApi";
 import Boton from "../../componentes/comunes/Boton";
 import type { AlumnoRegistro } from "../../types/types";
+import PageHeader from "../../componentes/comunes/PageHeader";
+import SectionCard from "../../componentes/comunes/SectionCard";
 
 const emptyAlumno: AlumnoRegistro = {
   nombre: "",
@@ -73,26 +75,31 @@ const AlumnosFormulario = () => {
 
   return (
     <div className="page-container">
-      <h1 className="page-title">{alumnoId ? "Editar alumno" : "Nuevo alumno"}</h1>
-      <form onSubmit={submit} className="formulario max-w-4xl mx-auto">
-        <div className="form-grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <PageHeader eyebrow="Alumnos" title={alumnoId ? "Editar alumno" : "Nuevo alumno"} description="Completá la información personal y de contacto. Las inscripciones se gestionan por separado." />
+      <form onSubmit={submit} className="mx-auto max-w-5xl space-y-5">
+        <SectionCard title="Datos personales" description="Información principal para identificar al alumno.">
+        <div className="form-grid">
           <TextField label="Nombre" value={values.nombre} onChange={(value) => change("nombre", value)} required />
           <TextField label="Apellido" value={values.apellido} onChange={(value) => change("apellido", value)} required />
           <TextField label="Fecha de nacimiento" type="date" value={values.fechaNacimiento} onChange={(value) => change("fechaNacimiento", value)} />
           <TextField label="Fecha de incorporación" type="date" value={values.fechaIncorporacion} onChange={(value) => change("fechaIncorporacion", value)} />
           <TextField label="Documento" value={values.documento ?? ""} onChange={(value) => change("documento", value)} />
+        </div>
+        </SectionCard>
+        <SectionCard title="Contacto y autorizaciones" description="Datos para comunicación y operación diaria.">
+        <div className="form-grid">
           <TextField label="Email" type="email" value={values.email ?? ""} onChange={(value) => change("email", value)} />
           <TextField label="Celular principal" value={values.celular1 ?? ""} onChange={(value) => change("celular1", value)} />
           <TextField label="Celular alternativo" value={values.celular2 ?? ""} onChange={(value) => change("celular2", value)} />
           <TextField label="Padres o responsables" value={values.nombrePadres ?? ""} onChange={(value) => change("nombrePadres", value)} />
-          <label className="auth-label flex items-center gap-2">
+          <label className="checkbox-field self-end">
             <input type="checkbox" checked={values.autorizadoParaSalirSolo ?? false} onChange={(event) => change("autorizadoParaSalirSolo", event.target.checked)} />
-            Autorizado para salir solo
+            <span><strong className="block">Autorizado para salir solo</strong><span className="mt-1 block text-xs font-normal text-muted-foreground">Permite registrar esta autorización en el perfil.</span></span>
           </label>
           {alumnoId && (
-            <label className="auth-label flex items-center gap-2">
+            <label className="checkbox-field self-end">
               <input type="checkbox" checked={values.activo} onChange={(event) => change("activo", event.target.checked)} />
-              Activo
+              <span><strong className="block">Alumno activo</strong><span className="mt-1 block text-xs font-normal text-muted-foreground">Define su disponibilidad en los listados operativos.</span></span>
             </label>
           )}
           <label className="auth-label sm:col-span-2">
@@ -100,12 +107,10 @@ const AlumnosFormulario = () => {
             <textarea className="form-input" value={values.otrasNotas ?? ""} onChange={(event) => change("otrasNotas", event.target.value)} />
           </label>
         </div>
-        <p className="text-sm text-gray-600 mt-4">
-          Las inscripciones se gestionan en su pantalla específica para evitar duplicar el flujo y los cálculos financieros.
-        </p>
+        </SectionCard>
         <div className="form-acciones">
-          <Boton type="submit" disabled={saving} className="page-button">Guardar</Boton>
           <Boton type="button" onClick={() => navigate("/alumnos")} className="page-button-secondary">Cancelar</Boton>
+          <Boton type="submit" disabled={saving} className="page-button">{saving ? "Guardando..." : "Guardar alumno"}</Boton>
         </div>
       </form>
     </div>

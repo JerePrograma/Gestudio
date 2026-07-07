@@ -1,9 +1,8 @@
-// src/componentes/NavGroup.tsx
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import { ChevronDown } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../componentes/ui/collapsible";
-import { cn } from "../componentes/lib/utils";
+import { cn } from "../lib/utils";
 import type { NavigationItem } from "../config/navigation";
 
 interface NavGroupProps {
@@ -13,20 +12,22 @@ interface NavGroupProps {
 
 const NavGroup: React.FC<NavGroupProps> = ({ item, isExpanded }) => {
   const location = useLocation();
-  const isActive = item.href ? location.pathname.startsWith(item.href) : false;
+  const pathIsActive = (href?: string) => Boolean(href && (location.pathname === href || location.pathname.startsWith(`${href}/`)));
+  const isActive = pathIsActive(item.href);
+  const hasActiveChild = item.items?.some((subItem) => pathIsActive(subItem.href)) ?? false;
   const Icon = item.icon;
 
-  // Si no tiene sub-items, se muestra como un link simple
   if (!item.items || item.items.length === 0) {
     return (
       <Link
         to={item.href || "#"}
         className={cn(
-          "flex items-center justify-start w-full gap-3 px-3 py-2 rounded-md transition-all duration-200",
+          "nav-item",
           isActive
-            ? "bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]"
-            : "text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))]"
+            ? "nav-item-active"
+            : ""
         )}
+        title={isExpanded ? undefined : item.label}
       >
         {Icon && <Icon className="w-5 h-5 shrink-0" />}
         {isExpanded && <span>{item.label}</span>}
@@ -34,40 +35,31 @@ const NavGroup: React.FC<NavGroupProps> = ({ item, isExpanded }) => {
     );
   }
 
-  // Si tiene sub-items, se muestra como collapsible
   return (
-    <Collapsible className="w-full">
-      <CollapsibleTrigger className="w-full">
-        <div className={cn("flex items-center justify-between w-full px-3 py-2 rounded-md transition-colors hover:bg-[hsl(var(--muted))]")}>
-          <div className="flex items-center gap-3">
-            {Icon && <Icon className="w-5 h-5 shrink-0" />}
-            {isExpanded && <span className="text-[hsl(var(--foreground))]">{item.label}</span>}
-          </div>
-          {isExpanded && <ChevronDown className="w-4 h-4 text-[hsl(var(--muted-foreground))] transition-transform duration-200" />}
+    <Collapsible className="w-full" defaultOpen={hasActiveChild}>
+      <CollapsibleTrigger className={cn("group nav-item justify-between", hasActiveChild && "text-foreground")} title={isExpanded ? undefined : item.label}>
+        <div className="flex min-w-0 items-center gap-3">
+          {Icon && <Icon className="size-5 shrink-0" />}
+          {isExpanded && <span className="truncate">{item.label}</span>}
         </div>
+        {isExpanded && <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />}
       </CollapsibleTrigger>
-      <CollapsibleContent className="pl-4">
+      {isExpanded && <CollapsibleContent className="space-y-1 pt-1">
         {item.items.map((subItem) => {
           const SubIcon = subItem.icon;
+          const subItemActive = pathIsActive(subItem.href);
           return (
             <Link
               key={subItem.id}
               to={subItem.href || "#"}
-              className={cn(
-                "block px-3 py-2 rounded-md transition-colors hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))]",
-                location.pathname.startsWith(subItem.href || "")
-                  ? "bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]"
-                  : "text-[hsl(var(--muted-foreground))]"
-              )}
+              className={cn("nav-item nav-subitem", subItemActive && "nav-item-active")}
             >
-              <div className="flex items-center gap-2">
-                {SubIcon && <SubIcon className="w-4 h-4 shrink-0" />}
-                <span>{subItem.label}</span>
-              </div>
+              {SubIcon && <SubIcon className="size-4 shrink-0" />}
+              <span className="truncate">{subItem.label}</span>
             </Link>
           );
         })}
-      </CollapsibleContent>
+      </CollapsibleContent>}
     </Collapsible>
   );
 };

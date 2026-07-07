@@ -1,6 +1,5 @@
 import React, { useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import { toast } from "react-toastify";
 import api, { clearAuthStorage } from "../../api/axiosConfig";
 import {
   getAuthSession,
@@ -14,6 +13,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState(getAuthSession);
   const navigate = useNavigate();
+
   const isAuth = session.accessToken !== null && session.user !== null;
   const user: UserProfile | null = session.user;
 
@@ -25,22 +25,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => {
-    if (!loading && !isAuth && window.location.pathname !== "/login") navigate("/login");
-  }, [loading, isAuth, navigate]);
-
-  const login = async (nombreUsuario: string, contrasena: string): Promise<void> => {
-    try {
-      const { data } = await api.post(
-        "/login",
-        { nombreUsuario, contrasena },
-        { withCredentials: true },
-      );
-      setAuthSession(data.accessToken, data.usuario);
-    } catch (error) {
-      toast.error("Error al iniciar sesión");
-      throw error;
-    }
+  const login = async (
+    nombreUsuario: string,
+    contrasena: string,
+  ): Promise<void> => {
+    clearAuthStorage();
+    const { data } = await api.post(
+      "/login",
+      { nombreUsuario, contrasena },
+      { withCredentials: true },
+    );
+    setAuthSession(data.accessToken, data.usuario);
   };
 
   const logout = async (): Promise<void> => {
@@ -53,12 +48,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const hasRole = (role: string): boolean =>
-    user !== null && user.rol.trim().toUpperCase() === role.trim().toUpperCase();
+    user !== null &&
+    user.rol.trim().toUpperCase() === role.trim().toUpperCase();
 
   return (
-    <AuthContext.Provider value={{
-      isAuth, loading, login, logout, accessToken: session.accessToken, user, hasRole,
-    }}>
+    <AuthContext.Provider
+      value={{
+        isAuth,
+        loading,
+        login,
+        logout,
+        accessToken: session.accessToken,
+        user,
+        hasRole,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

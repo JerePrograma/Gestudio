@@ -1,34 +1,25 @@
-"use client"
-
-import type { ReactNode } from "react"
+import { Outlet } from "react-router-dom";
 import Header from "../Header"
 import Sidebar from "../Sidebar"
 import { useSidebar } from "../../hooks/context/useSidebar"
 import { ThemeProvider } from "next-themes"
 
-interface MainLayoutProps {
-  children: ReactNode;
-}
-
-export default function MainLayout({ children }: MainLayoutProps) {
+export default function MainLayout() {
   const { isExpanded } = useSidebar()
 
   return (
-    <div className="min-h-[100dvh] bg-[hsl(var(--background))] pt-[var(--header-height)]">
-      <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+      <div className="min-h-[100dvh] bg-background">
+        <a className="skip-link" href="#main-content">Saltar al contenido</a>
         <Header />
-        <div className="flex w-full">
-          <Sidebar />
-          <main
-            className={`flex-1 w-full transition-all duration-300 px-[var(--container-padding)] py-[clamp(1rem,2vh,2rem)] ${isExpanded ? "md:ml-[var(--sidebar-width)]" : "md:ml-[var(--sidebar-width-collapsed)]"}`}
-          >
-            {/* Contenedor principal sin restricción de ancho máximo */}
-            <div className="page-container mx-auto w-full min-h-[100vh]">
-              {children}
-            </div>
-          </main>
-        </div>
-      </ThemeProvider>
-    </div>
+        <Sidebar />
+        <main
+          id="main-content"
+          className={`min-h-[100dvh] w-full px-[var(--container-padding)] pb-8 pt-[calc(var(--header-height)+1.5rem)] transition-[padding] duration-300 ${isExpanded ? "md:pl-[calc(var(--sidebar-width)+var(--container-padding))]" : "md:pl-[calc(var(--sidebar-width-collapsed)+var(--container-padding))]"}`}
+        >
+          <Outlet />
+        </main>
+      </div>
+    </ThemeProvider>
   )
 }

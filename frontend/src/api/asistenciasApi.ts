@@ -15,8 +15,6 @@ import type {
   AsistenciasActivasResponse,
 } from "../types/types";
 
-const asistenciaCache = new Map<number, AsistenciaMensualDetalleResponse>();
-
 const asistenciasApi = {
   // Obtiene el detalle de la asistencia mensual según parámetros (disciplina, mes, anio)
   obtenerAsistenciaMensualDetallePorParametros: async (
@@ -25,7 +23,7 @@ const asistenciasApi = {
     anio: number
   ): Promise<AsistenciaMensualDetalleResponse | null> => {
     try {
-      const response = await api.get("/asistencias-mensuales/por-disciplina/detalle", {
+      const response = await api.get<AsistenciaMensualDetalleResponse>("/asistencias-mensuales/por-disciplina/detalle", {
         params: { disciplinaId, mes, anio },
       });
       return response.data;
@@ -41,7 +39,7 @@ const asistenciasApi = {
     request: AsistenciaMensualRegistroRequest
   ): Promise<AsistenciaMensualDetalleResponse> => {
     try {
-      const response = await api.post("/asistencias-mensuales", request);
+      const response = await api.post<AsistenciaMensualDetalleResponse>("/asistencias-mensuales", request);
       return response.data;
     } catch (error) {
       toast.error("Error al crear la asistencia mensual. Intente nuevamente.");
@@ -57,7 +55,7 @@ const asistenciasApi = {
     anio?: number
   ): Promise<AsistenciaMensualListadoResponse[]> => {
     try {
-      const response = await api.get("/asistencias-mensuales", {
+      const response = await api.get<AsistenciaMensualListadoResponse[]>("/asistencias-mensuales", {
         params: { profesorId, disciplinaId, mes, anio },
       });
       return response.data;
@@ -77,8 +75,7 @@ const asistenciasApi = {
     asistencia: AsistenciaMensualModificacionRequest
   ): Promise<AsistenciaMensualDetalleResponse> => {
     try {
-      const response = await api.put(`/asistencias-mensuales/${id}`, asistencia);
-      asistenciaCache.set(id, response.data);
+      const response = await api.put<AsistenciaMensualDetalleResponse>(`/asistencias-mensuales/${id}`, asistencia);
       return response.data;
     } catch (error) {
       toast.error("Error al actualizar asistencia. Intente nuevamente.");
@@ -94,7 +91,7 @@ const asistenciasApi = {
     size = 10
   ): Promise<PageResponse<AsistenciaDiariaResponse>> => {
     try {
-      const response = await api.get("/asistencias-diarias/por-disciplina-y-fecha", {
+      const response = await api.get<PageResponse<AsistenciaDiariaResponse>>("/asistencias-diarias/por-disciplina-y-fecha", {
         params: { disciplinaId, fecha, page, size },
       });
       return response.data;
@@ -109,7 +106,7 @@ const asistenciasApi = {
     asistenciaMensualId: number
   ): Promise<AsistenciaDiariaResponse[]> => {
     try {
-      const response = await api.get(`/asistencias-diarias/por-asistencia-mensual/${asistenciaMensualId}`);
+      const response = await api.get<AsistenciaDiariaResponse[]>(`/asistencias-diarias/por-asistencia-mensual/${asistenciaMensualId}`);
       return response.data;
     } catch (error) {
       toast.error("Error al obtener asistencias. Intente nuevamente.");
@@ -123,7 +120,7 @@ const asistenciasApi = {
     request: AsistenciaDiariaRegistroRequest
   ): Promise<AsistenciaDiariaResponse> => {
     try {
-      const response = await api.put("/asistencias-diarias/registrar", request);
+      const response = await api.put<AsistenciaDiariaResponse>("/asistencias-diarias/registrar", request);
       return response.data;
     } catch (error) {
       toast.error("No se pudo registrar la asistencia. Verifica los datos.");
@@ -137,7 +134,7 @@ const asistenciasApi = {
     request: AsistenciaDiariaRegistroRequest
   ): Promise<AsistenciaDiariaResponse> => {
     try {
-      const response = await api.put(`/asistencias-diarias/${id}`, request);
+      const response = await api.put<AsistenciaDiariaResponse>(`/asistencias-diarias/${id}`, request);
       return response.data;
     } catch (error) {
       toast.error("No se pudo modificar la asistencia. Intente nuevamente.");
@@ -159,7 +156,7 @@ const asistenciasApi = {
   // Crea las asistencias para inscripciones activas (creación masiva)
   crearAsistenciasParaInscripcionesActivas: async (): Promise<AsistenciasActivasResponse> => {
     try {
-      const response = await api.post("/asistencias-mensuales/crear-asistencias-activos-detallado");
+      const response = await api.post<AsistenciasActivasResponse>("/asistencias-mensuales/crear-asistencias-activos-detallado");
       return response.data;
     } catch (error) {
       toast.error("Error al crear las asistencias. Intente nuevamente.");
@@ -170,7 +167,7 @@ const asistenciasApi = {
   // Lista las disciplinas simplificadas
   listarDisciplinasSimplificadas: async (): Promise<DisciplinaListadoResponse[]> => {
     try {
-      const response = await api.get("/disciplinas/listado");
+      const response = await api.get<DisciplinaListadoResponse[]>("/disciplinas/listado");
       return response.data;
     } catch (error) {
       toast.error("Error al obtener disciplinas. Intente nuevamente.");

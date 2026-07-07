@@ -9,6 +9,10 @@ import { PlusCircle, Pencil, Trash2 } from "lucide-react";
 import { toast } from "react-toastify";
 import type { MetodoPagoResponse } from "../../types/types";
 import ListaConCargaManual from "../../componentes/comunes/ListaConCargaManual";
+import ErrorState from "../../componentes/comunes/ErrorState";
+import LoadingState from "../../componentes/comunes/LoadingState";
+import PageHeader from "../../componentes/comunes/PageHeader";
+import RowActions from "../../componentes/comunes/RowActions";
 
 const itemsPerPage = 25;
 
@@ -67,48 +71,30 @@ const MetodosPagoPagina = () => {
   };
 
   if (loading && metodos.length === 0)
-    return <div className="text-center py-4">Cargando...</div>;
+    return <LoadingState message="Cargando métodos de pago..." />;
   if (error)
-    return <div className="text-center py-4 text-destructive">{error}</div>;
+    return <ErrorState message={error} onRetry={() => void fetchMetodos()} />;
 
   return (
     <div className="page-container">
-      <h1 className="page-title">Métodos de Pago</h1>
-      <div className="page-button-group flex justify-end mb-4">
-        <Boton
+      <PageHeader eyebrow="Administración" title="Métodos de pago" description="Medios habilitados y recargos configurados." count={metodos.length}
+        actions={<Boton
           onClick={() => navigate("/metodos-pago/formulario")}
           className="page-button"
           aria-label="Registrar nuevo método de pago"
         >
-          <PlusCircle className="w-5 h-5 mr-2" />
-          Registrar Nuevo Método de Pago
-        </Boton>
-      </div>
-      <div className="page-card">
+          <PlusCircle className="size-4" /> Nuevo método
+        </Boton>} />
+      <div>
         <Tabla
           headers={["ID", "Descripción", "Recargo"]}
           data={currentItems}
+          getRowKey={(row) => row.id}
           actions={(fila: MetodoPagoResponse) => (
-            <div className="flex gap-2">
-              <Boton
-                onClick={() =>
-                  navigate(`/metodos-pago/formulario?id=${fila.id}`)
-                }
-                className="page-button-secondary"
-                aria-label={`Editar método de pago ${fila.descripcion}`}
-              >
-                <Pencil className="w-4 h-4 mr-2" />
-                Editar
-              </Boton>
-              <Boton
-                className="page-button-danger"
-                aria-label={`Eliminar método de pago ${fila.descripcion}`}
-                onClick={() => handleEliminarMetodo(fila.id)}
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Eliminar
-              </Boton>
-            </div>
+            <RowActions label={`Acciones de ${fila.descripcion}`} actions={[
+              { label: "Editar", icon: Pencil, onSelect: () => navigate(`/metodos-pago/formulario?id=${fila.id}`) },
+              { label: "Eliminar", icon: Trash2, destructive: true, onSelect: () => void handleEliminarMetodo(fila.id) },
+            ]} />
           )}
           customRender={(fila: MetodoPagoResponse) => [
             fila.id,

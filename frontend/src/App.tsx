@@ -1,36 +1,22 @@
-import React from "react";
 import { BrowserRouter } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { queryClient } from "./hooks/queryClient"; // Importamos el QueryClient
+import { ToastContainer } from "react-toastify";
+import { queryClient } from "./hooks/queryClient";
 import AppRouter from "./rutas/AppRouter";
 import { AuthProvider } from "./hooks/context/authContext";
-import { ThemeProvider } from "./hooks/context/ThemeContext";
 import { SidebarProvider } from "./hooks/context/SideBarContext";
-import MainLayout from "./componentes/layout/MainLayout";
-import "./index.css"; // Importa Tailwind y estilos personalizados
-import { ToastContainer } from "react-toastify";
 
-const App: React.FC = () => {
-  return (
-    <React.StrictMode>
-      <QueryClientProvider client={queryClient}>
-        <ThemeProvider>
-          {/* Colocamos BrowserRouter en la raíz */}
-          <BrowserRouter>
-            {/* Ahora AuthProvider y los demás componentes están dentro del contexto Router */}
-            <AuthProvider>
-              <SidebarProvider>
-                <MainLayout>
-                  <AppRouter />
-                  <ToastContainer />
-                </MainLayout>
-              </SidebarProvider>
-            </AuthProvider>
-          </BrowserRouter>
-        </ThemeProvider>
-      </QueryClientProvider>
-    </React.StrictMode>
-  );
-};
+const App = () => (
+  <QueryClientProvider client={queryClient}>
+    <BrowserRouter>
+      <AuthProvider>
+        <SidebarProvider>
+          <AppRouter />
+          <ToastContainer />
+        </SidebarProvider>
+      </AuthProvider>
+    </BrowserRouter>
+  </QueryClientProvider>
+);
 
 export default App;

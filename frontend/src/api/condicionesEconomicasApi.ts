@@ -25,9 +25,9 @@ export interface CrearCondicionEconomica {
 
 const condicionesEconomicasApi = {
   listar: async (inscripcionId: number): Promise<CondicionEconomica[]> =>
-    (await api.get(`/inscripciones/${inscripcionId}/condiciones-economicas`)).data,
+    (await api.get<CondicionEconomica[]>(`/inscripciones/${inscripcionId}/condiciones-economicas`)).data,
   crear: async (inscripcionId: number, request: CrearCondicionEconomica): Promise<CondicionEconomica> =>
-    (await api.post(`/inscripciones/${inscripcionId}/condiciones-economicas`, request)).data,
+    (await api.post<CondicionEconomica>(`/inscripciones/${inscripcionId}/condiciones-economicas`, request)).data,
 };
 
 export default condicionesEconomicasApi;

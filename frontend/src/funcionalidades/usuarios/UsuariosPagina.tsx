@@ -90,6 +90,7 @@ const UsuariosPagina = () => {
         <Tabla
           headers={["ID", "Nombre", "Rol"]}
           data={currentItems}
+          getRowKey={(row) => row.id}
           customRender={(fila: UsuarioResponse) => [
             fila.id,
             fila.nombreUsuario,
