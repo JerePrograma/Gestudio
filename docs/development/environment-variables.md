@@ -31,10 +31,16 @@ Los archivos versionados `.env.example` y `.env.local.example` contienen plantil
 | `APP_RECEIPTS_PATH` | todos | prod: sí | directorio escribible y persistente |
 | `APP_CORS_ALLOWED_ORIGINS` | todos | prod: sí | lista separada por comas; HTTPS en prod |
 | `APP_SCHEDULING_ENABLED` | todos | no | `false` en dev/test, `true` en prod |
+| `APP_SECURITY_REFRESH_COOKIE_SECURE` | todos | no | `false` en `dev` para HTTP local; `true` por defecto fuera de `dev` |
+| `APP_SECURITY_REFRESH_COOKIE_SAME_SITE` | todos | no | `Strict` |
+| `APP_SECURITY_REFRESH_COOKIE_PATH` | todos | no | `/api/login` |
 | `LEDANCE_HOME` | todos | sí para assets heredados | raíz del repositorio o `/app` en Docker |
-| `APP_BOOTSTRAP_ADMIN_ENABLED` | bootstrap único | no | `false`; habilitar sólo en el primer arranque controlado. |
-| `APP_BOOTSTRAP_ADMIN_USERNAME` | bootstrap único | si se habilita | nombre explícito del primer administrador. |
-| `APP_BOOTSTRAP_ADMIN_PASSWORD` | bootstrap único | si se habilita | secreto externo de 12 a 72 bytes UTF-8. |
+| `APP_BOOTSTRAP_SUPERADMIN_ENABLED` | bootstrap único | no | `false`; habilitar sólo para crear el `SUPERADMIN` inicial. |
+| `APP_BOOTSTRAP_SUPERADMIN_USERNAME` | bootstrap único | si se habilita | nombre explícito del `SUPERADMIN` inicial. |
+| `APP_BOOTSTRAP_SUPERADMIN_PASSWORD` | bootstrap único | si se habilita | secreto externo de 16 a 72 bytes UTF-8. |
+| `APP_BOOTSTRAP_ADMIN_ENABLED` | legado / reset local | no | alias deprecado del bootstrap de `SUPERADMIN`; debe ser `false` durante un reset local. |
+| `APP_BOOTSTRAP_ADMIN_USERNAME` | reset local | si se habilita | `ADMINISTRADOR` existente que se restablecerá. |
+| `APP_BOOTSTRAP_ADMIN_PASSWORD` | reset local | si se habilita | nueva clave local, de 12 a 72 bytes UTF-8. |
 | `APP_BOOTSTRAP_ADMIN_RESET_EXISTING_PASSWORD` | sólo `dev` | no | `false`; restablece una vez el BCrypt del `ADMINISTRADOR` indicado e invalida sus sesiones. |
 | `SERVER_PORT` | todos | no | `8080` |
 | `LOGGING_LEVEL_ROOT` | todos | no | `INFO` |
@@ -101,12 +107,12 @@ No configures SMTP/IMAP en Codex: el perfil `dev` usa email no-op.
 
 ## Bootstrap y smoke
 
-`APP_BOOTSTRAP_ADMIN_ENABLED` es `false` por defecto. Al habilitarla, username y
-password no tienen fallback: el username debe tener de 1 a 100 caracteres y no
-puede ser sólo espacios; la password debe tener de 12 a 72 bytes UTF-8. El
-initializer exige la tabla `usuarios` vacía y el rol activo `ADMINISTRADOR`, que
-es el rol máximo actual. Si ya existe cualquier usuario, el arranque falla hasta
-deshabilitar la bandera; no actualiza credenciales ni roles.
+El bootstrap inicial canónico usa `APP_BOOTSTRAP_SUPERADMIN_*` y está deshabilitado
+por defecto. Al habilitarlo, reclama una ejecución única en
+`bootstrap_ejecuciones`, exige el rol activo `SUPERADMIN` y un username que no
+exista, y crea una cuenta activa con BCrypt. No modifica usuarios, hashes ni
+roles existentes. `APP_BOOTSTRAP_ADMIN_ENABLED` es sólo un alias deprecado para
+ese mismo bootstrap; habilitar ambos hace fallar el arranque.
 
 Para recuperar una contraseña local existente, use el perfil `dev`, mantenga
 `APP_BOOTSTRAP_ADMIN_ENABLED=false` y habilite temporalmente

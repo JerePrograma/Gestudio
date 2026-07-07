@@ -12,3 +12,6 @@ jwt:
 
 app:
   receipts-path: ${APP_RECEIPTS_PATH:${LEDANCE_HOME:.}/pdfs}
+  security:
+    refresh-cookie:
+      secure: ${APP_SECURITY_REFRESH_COOKIE_SECURE:false}
