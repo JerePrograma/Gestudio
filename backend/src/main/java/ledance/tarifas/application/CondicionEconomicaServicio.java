@@ -1,12 +1,18 @@
 package ledance.tarifas.application;
 
 import ledance.auditoria.application.AuditService;
-import ledance.entidades.*;
+import ledance.entidades.Bonificacion;
+import ledance.entidades.Inscripcion;
+import ledance.entidades.Usuario;
 import ledance.infra.errores.TratadorDeErrores.OperacionNoPermitidaException;
 import ledance.infra.errores.TratadorDeErrores.RecursoNoEncontradoException;
-import ledance.repositorios.*;
-import ledance.tarifas.api.*;
-import ledance.tarifas.persistence.*;
+import ledance.repositorios.BonificacionRepositorio;
+import ledance.repositorios.InscripcionRepositorio;
+import ledance.repositorios.UsuarioRepositorio;
+import ledance.tarifas.api.CondicionEconomicaRequest;
+import ledance.tarifas.api.CondicionEconomicaResponse;
+import ledance.tarifas.persistence.CondicionEconomicaInscripcion;
+import ledance.tarifas.persistence.CondicionEconomicaRepositorio;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,6 +24,10 @@ import java.util.Map;
 
 @Service
 public class CondicionEconomicaServicio {
+
+    private static final String PERM_TARIFAS_ADMIN = "PERM_TARIFAS_ADMIN";
+    private static final String PERM_TARIFAS_HISTORICAS = "PERM_TARIFAS_HISTORICAS";
+
     private final CondicionEconomicaRepositorio condiciones;
     private final InscripcionRepositorio inscripciones;
     private final BonificacionRepositorio bonificaciones;
@@ -29,7 +39,8 @@ public class CondicionEconomicaServicio {
                                       InscripcionRepositorio inscripciones,
                                       BonificacionRepositorio bonificaciones,
                                       UsuarioRepositorio usuarios,
-                                      AuditService audit, Clock clock) {
+                                      AuditService audit,
+                                      Clock clock) {
         this.condiciones = condiciones;
         this.inscripciones = inscripciones;
         this.bonificaciones = bonificaciones;
@@ -39,20 +50,27 @@ public class CondicionEconomicaServicio {
     }
 
     @Transactional
-    public CondicionEconomicaResponse crear(Long inscripcionId, CondicionEconomicaRequest request, Usuario actor) {
+    public CondicionEconomicaResponse crear(Long inscripcionId,
+                                            CondicionEconomicaRequest request,
+                                            Usuario actor) {
         Usuario actorActual = actorAutorizado(actor);
+
         if (request.vigenteDesde().isBefore(LocalDate.now(clock))
-                && !tieneRol(actorActual, RolSistema.SUPERADMIN)) {
-            throw new OperacionNoPermitidaException("Sólo SUPERADMIN puede cargar una condición económica histórica");
+                && !actorActual.tienePermiso(PERM_TARIFAS_HISTORICAS)) {
+            throw new OperacionNoPermitidaException("Permiso requerido: " + PERM_TARIFAS_HISTORICAS);
         }
+
         if (condiciones.existsByInscripcionIdAndVigenteDesde(inscripcionId, request.vigenteDesde())) {
             throw new OperacionNoPermitidaException("Ya existe una condición para la misma fecha efectiva");
         }
+
         Inscripcion inscripcion = inscripciones.findById(inscripcionId)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Inscripción no encontrada"));
-        Bonificacion bonificacion = request.bonificacionId() == null ? null
+
+        Bonificacion bonificacion = request.bonificacionId() == null
+                ? null
                 : bonificaciones.findById(request.bonificacionId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Bonificación no encontrada"));
+                  .orElseThrow(() -> new RecursoNoEncontradoException("Bonificación no encontrada"));
 
         CondicionEconomicaInscripcion condicion = new CondicionEconomicaInscripcion();
         condicion.setInscripcion(inscripcion);
@@ -61,16 +79,30 @@ public class CondicionEconomicaServicio {
         condicion.setBonificacion(bonificacion);
         condicion.setBonificacionDescripcionSnapshot(bonificacion == null ? null : bonificacion.getDescripcion());
         condicion.setBonificacionPorcentajeSnapshot(bonificacion == null
-                ? BigDecimal.ZERO : bonificacion.getPorcentajeDescuento());
+                ? BigDecimal.ZERO
+                : bonificacion.getPorcentajeDescuento());
         condicion.setBonificacionValorFijoSnapshot(bonificacion == null
-                ? BigDecimal.ZERO : bonificacion.getValorFijo());
+                ? BigDecimal.ZERO
+                : bonificacion.getValorFijo());
         condicion.setMotivo(request.motivo().trim());
         condicion.setCreadaPor(actorActual);
         condicion.setCreatedAt(clock.instant());
+
         condicion = condiciones.saveAndFlush(condicion);
-        audit.registrar("TARIFAS", "CONDICION_ECONOMICA_CREADA", "INSCRIPCION_CONDICION",
-                condicion.getId().toString(), actorActual, null,
-                Map.of("inscripcionId", inscripcionId, "vigenteDesde", request.vigenteDesde().toString()));
+
+        audit.registrar(
+                "TARIFAS",
+                "CONDICION_ECONOMICA_CREADA",
+                "INSCRIPCION_CONDICION",
+                condicion.getId().toString(),
+                actorActual,
+                null,
+                Map.of(
+                        "inscripcionId", inscripcionId,
+                        "vigenteDesde", request.vigenteDesde().toString()
+                )
+        );
+
         return response(condicion);
     }
 
@@ -79,36 +111,46 @@ public class CondicionEconomicaServicio {
         if (!inscripciones.existsById(inscripcionId)) {
             throw new RecursoNoEncontradoException("Inscripción no encontrada");
         }
-        return condiciones.findByInscripcionIdOrderByVigenteDesdeDesc(inscripcionId).stream()
-                .map(this::response).toList();
+
+        return condiciones.findByInscripcionIdOrderByVigenteDesdeDesc(inscripcionId)
+                .stream()
+                .map(this::response)
+                .toList();
     }
 
     @Transactional(readOnly = true)
     public CondicionEconomicaInscripcion vigente(Long inscripcionId, LocalDate fecha) {
-        return condiciones.findFirstByInscripcionIdAndVigenteDesdeLessThanEqualOrderByVigenteDesdeDesc(
-                inscripcionId, fecha).orElseThrow(() -> new CondicionHistoricaNoDefinidaException(fecha));
+        return condiciones.findFirstByInscripcionIdAndVigenteDesdeLessThanEqualOrderByVigenteDesdeDesc(inscripcionId, fecha)
+                .orElseThrow(() -> new CondicionHistoricaNoDefinidaException(fecha));
     }
 
     private Usuario actorAutorizado(Usuario actor) {
-        if (actor == null || actor.getId() == null) throw new OperacionNoPermitidaException("Actor requerido");
-        return usuarios.findWithAuthoritiesById(actor.getId()).filter(Usuario::isEnabled)
-                .filter(value -> value.getAuthorities().stream()
-                        .anyMatch(authority -> "PERM_INSCRIPCIONES_WRITE".equals(authority.getAuthority())))
-                .orElseThrow(() -> new OperacionNoPermitidaException("Actor sin permisos para administrar condiciones"));
-    }
+        if (actor == null || actor.getId() == null) {
+            throw new OperacionNoPermitidaException("Actor requerido");
+        }
 
-    private static boolean tieneRol(Usuario usuario, RolSistema rol) {
-        return usuario.getRoles().stream().anyMatch(value -> Boolean.TRUE.equals(value.getActivo())
-                && rol.name().equals(value.getCodigo()));
+        return usuarios.findByIdConRolesYPermisos(actor.getId())
+                .filter(Usuario::isEnabled)
+                .filter(usuario -> usuario.tienePermiso(PERM_TARIFAS_ADMIN))
+                .orElseThrow(() -> new OperacionNoPermitidaException("Actor sin permisos para administrar condiciones económicas"));
     }
 
     private CondicionEconomicaResponse response(CondicionEconomicaInscripcion value) {
-        return new CondicionEconomicaResponse(value.getId(), value.getInscripcion().getId(), value.getVigenteDesde(),
-                decimalNullable(value.getCostoParticular()), value.getBonificacion() == null ? null : value.getBonificacion().getId(),
-                value.getBonificacionDescripcionSnapshot(), value.getBonificacionPorcentajeSnapshot().toPlainString(),
-                value.getBonificacionValorFijoSnapshot().toPlainString(), value.getMotivo(), value.getCreadaPor().getId(),
-                value.getCreadaPor().getNombreUsuario(), value.getCreatedAt(),
-                condiciones.estaUtilizada(value.getId()));
+        return new CondicionEconomicaResponse(
+                value.getId(),
+                value.getInscripcion().getId(),
+                value.getVigenteDesde(),
+                decimalNullable(value.getCostoParticular()),
+                value.getBonificacion() == null ? null : value.getBonificacion().getId(),
+                value.getBonificacionDescripcionSnapshot(),
+                value.getBonificacionPorcentajeSnapshot().toPlainString(),
+                value.getBonificacionValorFijoSnapshot().toPlainString(),
+                value.getMotivo(),
+                value.getCreadaPor().getId(),
+                value.getCreadaPor().getNombreUsuario(),
+                value.getCreatedAt(),
+                condiciones.estaUtilizada(value.getId())
+        );
     }
 
     private static String decimalNullable(BigDecimal value) {

@@ -1,6 +1,5 @@
 package ledance.servicios.usuario;
 
-import jakarta.transaction.Transactional;
 import ledance.auditoria.application.AuditService;
 import ledance.dto.usuario.UsuarioMapper;
 import ledance.dto.usuario.request.UsuarioModificacionRequest;
@@ -15,9 +14,13 @@ import ledance.repositorios.RolRepositorio;
 import ledance.repositorios.UsuarioRepositorio;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
-import java.util.*;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -53,7 +56,7 @@ public class UsuarioServicio {
     }
 
     @Transactional
-    public String registrarUsuario(UsuarioRegistroRequest request, Usuario actor) {
+    public UsuarioResponse registrarUsuario(UsuarioRegistroRequest request, Usuario actor) {
         Usuario actorActual = rbac.exigirPermiso(actor, PERM_USUARIOS_ADMIN, "CREAR_USUARIO");
 
         String username = normalizarUsername(request.nombreUsuario());
@@ -76,7 +79,7 @@ public class UsuarioServicio {
         usuario.setAuthVersion(0L);
         usuario.setPasswordChangedAt(clock.instant());
 
-        usuarios.save(usuario);
+        usuario = usuarios.saveAndFlush(usuario);
 
         audit.registrar(
                 "USUARIOS",
@@ -91,11 +94,11 @@ public class UsuarioServicio {
                 Map.of()
         );
 
-        return "Usuario creado exitosamente.";
+        return convertirAUsuarioResponse(recargar(usuario.getId()));
     }
 
     @Transactional
-    public void editarUsuario(Long idUsuario, UsuarioModificacionRequest request, Usuario actor) {
+    public UsuarioResponse editarUsuario(Long idUsuario, UsuarioModificacionRequest request, Usuario actor) {
         Usuario actorActual = rbac.exigirPermiso(actor, PERM_USUARIOS_ADMIN, "MODIFICAR_USUARIO");
         Usuario usuario = bloquearObjetivo(idUsuario);
 
@@ -156,35 +159,42 @@ public class UsuarioServicio {
             usuario.setAuthVersion((usuario.getAuthVersion() == null ? 0L : usuario.getAuthVersion()) + 1L);
         }
 
-        usuarios.save(usuario);
+        usuario = usuarios.saveAndFlush(usuario);
 
         Map<String, ?> nuevo = snapshot(usuario);
 
         if (passwordCambiada) {
             auditarCambio("PASSWORD_CAMBIADA", usuario, actorActual, anterior, nuevo);
         }
+
         if (rolesCambiados) {
             auditarCambio("ROLES_CAMBIADOS", usuario, actorActual, anterior, nuevo);
         }
+
         if (estadoCambiado) {
             auditarCambio(Boolean.TRUE.equals(usuario.getActivo())
                     ? "USUARIO_ACTIVADO"
                     : "USUARIO_DESACTIVADO", usuario, actorActual, anterior, nuevo);
         }
+
         if (!passwordCambiada && !rolesCambiados && !estadoCambiado) {
             auditarCambio("USUARIO_MODIFICADO", usuario, actorActual, anterior, nuevo);
         }
+
+        return convertirAUsuarioResponse(recargar(usuario.getId()));
     }
 
+    @Transactional(readOnly = true)
     public UsuarioResponse obtenerUsuario(Long idUsuario) {
-        return convertirAUsuarioResponse(usuarios.findByIdConRolesYPermisos(idUsuario)
-                .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado")));
+        return convertirAUsuarioResponse(recargar(idUsuario));
     }
 
+    @Transactional(readOnly = true)
     public List<Usuario> listarUsuarios(String rolCodigo, Boolean activo) {
         return usuarios.findAllConRolesYPermisos().stream()
                 .filter(usuario -> activo == null || activo.equals(usuario.getActivo()))
-                .filter(usuario -> rolCodigo == null || rolCodigo.isBlank()
+                .filter(usuario -> rolCodigo == null
+                        || rolCodigo.isBlank()
                         || usuario.codigosRolesActivos().stream()
                         .anyMatch(codigo -> codigo.equalsIgnoreCase(rolCodigo.trim())))
                 .toList();
@@ -199,9 +209,13 @@ public class UsuarioServicio {
         editarUsuario(idUsuario, new UsuarioModificacionRequest(null, null, null, false), actor);
     }
 
-    private Usuario bloquearObjetivo(Long idUsuario) {
-        Usuario snapshot = usuarios.findByIdConRolesYPermisos(idUsuario)
+    private Usuario recargar(Long idUsuario) {
+        return usuarios.findByIdConRolesYPermisos(idUsuario)
                 .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
+    }
+
+    private Usuario bloquearObjetivo(Long idUsuario) {
+        Usuario snapshot = recargar(idUsuario);
 
         if (Boolean.TRUE.equals(snapshot.getActivo()) && snapshot.esSuperadminSistema()) {
             return usuarios.findActiveSuperadminsForUpdate().stream()

@@ -1,17 +1,19 @@
 package ledance.controladores;
 
-import ledance.dto.usuario.request.UsuarioRegistroRequest;
+import jakarta.validation.Valid;
 import ledance.dto.usuario.request.UsuarioModificacionRequest;
+import ledance.dto.usuario.request.UsuarioRegistroRequest;
 import ledance.dto.usuario.response.UsuarioResponse;
 import ledance.entidades.Usuario;
 import ledance.servicios.usuario.UsuarioServicio;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.net.URI;
 import java.util.List;
-import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/usuarios")
@@ -25,15 +27,23 @@ public class UsuarioControlador {
     }
 
     @PostMapping("/registro")
-    public ResponseEntity<UsuarioResponse> registrarUsuario(@RequestBody @Validated UsuarioRegistroRequest datosRegistro,
-                                                             @AuthenticationPrincipal Usuario actor) {
-        return ResponseEntity.ok(usuarioService.registrarUsuario(datosRegistro, actor));
+    public ResponseEntity<UsuarioResponse> registrarUsuario(
+            @Valid @RequestBody UsuarioRegistroRequest datosRegistro,
+            @AuthenticationPrincipal Usuario actor
+    ) {
+        UsuarioResponse response = usuarioService.registrarUsuario(datosRegistro, actor);
+
+        return ResponseEntity
+                .created(URI.create("/api/usuarios/" + response.id()))
+                .body(response);
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<UsuarioResponse> editarUsuario(@PathVariable Long id,
-                                                          @RequestBody @Validated UsuarioModificacionRequest modificacionRequest,
-                                                          @AuthenticationPrincipal Usuario actor) {
+    public ResponseEntity<UsuarioResponse> editarUsuario(
+            @PathVariable Long id,
+            @Valid @RequestBody UsuarioModificacionRequest modificacionRequest,
+            @AuthenticationPrincipal Usuario actor
+    ) {
         return ResponseEntity.ok(usuarioService.editarUsuario(id, modificacionRequest, actor));
     }
 
@@ -43,28 +53,33 @@ public class UsuarioControlador {
     }
 
     @GetMapping
-    public ResponseEntity<List<UsuarioResponse>> listarUsuarios(@RequestParam(required = false) String rol,
-                                                                @RequestParam(required = false) Boolean activo) {
-        List<UsuarioResponse> usuarios = usuarioService.listarUsuarios(rol, activo)
+    public ResponseEntity<List<UsuarioResponse>> listarUsuarios(
+            @RequestParam(required = false) String rol,
+            @RequestParam(required = false) Boolean activo
+    ) {
+        List<UsuarioResponse> response = usuarioService.listarUsuarios(rol, activo)
                 .stream()
                 .map(usuarioService::convertirAUsuarioResponse)
-                .collect(Collectors.toList());
-        return ResponseEntity.ok(usuarios);
+                .toList();
+
+        return ResponseEntity.ok(response);
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<String> eliminarUsuario(@PathVariable Long id,
-                                                   @AuthenticationPrincipal Usuario actor) {
+    public ResponseEntity<Void> eliminarUsuario(
+            @PathVariable Long id,
+            @AuthenticationPrincipal Usuario actor
+    ) {
         usuarioService.eliminarUsuario(id, actor);
-        return ResponseEntity.ok("Usuario desactivado.");
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/perfil")
     public ResponseEntity<UsuarioResponse> obtenerPerfil(@AuthenticationPrincipal Usuario usuario) {
         if (usuario == null) {
-            return ResponseEntity.status(401).build();
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
+
         return ResponseEntity.ok(usuarioService.convertirAUsuarioResponse(usuario));
     }
-
 }

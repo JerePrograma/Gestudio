@@ -1,8 +1,8 @@
 package ledance.servicios.rol;
 
-import jakarta.transaction.Transactional;
 import ledance.dto.rol.RolMapper;
 import ledance.dto.rol.request.RolModificacionRequest;
+import ledance.dto.rol.request.RolPermisosRequest;
 import ledance.dto.rol.request.RolRegistroRequest;
 import ledance.dto.rol.response.RolResponse;
 import ledance.entidades.Permiso;
@@ -14,6 +14,7 @@ import ledance.repositorios.PermisoRepositorio;
 import ledance.repositorios.RolRepositorio;
 import ledance.repositorios.UsuarioRepositorio;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -42,12 +43,15 @@ public class RolServicio {
         this.rbac = rbac;
     }
 
+    @Transactional(readOnly = true)
     public RolResponse obtenerRolPorId(Long id) {
         Rol rol = roles.findWithPermisosById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Rol no encontrado."));
+
         return rolMapper.toDTO(rol);
     }
 
+    @Transactional(readOnly = true)
     public List<RolResponse> listarRoles() {
         return roles.findAllByOrderByCodigoAsc().stream()
                 .map(rolMapper::toDTO)
@@ -91,16 +95,10 @@ public class RolServicio {
         Rol rol = roles.findWithPermisosById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Rol no encontrado."));
 
-        if (rol.esSuperadminSistema()) {
-            throw new OperacionNoPermitidaException("SUPERADMIN no puede editarse desde panel");
-        }
-
-        if (rol.esSistema() && !rol.esEditable()) {
-            throw new OperacionNoPermitidaException("El rol sistema no es editable");
-        }
+        validarEditableDesdePanel(rol);
 
         Set<Permiso> permisosAsignados = request.permisos() == null
-                ? rol.getPermisos()
+                ? new LinkedHashSet<>(rol.getPermisos())
                 : permisosExistentes(request.permisos());
 
         validarNoEscalaPermisos(actorActual, permisosAsignados);
@@ -121,6 +119,26 @@ public class RolServicio {
     }
 
     @Transactional
+    public RolResponse actualizarPermisos(Long id, RolPermisosRequest request, Usuario actor) {
+        Usuario actorActual = rbac.exigirPermiso(actor, PERM_ROLES_ADMIN, "MODIFICAR_PERMISOS_ROL");
+
+        Rol rol = roles.findWithPermisosById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Rol no encontrado."));
+
+        validarEditableDesdePanel(rol);
+
+        Set<Permiso> permisosAsignados = permisosExistentes(request.permisos());
+        validarNoEscalaPermisos(actorActual, permisosAsignados);
+
+        rol.setPermisos(permisosAsignados);
+
+        Rol saved = roles.saveAndFlush(rol);
+        usuarios.incrementarAuthVersionPorRolId(saved.getId());
+
+        return rolMapper.toDTO(saved);
+    }
+
+    @Transactional
     public RolResponse clonarRol(Long id, RolRegistroRequest request, Usuario actor) {
         Usuario actorActual = rbac.exigirPermiso(actor, PERM_ROLES_ADMIN, "CLONAR_ROL");
 
@@ -128,6 +146,10 @@ public class RolServicio {
                 .orElseThrow(() -> new IllegalArgumentException("Rol origen no encontrado."));
 
         String codigo = normalizarCodigoRol(request.codigo());
+
+        if ("SUPERADMIN".equals(codigo)) {
+            throw new OperacionNoPermitidaException("SUPERADMIN no puede crearse desde panel");
+        }
 
         if (roles.existsByCodigoIgnoreCase(codigo)) {
             throw new IllegalArgumentException("Ya existe un rol con código: " + codigo);
@@ -150,6 +172,35 @@ public class RolServicio {
         clon.setPermisos(permisosAsignados);
 
         return rolMapper.toDTO(roles.saveAndFlush(clon));
+    }
+
+    @Transactional
+    public void desactivarRol(Long id, Usuario actor) {
+        rbac.exigirPermiso(actor, PERM_ROLES_ADMIN, "DESACTIVAR_ROL");
+
+        Rol rol = roles.findWithPermisosById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Rol no encontrado."));
+
+        validarEditableDesdePanel(rol);
+
+        if (!Boolean.TRUE.equals(rol.getActivo())) {
+            return;
+        }
+
+        rol.setActivo(false);
+
+        Rol saved = roles.saveAndFlush(rol);
+        usuarios.incrementarAuthVersionPorRolId(saved.getId());
+    }
+
+    private void validarEditableDesdePanel(Rol rol) {
+        if (rol.esSuperadminSistema()) {
+            throw new OperacionNoPermitidaException("SUPERADMIN no puede editarse desde panel");
+        }
+
+        if (rol.esSistema() && !rol.esEditable()) {
+            throw new OperacionNoPermitidaException("El rol sistema no es editable");
+        }
     }
 
     private Set<Permiso> permisosExistentes(Set<String> codigos) {

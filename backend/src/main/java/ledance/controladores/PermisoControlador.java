@@ -1,7 +1,7 @@
 package ledance.controladores;
 
 import ledance.dto.rol.response.PermisoResponse;
-import ledance.servicios.rol.PermisoServicio;
+import ledance.servicios.permiso.PermisoServicio;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -18,7 +18,9 @@ public class PermisoControlador {
     }
 
     @GetMapping
-    public ResponseEntity<List<PermisoResponse>> listarPermisos() {
-        return ResponseEntity.ok(permisos.listarPermisos());
+    public ResponseEntity<List<PermisoResponse>> listarPermisos(
+            @RequestParam(required = false) String modulo
+    ) {
+        return ResponseEntity.ok(permisos.listarPermisos(modulo));
     }
 }
