@@ -20,6 +20,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,23 +41,28 @@ public class EgresoServicio {
     private final MovimientoCajaRepositorio caja;
     private final Clock clock;
     private final RbacService rbac;
+    private final JdbcTemplate jdbc;
 
     public EgresoServicio(EgresoRepositorio egresos,
                           MetodoPagoRepositorio metodos,
                           MovimientoCajaRepositorio caja,
                           Clock clock,
-                          RbacService rbac) {
+                          RbacService rbac,
+                          JdbcTemplate jdbc) {
         this.egresos = egresos;
         this.metodos = metodos;
         this.caja = caja;
         this.clock = clock;
         this.rbac = rbac;
+        this.jdbc = jdbc;
     }
 
     @Transactional
     public EgresoResponse agregarEgreso(EgresoRegistroRequest request, Usuario principal) {
         String hash = hash(request);
         Usuario usuario = rbac.exigirPermiso(principal, PERM_EGRESOS_ADMIN, "REGISTRAR_EGRESO");
+
+        bloquearIdempotencyKey("REGISTRAR_EGRESO", request.idempotencyKey());
 
         Egreso previo = egresos.findByIdempotencyKey(request.idempotencyKey()).orElse(null);
         if (previo != null) {
@@ -82,7 +88,7 @@ public class EgresoServicio {
         egreso.setUsuario(usuario);
         egreso.setIdempotencyKey(request.idempotencyKey());
         egreso.setRequestHash(hash);
-        egresos.save(egreso);
+        egresos.saveAndFlush(egreso);
 
         MovimientoCaja movimiento = new MovimientoCaja();
         movimiento.setTipo(TipoMovimientoCaja.EGRESO);
@@ -154,6 +160,14 @@ public class EgresoServicio {
     @Transactional(readOnly = true)
     public Page<EgresoResponse> listarEgresos(Pageable pageable) {
         return egresos.findAll(pageable).map(this::respuesta);
+    }
+
+    private void bloquearIdempotencyKey(String operacion, String idempotencyKey) {
+        jdbc.query(
+                "SELECT pg_advisory_xact_lock(hashtextextended(?, 0))",
+                ps -> ps.setString(1, operacion + ":" + idempotencyKey),
+                rs -> null
+        );
     }
 
     private EgresoResponse respuesta(Egreso e) {
