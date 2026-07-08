@@ -94,14 +94,14 @@ La exclusión de vencimiento de hoy/futuro, saldo cero/negativo/nulo e históric
 
 ## Archivos productivos modificados
 
-- `backend/src/main/java/ledance/controladores/AlumnoControlador.java`
-- `backend/src/main/java/ledance/repositorios/PagoRepositorio.java`
-- `backend/src/main/java/ledance/servicios/alumno/AlumnoServicio.java`
-- `backend/src/main/java/ledance/servicios/inscripcion/InscripcionServicio.java`
-- `backend/src/main/java/ledance/servicios/mensualidad/MensualidadServicio.java`
-- `backend/src/main/java/ledance/servicios/pago/PagoServicio.java`
+- `backend/src/main/java/gestudio/controladores/AlumnoControlador.java`
+- `backend/src/main/java/gestudio/repositorios/PagoRepositorio.java`
+- `backend/src/main/java/gestudio/servicios/alumno/AlumnoServicio.java`
+- `backend/src/main/java/gestudio/servicios/inscripcion/InscripcionServicio.java`
+- `backend/src/main/java/gestudio/servicios/mensualidad/MensualidadServicio.java`
+- `backend/src/main/java/gestudio/servicios/pago/PagoServicio.java`
 
-Eliminado: `backend/src/main/java/ledance/servicios/alumno/IAlumnoServicio.java`.
+Eliminado: `backend/src/main/java/gestudio/servicios/alumno/IAlumnoServicio.java`.
 
 Pruebas modificadas/creadas: `MensualidadServicioTest`, `PagoServicioTest`, `AlumnoServicioTest` e `InscripcionServicioTest`.
 
@@ -127,7 +127,7 @@ Documentación: este archivo y `05-risk-register.md`.
 | `docker compose config` | PASS |
 | Compose local + productivo sin variables obligatorias | FAIL esperado; rechazó `POSTGRES_PASSWORD` ausente |
 | Compose local + productivo con placeholders efímeros y `config --quiet` | PASS |
-| `docker build --pull -t le-dance-backend:phase3-test .\backend` final | PASS; 55 tests dentro de la imagen; imagen creada |
+| `docker build --pull -t gestudio-backend:phase3-test .\backend` final | PASS; 55 tests dentro de la imagen; imagen creada |
 | `scripts/codex/status.ps1` con Corretto 21 y Docker disponible | PASS |
 | `scripts/codex/setup.ps1` con Corretto 21 | PASS; dependencias backend/frontend preparadas, sin servicios iniciados |
 | `scripts/codex/validate.ps1` final con Corretto 21 | PASS; backend clean verify, frontend lint/test/build y Compose local |

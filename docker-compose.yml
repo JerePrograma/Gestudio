@@ -3,7 +3,7 @@ services:
     image: postgres:15.12-alpine3.21
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-ledance_db}
+      POSTGRES_DB: ${POSTGRES_DB:-gestudio_db}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-only-change-me}
       TZ: ${APP_TIME_ZONE:-America/Argentina/Buenos_Aires}
@@ -20,13 +20,13 @@ services:
       - internal
 
   backend:
-    image: ${BACKEND_IMAGE:-le-dance-backend:local}
+    image: ${BACKEND_IMAGE:-gestudio-backend:local}
     build:
       context: ./backend
     restart: unless-stopped
     environment:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
-      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-ledance_db}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-gestudio_db}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-postgres}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-local-only-change-me}
       SPRING_JPA_HIBERNATE_DDL_AUTO: ${SPRING_JPA_HIBERNATE_DDL_AUTO:-validate}
@@ -34,7 +34,7 @@ services:
       SPRING_FLYWAY_BASELINE_ON_MIGRATE: ${SPRING_FLYWAY_BASELINE_ON_MIGRATE:-false}
       SPRING_FLYWAY_BASELINE_VERSION: ${SPRING_FLYWAY_BASELINE_VERSION:-1}
       JWT_SECRET: ${JWT_SECRET:-local-only-jwt-secret-change-before-sharing}
-      JWT_ISSUER: ${JWT_ISSUER:-le-dance-local}
+      JWT_ISSUER: ${JWT_ISSUER:-gestudio-local}
       JWT_ACCESS_TOKEN_HOURS: ${JWT_ACCESS_TOKEN_HOURS:-2}
       JWT_REFRESH_TOKEN_HOURS: ${JWT_REFRESH_TOKEN_HOURS:-168}
       APP_TIME_ZONE: ${APP_TIME_ZONE:-America/Argentina/Buenos_Aires}
@@ -48,7 +48,7 @@ services:
       APP_BOOTSTRAP_ADMIN_USERNAME: ${APP_BOOTSTRAP_ADMIN_USERNAME:-}
       APP_BOOTSTRAP_ADMIN_PASSWORD: ${APP_BOOTSTRAP_ADMIN_PASSWORD:-}
       APP_BOOTSTRAP_ADMIN_RESET_EXISTING_PASSWORD: ${APP_BOOTSTRAP_ADMIN_RESET_EXISTING_PASSWORD:-false}
-      LEDANCE_HOME: /app
+      GESTUDIO_HOME: /app
       SERVER_PORT: ${SERVER_PORT:-8080}
     ports:
       - "${BACKEND_PORT:-8080}:${SERVER_PORT:-8080}"
@@ -67,7 +67,7 @@ services:
       - internal
 
   frontend:
-    image: ${FRONTEND_IMAGE:-le-dance-frontend:local}
+    image: ${FRONTEND_IMAGE:-gestudio-frontend:local}
     build:
       context: ./frontend
       args:

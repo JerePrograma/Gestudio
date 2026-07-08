@@ -1,7 +1,7 @@
 # Auditoría de entorno de desarrollo
 
 Fecha: 2026-06-28  
-Repositorio: `C:\laburo\le-dance`  
+Repositorio: `C:\laburo\gestudio`  
 Rama inicial: `main`  
 Commit inicial: `b7b04461f2aec2f788976674451d310ff32cdf62` (`Merge pull request #10 from JerePrograma/feature/kiro-agents`)
 
@@ -68,7 +68,7 @@ No se reproduce ningún valor sensible encontrado. Los patrones detectados fuero
 | Comando | Resultado inicial |
 | --- | --- |
 | `mvn clean verify` con entorno heredado | FAIL 1: `JAVA_HOME` inválido |
-| `mvn clean verify` con JDK 21 y `LEDANCE_HOME` corregidos sólo para diagnóstico | FAIL 1: 15 tests, 3 fallos preexistentes por separadores de ruta Windows |
+| `mvn clean verify` con JDK 21 y `GESTUDIO_HOME` corregidos sólo para diagnóstico | FAIL 1: 15 tests, 3 fallos preexistentes por separadores de ruta Windows |
 | `npm ci` | FAIL 1: no existía `package-lock.json` |
 | `npm run lint` | FAIL 1: dependencias ausentes; `eslint` no encontrado |
 | `npm run build` | FAIL 1: dependencias ausentes; `tsc` no encontrado |
@@ -102,9 +102,9 @@ No se reproduce ningún valor sensible encontrado. Los patrones detectados fuero
 | `frontend\npm run build` | PASS 0; Vite build 11.11 s, con dos warnings PostCSS preexistentes por orden de `@import` |
 | `docker compose config --quiet` | PASS 0 |
 | Compose local + override prod con placeholders no sensibles | PASS 0 |
-| `docker build --no-cache -t le-dance-backend:config-test .\backend` | PASS 0; 17 tests dentro de la etapa de build |
-| rebuild backend final tras incorporar asset | PASS 0; asset legible, 57.051 bytes, owner `ledance:ledance` |
-| `docker build --no-cache -t le-dance-frontend:config-test .\frontend` | PASS 0 final; el primer intento reveló un lock inválido, corregido con pin directo de `picomatch` 4.0.4 |
+| `docker build --no-cache -t gestudio-backend:config-test .\backend` | PASS 0; 17 tests dentro de la etapa de build |
+| rebuild backend final tras incorporar asset | PASS 0; asset legible, 57.051 bytes, owner `gestudio:gestudio` |
+| `docker build --no-cache -t gestudio-frontend:config-test .\frontend` | PASS 0 final; el primer intento reveló un lock inválido, corregido con pin directo de `picomatch` 4.0.4 |
 | healthcheck tools en imágenes | PASS 0; `nc` backend y `wget` frontend disponibles |
 | `scripts/codex/cleanup.ps1` dos veces | PASS 0 ambas; idempotente |
 | parse de todos los `.ps1` | PASS; 0 errores de sintaxis |
@@ -118,4 +118,4 @@ No se reproduce ningún valor sensible encontrado. Los patrones detectados fuero
 - Maven conserva warnings MapStruct/Lombok, APIs deprecadas y carga dinámica de Mockito preexistentes.
 - No se ejecutó una migración Flyway contra PostgreSQL: no hubo cambios de migración y el puerto 5432 estaba ocupado por una instancia ajena. No se tocó esa instancia.
 - Docker Engine no estaba disponible al inicio, pero pasó a estar operativo y permitió completar ambos builds. No se levantó producción ni se ejecutó el job de despliegue.
-- El asset de firma existe en raíz y en el contexto backend; deben mantenerse sincronizados mientras el resolver heredado siga usando `LEDANCE_HOME`.
+- El asset de firma existe en raíz y en el contexto backend; deben mantenerse sincronizados mientras el resolver heredado siga usando `GESTUDIO_HOME`.

@@ -5,7 +5,7 @@
 ### Run All Tests
 ```bash
 cd backend
-export LEDANCE_HOME=/opt/le-dance
+export GESTUDIO_HOME=/opt/gestudio
 export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
 mvn test
 ```
@@ -37,24 +37,24 @@ xdg-open backend/target/site/jacoco/index.html
 
 | Package | Classes | Tests | Status |
 |---------|---------|-------|--------|
-| `ledance.util` | 1 | 13 ✅ | Complete |
-| `ledance.validaciones.*` | 5+ | 0 | Needed |
-| `ledance.servicios.pago` | 1 | 2 ✅ | Partial |
-| `ledance.servicios.*` | 30+ | ~2 | Critical |
-| `ledance.dto.*` | 100+ | 0 | Needed |
+| `gestudio.util` | 1 | 13 ✅ | Complete |
+| `gestudio.validaciones.*` | 5+ | 0 | Needed |
+| `gestudio.servicios.pago` | 1 | 2 ✅ | Partial |
+| `gestudio.servicios.*` | 30+ | ~2 | Critical |
+| `gestudio.dto.*` | 100+ | 0 | Needed |
 
 ## Adding New Tests
 
 ### 1. Create Test File
 ```bash
-# For a class: backend/src/main/java/ledance/mypackage/MyClass.java
-# Create:     backend/src/test/java/ledance/mypackage/MyClassTest.java
-touch backend/src/test/java/ledance/mypackage/MyClassTest.java
+# For a class: backend/src/main/java/gestudio/mypackage/MyClass.java
+# Create:     backend/src/test/java/gestudio/mypackage/MyClassTest.java
+touch backend/src/test/java/gestudio/mypackage/MyClassTest.java
 ```
 
 ### 2. Test Template
 ```java
-package ledance.mypackage;
+package gestudio.mypackage;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
@@ -128,8 +128,8 @@ sudo apt install maven
 # Set default Java
 sudo update-alternatives --config java
 
-# Create LEDANCE_HOME for tests
-export LEDANCE_HOME=/opt/le-dance
+# Create GESTUDIO_HOME for tests
+export GESTUDIO_HOME=/opt/gestudio
 ```
 
 ### macOS Setup
@@ -140,7 +140,7 @@ brew install maven
 
 # Set environment
 export JAVA_HOME=/opt/homebrew/opt/openjdk@21
-export LEDANCE_HOME=/opt/le-dance
+export GESTUDIO_HOME=/opt/gestudio
 ```
 
 ## IDE Integration
@@ -157,10 +157,10 @@ export LEDANCE_HOME=/opt/le-dance
 
 ## Troubleshooting
 
-**❌ Error: "Variable de entorno LEDANCE_HOME no definida"**
+**❌ Error: "Variable de entorno GESTUDIO_HOME no definida"**
 ```bash
 # Solution: Set the environment variable
-export LEDANCE_HOME=/opt/le-dance
+export GESTUDIO_HOME=/opt/gestudio
 mvn test
 ```
 

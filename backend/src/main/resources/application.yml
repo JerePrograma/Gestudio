@@ -1,6 +1,6 @@
 spring:
   application:
-    name: LeDance
+    name: Gestudio
   datasource:
     driver-class-name: org.postgresql.Driver
   jpa:
@@ -42,8 +42,8 @@ server:
     mime-types: text/html,text/css,application/javascript,application/json,image/svg+xml,application/font-woff2
 
 jwt:
-  issuer: ${JWT_ISSUER:le-dance-local}
-  audience: ${JWT_AUDIENCE:le-dance-web}
+  issuer: ${JWT_ISSUER:gestudio-local}
+  audience: ${JWT_AUDIENCE:gestudio-web}
   access-token-ttl: ${JWT_ACCESS_TOKEN_TTL:PT15M}
   refresh-token-ttl: ${JWT_REFRESH_TOKEN_TTL:P7D}
 
@@ -54,7 +54,7 @@ app:
   security:
     bcrypt-strength: ${APP_SECURITY_BCRYPT_STRENGTH:12}
     refresh-cookie:
-      name: ${APP_SECURITY_REFRESH_COOKIE_NAME:ledance_refresh}
+      name: ${APP_SECURITY_REFRESH_COOKIE_NAME:gestudio_refresh}
       secure: ${APP_SECURITY_REFRESH_COOKIE_SECURE:true}
       same-site: ${APP_SECURITY_REFRESH_COOKIE_SAME_SITE:Strict}
       domain: ${APP_SECURITY_REFRESH_COOKIE_DOMAIN:}

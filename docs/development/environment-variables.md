@@ -7,7 +7,7 @@ Los archivos versionados `.env.example` y `.env.local.example` contienen plantil
 | Variable | Perfil | Obligatoria | Valor local / comportamiento |
 | --- | --- | --- | --- |
 | `SPRING_PROFILES_ACTIVE` | todos | prod: sí | `dev` |
-| `SPRING_DATASOURCE_URL` | todos | prod: sí | `jdbc:postgresql://localhost:5432/ledance_db` |
+| `SPRING_DATASOURCE_URL` | todos | prod: sí | `jdbc:postgresql://localhost:5432/gestudio_db` |
 | `SPRING_DATASOURCE_USERNAME` | todos | prod: sí | `postgres` |
 | `SPRING_DATASOURCE_PASSWORD` | todos | prod: sí, secreta | valor local explícito |
 | `SPRING_JPA_HIBERNATE_DDL_AUTO` | todos | no | `validate`; no usar `update` |
@@ -15,7 +15,7 @@ Los archivos versionados `.env.example` y `.env.local.example` contienen plantil
 | `SPRING_FLYWAY_BASELINE_ON_MIGRATE` | todos | no | `false`; habilitar sólo tras revisar un esquema sin historial |
 | `SPRING_FLYWAY_BASELINE_VERSION` | todos | no | `1`; sólo se usa con baseline habilitado |
 | `JWT_SECRET` | todos | prod: sí, secreta | mínimo 32 caracteres; local no reutilizable |
-| `JWT_ISSUER` | todos | prod: sí | `le-dance-local` |
+| `JWT_ISSUER` | todos | prod: sí | `gestudio-local` |
 | `JWT_ACCESS_TOKEN_HOURS` | todos | prod: sí | `2` |
 | `JWT_REFRESH_TOKEN_HOURS` | todos | prod: sí | `168` |
 | `SPRING_MAIL_HOST` | prod | sí | sin fallback |
@@ -34,7 +34,7 @@ Los archivos versionados `.env.example` y `.env.local.example` contienen plantil
 | `APP_SECURITY_REFRESH_COOKIE_SECURE` | todos | no | `false` en `dev` para HTTP local; `true` por defecto fuera de `dev` |
 | `APP_SECURITY_REFRESH_COOKIE_SAME_SITE` | todos | no | `Strict` |
 | `APP_SECURITY_REFRESH_COOKIE_PATH` | todos | no | `/api/login` |
-| `LEDANCE_HOME` | todos | sí para assets heredados | raíz del repositorio o `/app` en Docker |
+| `GESTUDIO_HOME` | todos | sí para assets heredados | raíz del repositorio o `/app` en Docker |
 | `APP_BOOTSTRAP_SUPERADMIN_ENABLED` | bootstrap único | no | `false`; habilitar sólo para crear el `SUPERADMIN` inicial. |
 | `APP_BOOTSTRAP_SUPERADMIN_USERNAME` | bootstrap único | si se habilita | nombre explícito del `SUPERADMIN` inicial. |
 | `APP_BOOTSTRAP_SUPERADMIN_PASSWORD` | bootstrap único | si se habilita | secreto externo de 16 a 72 bytes UTF-8. |
@@ -58,15 +58,15 @@ Vite incorpora estas variables durante el build. Cambiar una variable requiere r
 
 | Variable | Obligatoria | Valor local |
 | --- | --- | --- |
-| `POSTGRES_DB` | prod: sí | `ledance_db` |
+| `POSTGRES_DB` | prod: sí | `gestudio_db` |
 | `POSTGRES_USER` | prod: sí | `postgres` |
 | `POSTGRES_PASSWORD` | prod: sí, secreta | valor local explícito |
 | `POSTGRES_PORT` | no | `5432` |
 | `BACKEND_PORT` | no | `8080` |
 | `FRONTEND_PORT` | no | `8081` |
 | `COMPOSE_PROJECT_NAME` | no | derivado del directorio; definir uno único si hace falta |
-| `BACKEND_IMAGE` | prod: sí | `le-dance-backend:local` |
-| `FRONTEND_IMAGE` | prod: sí | `le-dance-frontend:local` |
+| `BACKEND_IMAGE` | prod: sí | `gestudio-backend:local` |
+| `FRONTEND_IMAGE` | prod: sí | `gestudio-frontend:local` |
 
 ## Variables recomendadas para Codex
 
@@ -76,27 +76,27 @@ La interfaz de Codex debe usar valores de desarrollo, nunca secretos productivos
 | --- | --- |
 | `JAVA_HOME` | `C:\Program Files\Java\corretto-21.0.7` |
 | `SPRING_PROFILES_ACTIVE` | `dev` |
-| `SPRING_DATASOURCE_URL` | `jdbc:postgresql://localhost:5432/ledance_db` |
+| `SPRING_DATASOURCE_URL` | `jdbc:postgresql://localhost:5432/gestudio_db` |
 | `SPRING_DATASOURCE_USERNAME` | `postgres` |
 | `SPRING_DATASOURCE_PASSWORD` | `local-only-change-me` |
 | `SPRING_JPA_HIBERNATE_DDL_AUTO` | `validate` |
 | `SPRING_FLYWAY_ENABLED` | `true` |
 | `JWT_SECRET` | `local-only-jwt-secret-change-before-sharing` |
-| `JWT_ISSUER` | `le-dance-local` |
+| `JWT_ISSUER` | `gestudio-local` |
 | `JWT_ACCESS_TOKEN_HOURS` | `2` |
 | `JWT_REFRESH_TOKEN_HOURS` | `168` |
 | `APP_TIME_ZONE` | `America/Argentina/Buenos_Aires` |
-| `APP_RECEIPTS_PATH` | `C:\laburo\le-dance\pdfs` |
+| `APP_RECEIPTS_PATH` | `C:\laburo\gestudio\pdfs` |
 | `APP_CORS_ALLOWED_ORIGINS` | `http://localhost:5173,http://localhost:8081` |
 | `APP_SCHEDULING_ENABLED` | `false` |
-| `LEDANCE_HOME` | `C:\laburo\le-dance` |
+| `GESTUDIO_HOME` | `C:\laburo\gestudio` |
 | `VITE_API_BASE_URL` | `http://localhost:8080/api` |
 
 Para tests aislados de `FilePathResolver` existe el override de JVM
-`-Dledance.home=<ruta>`. La ejecución normal continúa usando `LEDANCE_HOME`; no
+`-Dgestudio.home=<ruta>`. La ejecución normal continúa usando `GESTUDIO_HOME`; no
 se recomienda el override de JVM para producción.
 | `VITE_APP_TIME_ZONE` | `America/Argentina/Buenos_Aires` |
-| `POSTGRES_DB` | `ledance_db` |
+| `POSTGRES_DB` | `gestudio_db` |
 | `POSTGRES_USER` | `postgres` |
 | `POSTGRES_PASSWORD` | `local-only-change-me` |
 | `POSTGRES_PORT` | `5432` |

@@ -2,9 +2,9 @@
 
 # Configuración
 TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
-BACKUP_DIR="/opt/le-dance/basebackup"
-BACKUP_FILE="${BACKUP_DIR}/ledance_db_${TIMESTAMP}.backup"
-DB_NAME="ledance_db"
+BACKUP_DIR="/opt/gestudio/basebackup"
+BACKUP_FILE="${BACKUP_DIR}/gestudio_db_${TIMESTAMP}.backup"
+DB_NAME="gestudio_db"
 DB_USER="postgres"
 DB_HOST="localhost"
 DB_PORT="5432"
@@ -21,5 +21,5 @@ chmod 600 "$BACKUP_FILE"
 
 # Mantener sólo los 7 backups más recientes
 cd "$BACKUP_DIR"
-ls -1t ledance_db_*.backup | tail -n +8 | xargs -r rm --
+ls -1t gestudio_db_*.backup | tail -n +8 | xargs -r rm --
 

@@ -53,8 +53,8 @@ distintos por ejecución; PostgreSQL sólo se consulta con `docker compose exec
 
 | Proyecto | Puertos PostgreSQL/backend/frontend | Duración | Resultado |
 | --- | --- | --- | --- |
-| `ledance-smoke-21692-e608c2c9` | `60745` / `60746` / `60747` | `00:01:51` | PASS; cleanup y verificación externa sin recursos |
-| `ledance-smoke-20344-716ba129` | `61952` / `61953` / `61954` | `00:01:37` | PASS; cleanup y verificación externa sin recursos |
+| `gestudio-smoke-21692-e608c2c9` | `60745` / `60746` / `60747` | `00:01:51` | PASS; cleanup y verificación externa sin recursos |
+| `gestudio-smoke-20344-716ba129` | `61952` / `61953` / `61954` | `00:01:37` | PASS; cleanup y verificación externa sin recursos |
 
 Ambas comenzaron con V1 vacía, crearon un único `ADMINISTRADOR`, apagaron el
 bootstrap antes del reinicio y recorrieron por API alumno, inscripción,

@@ -19,8 +19,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke-local.ps1
 
 Opciones:
 
-- `-SkipBuild`: reutiliza las imágenes `le-dance-backend:smoke-check` y
-  `le-dance-frontend:smoke-check`.
+- `-SkipBuild`: reutiliza las imágenes `gestudio-backend:smoke-check` y
+  `gestudio-frontend:smoke-check`.
 - `-VerboseHttp`: muestra método, URL y status; nunca bodies ni tokens.
 - `-KeepStack`: conserva el proyecto para diagnóstico y muestra sólo comandos
   seguros para inspeccionarlo o eliminarlo.

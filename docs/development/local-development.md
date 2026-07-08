@@ -50,11 +50,11 @@ Los scripts no importan `.env`. Para ejecutar Maven/Vite con puertos distintos, 
 
 ```powershell
 $env:SPRING_PROFILES_ACTIVE = "dev"
-$env:SPRING_DATASOURCE_URL = "jdbc:postgresql://localhost:5433/ledance_db"
+$env:SPRING_DATASOURCE_URL = "jdbc:postgresql://localhost:5433/gestudio_db"
 $env:BACKEND_PORT = "8090"
 $env:SERVER_PORT = $env:BACKEND_PORT
 $env:FRONTEND_PORT = "5190"
-$env:LEDANCE_HOME = "C:\ruta con espacios\le-dance"
+$env:GESTUDIO_HOME = "C:\ruta con espacios\gestudio"
 ```
 
 `start-backend.ps1` declara `dev` sólo para la ejecución local cuando la terminal no eligió otro perfil y traduce `BACKEND_PORT` a `SERVER_PORT`. `start-frontend.ps1` pasa `FRONTEND_PORT` a Vite. Compose usa su propio `.env` y mantiene PostgreSQL en 5432 dentro de la red Docker aunque publique otro puerto al host.
@@ -214,7 +214,7 @@ exit $LASTEXITCODE
 
 Las variables y acciones completas están en [Variables de entorno](environment-variables.md#variables-recomendadas-para-codex) y en la entrega de esta auditoría.
 
-Acciones recomendadas; todas usan `C:\laburo\le-dance` como directorio de ejecución:
+Acciones recomendadas; todas usan `C:\laburo\gestudio` como directorio de ejecución:
 
 | Nombre | Comando |
 | --- | --- |

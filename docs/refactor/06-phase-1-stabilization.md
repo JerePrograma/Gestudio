@@ -18,7 +18,7 @@ La línea base no era reproducible por cuatro causas confirmadas:
 
 También se confirmaron dos fallos ocultos por el entorno:
 
-- `FilePathResolverTest` exigía `LEDANCE_HOME` externo y no era autocontenido;
+- `FilePathResolverTest` exigía `GESTUDIO_HOME` externo y no era autocontenido;
 - `frontend/src/index.css` referenciaba `diseño/layout.css`, que no existe. PostCSS ignoraba ese `@import` por estar después de las directivas de Tailwind y sólo emitía un warning.
 
 ## Cambios aplicados
@@ -41,7 +41,7 @@ También se confirmaron dos fallos ocultos por el entorno:
 - `ActiveProfileGuard` exige exactamente uno de `dev`, `test` o `prod`.
 - Se agregaron pruebas de contexto para los tres perfiles, selección de `EmailPort`, schedulers, secreto JWT y ausencia de perfil.
 - CORS se verifica mediante un preflight real con MockMvc.
-- `FilePathResolverTest` usa un directorio temporal. La propiedad de sistema `ledance.home` permite el override controlado del test y `LEDANCE_HOME` sigue siendo el mecanismo de ejecución normal.
+- `FilePathResolverTest` usa un directorio temporal. La propiedad de sistema `gestudio.home` permite el override controlado del test y `GESTUDIO_HOME` sigue siendo el mecanismo de ejecución normal.
 
 ### Scripts y variables locales
 
@@ -102,15 +102,15 @@ Ninguna. Las migraciones V1-V060 permanecen sin cambios.
 | `frontend\npm run build` | PASS; 2295 módulos transformados, sin warnings de PostCSS. |
 | `docker compose config --quiet` | PASS. |
 | `docker compose -f docker-compose.yml -f docker-compose.prod.yml config --format json` con placeholders no secretos | PASS; `db` sin puertos y servicios de aplicación sin `build`. |
-| `docker build --pull -t le-dance-backend:phase1-test .\backend` | PASS; 25 tests dentro del build. |
-| `docker build --pull --build-arg VITE_API_BASE_URL=https://example.invalid/api --build-arg VITE_APP_TIME_ZONE=America/Argentina/Buenos_Aires -t le-dance-frontend:phase1-test .\frontend` | PASS. |
+| `docker build --pull -t gestudio-backend:phase1-test .\backend` | PASS; 25 tests dentro del build. |
+| `docker build --pull --build-arg VITE_API_BASE_URL=https://example.invalid/api --build-arg VITE_APP_TIME_ZONE=America/Argentina/Buenos_Aires -t gestudio-frontend:phase1-test .\frontend` | PASS. |
 | parse de todos los `*.ps1` con el parser de PowerShell | PASS. |
 | `status.ps1` con puertos 5433/8090/5180 | PASS; los tres puertos fueron leídos correctamente. |
 | `git diff --check` | PASS; sin errores de whitespace. |
 
 ## Fallos observados y corregidos durante la fase
 
-- El primer `clean verify` completo falló porque `FilePathResolverTest` exigía `LEDANCE_HOME`; el test quedó autocontenido y el siguiente `clean verify` pasó.
+- El primer `clean verify` completo falló porque `FilePathResolverTest` exigía `GESTUDIO_HOME`; el test quedó autocontenido y el siguiente `clean verify` pasó.
 - El primer build después de ordenar los imports CSS falló con `ENOENT` para `diseño/layout.css`; se confirmó que el archivo nunca existió y se eliminó la referencia muerta. Los builds posteriores pasaron sin warnings.
 - El primer `git diff --check` detectó un espacio final y una línea vacía final; ambos fueron corregidos.
 

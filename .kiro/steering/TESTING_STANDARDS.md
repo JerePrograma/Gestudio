@@ -36,7 +36,7 @@ public void testExternalIntegration() {
 ### 1. Unit Tests (Domain Layer)
 
 **Purpose**: Test business logic in isolation  
-**Location**: `src/test/java/ledance/core/domain`  
+**Location**: `src/test/java/gestudio/core/domain`  
 **Dependencies**: None (no mocks)  
 **Framework**: JUnit 5  
 **Target Coverage**: 90%+
@@ -95,7 +95,7 @@ public class PaymentCalculatorTest {
 ### 2. Integration Tests (Service + Repository)
 
 **Purpose**: Test services with real repositories, mocked external calls  
-**Location**: `src/test/java/ledance/servicios`  
+**Location**: `src/test/java/gestudio/servicios`  
 **Dependencies**: Database (in-memory or testcontainers), Mocked gateways  
 **Framework**: JUnit 5 + Spring Boot Test  
 **Target Coverage**: 70%+
@@ -173,7 +173,7 @@ public class PaymentServiceIntegrationTest {
 ### 3. Controller/API Tests
 
 **Purpose**: Test HTTP contract and request/response mapping  
-**Location**: `src/test/java/ledance/controladores`  
+**Location**: `src/test/java/gestudio/controladores`  
 **Dependencies**: Services (mocked)  
 **Framework**: JUnit 5 + MockMvc  
 **Target Coverage**: 60%+
@@ -269,7 +269,7 @@ public class PaymentControllerTest {
 ### 4. Repository Tests (Data Access)
 
 **Purpose**: Test database queries and mappings  
-**Location**: `src/test/java/ledance/infra/repositorios`  
+**Location**: `src/test/java/gestudio/infra/repositorios`  
 **Dependencies**: Database (embedded/testcontainers)  
 **Framework**: JUnit 5 + Spring Data Test (`@DataJpaTest`)  
 **Target Coverage**: 70%+
@@ -355,7 +355,7 @@ public class StudentRepositoryTest {
 ### 5. Adapter/Integration Tests (External Systems)
 
 **Purpose**: Test integration with external services  
-**Location**: `src/test/java/ledance/infra/adapters`  
+**Location**: `src/test/java/gestudio/infra/adapters`  
 **Dependencies**: Mocked external services (Wiremock, testcontainers)  
 **Framework**: JUnit 5 + Wiremock / testcontainers  
 **Target Coverage**: 60%+

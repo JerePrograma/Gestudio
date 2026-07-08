@@ -340,7 +340,7 @@ public class PaymentService {
 | Constants | UPPER_SNAKE_CASE | `MAX_RETRIES`, `DEFAULT_TIMEOUT` |
 | Variables | camelCase | `studentList`, `totalAmount` |
 | Boolean methods | `is...`, `has...`, `can...` | `isActive()`, `hasPermission()` |
-| Packages | lowercase (reverse domain) | `com.ledance.servicios.pago` |
+| Packages | lowercase (reverse domain) | `com.gestudio.servicios.pago` |
 
 ### Code Style Checklist
 
@@ -451,7 +451,7 @@ public final class StudentEnrollment {
 #### 1. **Ports**: Define service interfaces
 ```java
 // Ports (core domain interfaces)
-package ledance.core.ports;
+package gestudio.core.ports;
 
 public interface PaymentGateway {  // ← Port (outbound)
     PaymentResult process(PaymentRequest request);
@@ -465,7 +465,7 @@ public interface StudentRepository {  // ← Port (outbound)
 #### 2. **Adapters**: Implement ports
 ```java
 // Adapters (implementations, external integrations)
-package ledance.infra.adapters;
+package gestudio.infra.adapters;
 
 @Component
 public class PaypalPaymentGateway implements PaymentGateway {  // ← Adapter
@@ -483,7 +483,7 @@ public class JpaStudentRepository implements StudentRepository {  // ← Adapter
 
 #### 3. **Application Services**: Domain orchestration (no business logic)
 ```java
-package ledance.servicios.pago;
+package gestudio.servicios.pago;
 
 @Service
 public class PaymentProcessingService {
@@ -512,7 +512,7 @@ public class PaymentProcessingService {
 
 #### 4. **Domain Layer**: Pure business logic (no dependencies)
 ```java
-package ledance.core.domain;
+package gestudio.core.domain;
 
 /**
  * Core business logic: payment calculation.
@@ -543,7 +543,7 @@ public class PaymentCalculator {
 ### Package Structure Example
 
 ```
-src/main/java/ledance/
+src/main/java/gestudio/
 ├── core/
 │   ├── domain/              # Pure business entities
 │   │   ├── Student.java

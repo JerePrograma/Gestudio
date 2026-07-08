@@ -2,25 +2,25 @@
     "_type": "export",
     "__export_format": 4,
     "__export_date": "2025-02-04T00:00:00.000Z",
-    "__export_source": "ledance-collection:gpt",
+    "__export_source": "gestudio-collection:gpt",
     "resources": [
         {
-            "_id": "wrk_ledance_api",
+            "_id": "wrk_gestudio_api",
             "created": 1675459200000,
-            "description": "Workspace para LEdance API",
+            "description": "Workspace para Gestudio API",
             "modified": 1675459200000,
-            "name": "LEdance API",
+            "name": "Gestudio API",
             "type": "Workspace"
         },
         {
-            "_id": "env_ledance_base",
+            "_id": "env_gestudio_base",
             "created": 1675459200001,
             "data": {
                 "base_url": "http://localhost:8080"
             },
             "modified": 1675459200001,
             "name": "Base Environment",
-            "parentId": "wrk_ledance_api",
+            "parentId": "wrk_gestudio_api",
             "type": "Environment"
         },
         {
@@ -28,7 +28,7 @@
             "created": 1675459200020,
             "modified": 1675459200020,
             "name": "Alumnos",
-            "parentId": "wrk_ledance_api",
+            "parentId": "wrk_gestudio_api",
             "type": "RequestGroup"
         },
         {
@@ -108,7 +108,7 @@
             "created": 1675459200030,
             "modified": 1675459200030,
             "name": "Autenticación",
-            "parentId": "wrk_ledance_api",
+            "parentId": "wrk_gestudio_api",
             "type": "RequestGroup"
         },
         {
@@ -140,7 +140,7 @@
             "created": 1675459200040,
             "modified": 1675459200040,
             "name": "Bonificaciones",
-            "parentId": "wrk_ledance_api",
+            "parentId": "wrk_gestudio_api",
             "type": "RequestGroup"
         },
         {
@@ -196,7 +196,7 @@
             "created": 1675459200050,
             "modified": 1675459200050,
             "name": "Disciplinas",
-            "parentId": "wrk_ledance_api",
+            "parentId": "wrk_gestudio_api",
             "type": "RequestGroup"
         },
         {
@@ -292,7 +292,7 @@
             "created": 1675459200060,
             "modified": 1675459200060,
             "name": "Inscripciones",
-            "parentId": "wrk_ledance_api",
+            "parentId": "wrk_gestudio_api",
             "type": "RequestGroup"
         },
         {
@@ -364,7 +364,7 @@
             "created": 1675459200070,
             "modified": 1675459200070,
             "name": "Pagos",
-            "parentId": "wrk_ledance_api",
+            "parentId": "wrk_gestudio_api",
             "type": "RequestGroup"
         },
         {
@@ -444,7 +444,7 @@
             "created": 1675459200080,
             "modified": 1675459200080,
             "name": "Profesores",
-            "parentId": "wrk_ledance_api",
+            "parentId": "wrk_gestudio_api",
             "type": "RequestGroup"
         },
         {
@@ -516,7 +516,7 @@
             "created": 1675459200090,
             "modified": 1675459200090,
             "name": "Reportes",
-            "parentId": "wrk_ledance_api",
+            "parentId": "wrk_gestudio_api",
             "type": "RequestGroup"
         },
         {
@@ -560,7 +560,7 @@
             "created": 1675459200100,
             "modified": 1675459200100,
             "name": "Roles",
-            "parentId": "wrk_ledance_api",
+            "parentId": "wrk_gestudio_api",
             "type": "RequestGroup"
         },
         {
@@ -596,7 +596,7 @@
             "created": 1675459200110,
             "modified": 1675459200110,
             "name": "Usuarios",
-            "parentId": "wrk_ledance_api",
+            "parentId": "wrk_gestudio_api",
             "type": "RequestGroup"
         },
         {

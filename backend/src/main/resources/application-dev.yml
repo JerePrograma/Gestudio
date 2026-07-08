@@ -3,7 +3,7 @@ spring:
     activate:
       on-profile: dev
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/ledance_db}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/gestudio_db}
     username: ${SPRING_DATASOURCE_USERNAME:postgres}
     password: ${SPRING_DATASOURCE_PASSWORD:local-only-change-me}
 
@@ -11,7 +11,7 @@ jwt:
   secret: ${JWT_SECRET:local-only-jwt-secret-change-before-sharing}
 
 app:
-  receipts-path: ${APP_RECEIPTS_PATH:${LEDANCE_HOME:.}/pdfs}
+  receipts-path: ${APP_RECEIPTS_PATH:${GESTUDIO_HOME:.}/pdfs}
   security:
     refresh-cookie:
       secure: ${APP_SECURITY_REFRESH_COOKIE_SECURE:false}

@@ -290,7 +290,7 @@
   - _Requirements: 29.1, 29.2, 29.3, 29.4_
 
 - [ ] 26. Docker Containerization & Deployment Configuration
-  - Verify backend Dockerfile is correct: FROM openjdk:17-slim, COPY target/ledance*.jar, ENTRYPOINT for Spring Boot
+  - Verify backend Dockerfile is correct: FROM openjdk:17-slim, COPY target/gestudio*.jar, ENTRYPOINT for Spring Boot
   - Verify frontend Dockerfile is correct: multi-stage build (npm install, npm run build, nginx serving dist)
   - Verify docker-compose.yml orchestrates backend, frontend, and database services correctly
   - Configure environment variables for dev and prod profiles (SPRING_DATASOURCE_URL, SPRING_DATASOURCE_USERNAME, JWT_SECRET, etc.)

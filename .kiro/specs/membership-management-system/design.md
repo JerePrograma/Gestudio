@@ -1415,7 +1415,7 @@ describe('Payment Recording Workflow', () => {
 
 ```properties
 # Dev Profile (application-dev.properties)
-spring.datasource.url=jdbc:mysql://localhost:3306/ledance_dev
+spring.datasource.url=jdbc:mysql://localhost:3306/gestudio_dev
 spring.datasource.username=root
 spring.datasource.password=password
 spring.jpa.hibernate.ddl-auto=update
@@ -1424,7 +1424,7 @@ jwt.secret=dev-secret-key-do-not-use-in-production
 jwt.expiration.ms=86400000
 
 # Prod Profile (application-prod.properties)
-spring.datasource.url=jdbc:mysql://db:3306/ledance_prod
+spring.datasource.url=jdbc:mysql://db:3306/gestudio_prod
 spring.datasource.username=${DB_USER}
 spring.datasource.password=${DB_PASSWORD}
 spring.jpa.hibernate.ddl-auto=validate
@@ -1439,7 +1439,7 @@ jwt.expiration.ms=86400000
 # backend/Dockerfile
 FROM openjdk:17-slim
 WORKDIR /app
-COPY target/ledance*.jar app.jar
+COPY target/gestudio*.jar app.jar
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "app.jar"]
 
@@ -1466,7 +1466,7 @@ services:
     image: mysql:8.0
     environment:
       MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: ledance_prod
+      MYSQL_DATABASE: gestudio_prod
     ports:
       - "3306:3306"
     volumes:
@@ -1477,7 +1477,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/ledance_prod
+      SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/gestudio_prod
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: root
       SPRING_PROFILES_ACTIVE: prod

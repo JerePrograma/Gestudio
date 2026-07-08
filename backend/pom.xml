@@ -13,7 +13,7 @@
         <relativePath/>
     </parent>
 
-    <groupId>le-dance</groupId>
+    <groupId>gestudio</groupId>
     <artifactId>backend</artifactId>
     <version>1.0</version>
     <name>backend</name>

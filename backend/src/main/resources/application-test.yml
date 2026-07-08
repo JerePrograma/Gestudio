@@ -13,5 +13,5 @@ jwt:
   secret: ${JWT_SECRET:test-only-jwt-secret-with-at-least-32-characters}
 
 app:
-  receipts-path: ${APP_RECEIPTS_PATH:${java.io.tmpdir}/le-dance-test/receipts}
+  receipts-path: ${APP_RECEIPTS_PATH:${java.io.tmpdir}/gestudio-test/receipts}
   scheduling-enabled: false

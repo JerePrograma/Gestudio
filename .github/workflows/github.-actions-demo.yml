@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: le-dance-${{ github.ref }}
+  group: gestudio-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -33,7 +33,7 @@ jobs:
       - name: Verify backend
         working-directory: backend
         env:
-          LEDANCE_HOME: ${{ github.workspace }}
+          GESTUDIO_HOME: ${{ github.workspace }}
         run: bash ./mvnw -B -ntp clean verify
 
       - name: Set up Node 22.14.0
@@ -62,13 +62,13 @@ jobs:
 
       - name: Validate production Compose
         env:
-          POSTGRES_DB: ledance_ci
-          POSTGRES_USER: ledance_ci
+          POSTGRES_DB: gestudio_ci
+          POSTGRES_USER: gestudio_ci
           POSTGRES_PASSWORD: ci-not-a-production-secret
-          BACKEND_IMAGE: example.invalid/le-dance-backend:${{ github.sha }}
-          FRONTEND_IMAGE: example.invalid/le-dance-frontend:${{ github.sha }}
+          BACKEND_IMAGE: example.invalid/gestudio-backend:${{ github.sha }}
+          FRONTEND_IMAGE: example.invalid/gestudio-frontend:${{ github.sha }}
           JWT_SECRET: ci-only-jwt-secret-with-at-least-32-characters
-          JWT_ISSUER: le-dance-ci
+          JWT_ISSUER: gestudio-ci
           JWT_ACCESS_TOKEN_HOURS: "2"
           JWT_REFRESH_TOKEN_HOURS: "168"
           SPRING_MAIL_HOST: smtp.example.invalid
@@ -95,14 +95,14 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Build backend image gate
-        run: docker build --pull -t le-dance-backend:${{ github.sha }} ./backend
+        run: docker build --pull -t gestudio-backend:${{ github.sha }} ./backend
 
       - name: Build frontend image gate
         run: |
           docker build --pull \
             --build-arg VITE_API_BASE_URL=https://example.invalid/api \
             --build-arg VITE_APP_TIME_ZONE=America/Argentina/Buenos_Aires \
-            -t le-dance-frontend:${{ github.sha }} \
+            -t gestudio-frontend:${{ github.sha }} \
             ./frontend
 
   smoke:

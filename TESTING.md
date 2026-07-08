@@ -5,12 +5,12 @@
 
 ## Summary
 
-Created comprehensive unit tests for the Java `/ledance/util` package to improve code coverage. All tests passing with code coverage metrics now tracked.
+Created comprehensive unit tests for the Java `/gestudio/util` package to improve code coverage. All tests passing with code coverage metrics now tracked.
 
 ## What Was Accomplished
 
 ### 1. **Created FilePathResolverTest** 
-- **File:** [`backend/src/test/java/ledance/util/FilePathResolverTest.java`](backend/src/test/java/ledance/util/FilePathResolverTest.java)
+- **File:** [`backend/src/test/java/gestudio/util/FilePathResolverTest.java`](backend/src/test/java/gestudio/util/FilePathResolverTest.java)
 - **Test Count:** 13 comprehensive unit tests
 - **Status:** ✅ All passing
 
@@ -27,7 +27,7 @@ Created comprehensive unit tests for the Java `/ledance/util` package to improve
 | `testOfWithSpecialCharacters()` | Handle hyphens and underscores in segments |
 | `testOfWithEmptySegment()` | Handle empty string segments gracefully |
 | `testConstructorIsPrivate()` | Verify utility class cannot be instantiated |
-| `testPathStartsWithBaseDirectory()` | Verify paths start with LEDANCE_HOME |
+| `testPathStartsWithBaseDirectory()` | Verify paths start with GESTUDIO_HOME |
 | `testOfWithNumericSegments()` | Handle numeric segment names |
 | `testOfWithMixedCaseSegments()` | Handle mixed case in segment names |
 | `testConsistencyOfResolution()` | Verify identical inputs produce identical outputs |
@@ -62,7 +62,7 @@ Complexity Coverage:  60% (3 of 5)
 **To view coverage reports:**
 ```bash
 # Generate coverage report
-LEDANCE_HOME=/opt/le-dance JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 mvn clean test
+GESTUDIO_HOME=/opt/gestudio JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 mvn clean test
 
 # Open coverage report in browser
 open backend/target/site/jacoco/index.html
@@ -73,31 +73,31 @@ open backend/target/site/jacoco/index.html
 ### Prerequisites
 - Java 21 JDK
 - Maven
-- LEDANCE_HOME environment variable set
+- GESTUDIO_HOME environment variable set
 
 ### Run All Tests
 ```bash
 cd backend
-LEDANCE_HOME=/path/to/le-dance mvn test
+GESTUDIO_HOME=/path/to/gestudio mvn test
 ```
 
 ### Run Only Util Tests
 ```bash
 cd backend
-LEDANCE_HOME=/path/to/le-dance mvn test -Dtest=FilePathResolverTest
+GESTUDIO_HOME=/path/to/gestudio mvn test -Dtest=FilePathResolverTest
 ```
 
 ### Generate Coverage Report Only
 ```bash
 cd backend
-LEDANCE_HOME=/path/to/le-dance mvn clean test jacoco:report
+GESTUDIO_HOME=/path/to/gestudio mvn clean test jacoco:report
 ```
 
 ## Next Steps & Recommendations
 
 ### High Priority
 1. **Test Other Utility Classes**
-   - Review all classes in `ledance/util/` and `ledance/validaciones/` packages
+   - Review all classes in `gestudio/util/` and `gestudio/validaciones/` packages
    - Currently only 1 util class (FilePathResolver) has tests
    - Recommendation: Aim for 80%+ coverage in all utility packages
 
@@ -107,7 +107,7 @@ LEDANCE_HOME=/path/to/le-dance mvn clean test jacoco:report
    - Start with critical paths: payment, enrollment, attendance services
 
 3. **Create Test Configuration**
-   - Set LEDANCE_HOME in CI/CD pipeline
+   - Set GESTUDIO_HOME in CI/CD pipeline
    - Add Maven profiles for different test environments
 
 ### Medium Priority
@@ -129,7 +129,7 @@ LEDANCE_HOME=/path/to/le-dance mvn clean test jacoco:report
 ### Uncovered CodePaths
 The FilePathResolver has 1 uncovered line:
 ```java
-throw new IllegalStateException("Variable de entorno LEDANCE_HOME no definida")
+throw new IllegalStateException("Variable de entorno GESTUDIO_HOME no definida")
 ```
 
 This exception case is difficult to test because:
@@ -149,7 +149,7 @@ This exception case is difficult to test because:
 
 ## Files Modified
 
-1. ✅ Created: `backend/src/test/java/ledance/util/FilePathResolverTest.java`
+1. ✅ Created: `backend/src/test/java/gestudio/util/FilePathResolverTest.java`
 2. ✅ Modified: `backend/pom.xml` (added JaCoCo plugin)
 
 ## Metrics Dashboard
@@ -174,4 +174,4 @@ This exception case is difficult to test because:
 
 ---
 
-**Next Command:** `LEDANCE_HOME=/opt/le-dance JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 mvn test`
+**Next Command:** `GESTUDIO_HOME=/opt/gestudio JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 mvn test`

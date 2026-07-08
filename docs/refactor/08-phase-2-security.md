@@ -127,8 +127,8 @@ Cobertura explícita del gate:
 | `frontend\npm run build` | PASS; 2295 módulos. |
 | `docker compose config --quiet` | PASS. |
 | Compose local + productivo con placeholders | PASS. |
-| `docker build --pull -t le-dance-backend:phase2-test .\backend` | PASS; 44 tests dentro de la imagen. |
-| `docker build --pull ... -t le-dance-frontend:phase2-test .\frontend` | PASS. |
+| `docker build --pull -t gestudio-backend:phase2-test .\backend` | PASS; 44 tests dentro de la imagen. |
+| `docker build --pull ... -t gestudio-frontend:phase2-test .\frontend` | PASS. |
 
 ## Fallos durante la fase
 

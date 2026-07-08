@@ -19,7 +19,7 @@ $env:SPRING_PROFILES_ACTIVE = if ([string]::IsNullOrWhiteSpace($env:SPRING_PROFI
 if ([string]::IsNullOrWhiteSpace($env:SERVER_PORT) -and -not [string]::IsNullOrWhiteSpace($env:BACKEND_PORT)) {
     $env:SERVER_PORT = $env:BACKEND_PORT
 }
-$env:LEDANCE_HOME = $repoRoot
+$env:GESTUDIO_HOME = $repoRoot
 Push-Location (Join-Path $repoRoot "backend")
 try {
     & ".\mvnw.cmd" spring-boot:run

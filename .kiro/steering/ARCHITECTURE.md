@@ -35,7 +35,7 @@ External World
 ### Layer Responsibilities
 
 #### 1. **Domain Layer** (No Dependencies)
-- **Package**: `ledance.core.domain.*`
+- **Package**: `gestudio.core.domain.*`
 - **Examples**: `Student`, `Payment`, `Enrollment`
 - **Rules**:
   - Domain classes are **pure Java** (no Spring annotations)
@@ -45,7 +45,7 @@ External World
   - Testable in unit tests (no mocks needed for dependencies)
 
 #### 2. **Ports Layer** (Defines Contracts)
-- **Package**: `ledance.core.ports.*`
+- **Package**: `gestudio.core.ports.*`
 - **Examples**: `StudentRepository`, `PaymentGateway`, `NotificationService`
 - **Rules**:
   - These are **interfaces** defining boundaries
@@ -54,7 +54,7 @@ External World
   - Should be simple and focused
 
 #### 3. **Application Services** (Orchestration Only)
-- **Package**: `ledance.servicios.*`
+- **Package**: `gestudio.servicios.*`
 - **Examples**: `PaymentService`, `StudentEnrollmentService`
 - **Rules**:
   - Contain **no business logic** (that's in domain)
@@ -64,8 +64,8 @@ External World
 
 #### 4. **Infrastructure/Adapters** (Implementations)
 - **Packages**: 
-  - `ledance.infra.repositorios.*` (Port implementations)
-  - `ledance.infra.adapters.*` (External integrations)
+  - `gestudio.infra.repositorios.*` (Port implementations)
+  - `gestudio.infra.adapters.*` (External integrations)
 - **Examples**: `JpaStudentRepository`, `PaypalPaymentGateway`
 - **Rules**:
   - Implement ports
@@ -74,7 +74,7 @@ External World
   - Testable with integration tests
 
 #### 5. **Controllers/API** (Entry Points)
-- **Package**: `ledance.controladores.*`
+- **Package**: `gestudio.controladores.*`
 - **Examples**: `PaymentController`, `StudentController`
 - **Rules**:
   - Receive HTTP requests
@@ -302,7 +302,7 @@ public class PaymentNotificationListener {
 ### Standard Package Structure
 
 ```
-com.ledance
+com.gestudio
 │
 ├── core/                          # Domain & Ports (business logic)
 │   ├── domain/
@@ -776,17 +776,17 @@ public class Student {
 ## 10. Testing Strategy by Layer
 
 ### Unit Tests (Domain/Business Logic)
-- **Location**: `src/test/java/com/ledance/core/domain`
+- **Location**: `src/test/java/com/gestudio/core/domain`
 - **Mock**: Nothing (use real objects)
 - **Coverage**: 90%+
 
 ### Integration Tests (Service + Repository)
-- **Location**: `src/test/java/com/ledance/servicios`
+- **Location**: `src/test/java/com/gestudio/servicios`
 - **Mock**: External services (payment gateways, email)
 - **Coverage**: 70%+
 
 ### Controller/API Tests
-- **Location**: `src/test/java/com/ledance/controladores`
+- **Location**: `src/test/java/com/gestudio/controladores`
 - **Mock**: Services
 - **Coverage**: 60%+
 
@@ -839,12 +839,12 @@ public class PaymentServiceTest {
 
 ```yaml
 # application-dev.properties
-spring.datasource.url=jdbc:postgresql://localhost:5432/ledance_dev
+spring.datasource.url=jdbc:postgresql://localhost:5432/gestudio_dev
 spring.jpa.hibernate.ddl-auto=create-drop
 payment.gateway=manual
 
 # application-prod.properties
-spring.datasource.url=jdbc:postgresql://prod-db:5432/ledance
+spring.datasource.url=jdbc:postgresql://prod-db:5432/gestudio
 spring.jpa.hibernate.ddl-auto=validate
 payment.gateway=paypal
 ```

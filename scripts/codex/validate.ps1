@@ -53,7 +53,7 @@ if ($Scope -in "All", "Backend") {
         throw "La validación requiere JDK 21."
     }
 
-    $env:LEDANCE_HOME = $repoRoot
+    $env:GESTUDIO_HOME = $repoRoot
     Invoke-Step "backend clean verify" {
         Push-Location (Join-Path $repoRoot "backend")
         try { & ".\mvnw.cmd" clean verify }

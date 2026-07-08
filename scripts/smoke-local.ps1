@@ -12,7 +12,7 @@ $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $startedAt = Get-Date
 $deadline = $startedAt.AddMinutes(20)
 $suffix = ([Guid]::NewGuid().ToString("N")).Substring(0, 8)
-$project = "ledance-smoke-$PID-$suffix"
+$project = "gestudio-smoke-$PID-$suffix"
 $envFile = Join-Path ([IO.Path]::GetTempPath()) "$project.env"
 $passes = 0
 $failures = 0
@@ -190,7 +190,7 @@ function Invoke-SmokeHttp {
 }
 
 function Get-RefreshToken {
-    $cookie = $script:cookieContainer.GetCookies([Uri]($script:apiBase + "/login"))["ledance_refresh"]
+    $cookie = $script:cookieContainer.GetCookies([Uri]($script:apiBase + "/login"))["gestudio_refresh"]
     if ($null -eq $cookie -or [string]::IsNullOrWhiteSpace($cookie.Value)) {
         throw "Login/refresh sin cookie HttpOnly"
     }
@@ -199,7 +199,7 @@ function Get-RefreshToken {
 
 function Set-RefreshToken {
     param([Parameter(Mandatory)][string] $Value)
-    $cookie = [Net.Cookie]::new("ledance_refresh", $Value, "/api/login", "127.0.0.1")
+    $cookie = [Net.Cookie]::new("gestudio_refresh", $Value, "/api/login", "127.0.0.1")
     $cookie.HttpOnly = $true
     $script:cookieContainer.Add([Uri]($script:apiBase + "/login"), $cookie)
 }
@@ -256,8 +256,8 @@ function Show-Diagnostics {
 $dbPort = Get-FreePort
 $backendPort = Get-FreePort
 $frontendPort = Get-FreePort
-$postgresDb = "ledance_smoke"
-$postgresUser = "ledance_smoke"
+$postgresDb = "gestudio_smoke"
+$postgresUser = "gestudio_smoke"
 $postgresPassword = "Pg-$(New-HexSecret 24)"
 $jwtSecret = New-HexSecret 64
 $adminPassword = "Smoke-$(New-HexSecret 24)"
@@ -281,8 +281,8 @@ try {
             POSTGRES_PORT = $dbPort
             BACKEND_PORT = $backendPort
             FRONTEND_PORT = $frontendPort
-            BACKEND_IMAGE = "le-dance-backend:smoke-check"
-            FRONTEND_IMAGE = "le-dance-frontend:smoke-check"
+            BACKEND_IMAGE = "gestudio-backend:smoke-check"
+            FRONTEND_IMAGE = "gestudio-frontend:smoke-check"
             SPRING_PROFILES_ACTIVE = "dev"
             SPRING_JPA_HIBERNATE_DDL_AUTO = "validate"
             SPRING_FLYWAY_ENABLED = "true"
@@ -292,7 +292,7 @@ try {
             APP_BOOTSTRAP_SUPERADMIN_USERNAME = $adminUsername
             APP_BOOTSTRAP_SUPERADMIN_PASSWORD = $adminPassword
             JWT_SECRET = $jwtSecret
-            JWT_ISSUER = "le-dance-smoke"
+            JWT_ISSUER = "gestudio-smoke"
             APP_TIME_ZONE = "America/Argentina/Buenos_Aires"
             APP_CORS_ALLOWED_ORIGINS = $frontendOrigin
             VITE_API_BASE_URL = $apiBase
