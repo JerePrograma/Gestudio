@@ -65,6 +65,12 @@ class SuperadminBootstrapPostgreSqlTest extends PostgreSqlIntegrationTest {
                 WHERE u.nombre_usuario IN (?, ?) AND r.descripcion = 'SUPERADMIN' AND u.activo = true
                 """, Integer.class, "root-a-" + suffix, "root-b-" + suffix)).isOne();
         assertThat(jdbc.queryForObject("""
+                SELECT count(*) FROM usuarios u
+                JOIN usuario_roles ur ON ur.usuario_id = u.id
+                JOIN roles r ON r.id = ur.rol_id
+                WHERE u.nombre_usuario IN (?, ?) AND r.codigo = 'SUPERADMIN'
+                """, Integer.class, "root-a-" + suffix, "root-b-" + suffix)).isOne();
+        assertThat(jdbc.queryForObject("""
                 SELECT count(*) FROM auditoria_eventos
                 WHERE accion = 'SUPERADMIN_BOOTSTRAP' AND metadata::text NOT LIKE '%clave-superadmin-segura%'
                 """, Integer.class)).isOne();

@@ -40,7 +40,7 @@ public class TarifaDisciplinaServicio {
     public TarifaDisciplinaResponse crear(Long disciplinaId, TarifaDisciplinaRequest request, Usuario actor) {
         Usuario actorActual = actorAutorizado(actor);
         if (request.vigenteDesde().isBefore(LocalDate.now(clock))
-                && !RolSistema.SUPERADMIN.name().equals(actorActual.getRol().getDescripcion())) {
+                && !tieneRol(actorActual, RolSistema.SUPERADMIN)) {
             throw new OperacionNoPermitidaException("Sólo SUPERADMIN puede cargar una tarifa histórica");
         }
         if (tarifas.existsByDisciplinaIdAndVigenteDesde(disciplinaId, request.vigenteDesde())) {
@@ -81,10 +81,14 @@ public class TarifaDisciplinaServicio {
     private Usuario actorAutorizado(Usuario actor) {
         if (actor == null || actor.getId() == null) throw new OperacionNoPermitidaException("Actor requerido");
         return usuarios.findById(actor.getId()).filter(Usuario::isEnabled)
-                .filter(value -> value.getRol() != null && Boolean.TRUE.equals(value.getRol().getActivo()))
-                .filter(value -> RolSistema.ADMINISTRADOR.name().equals(value.getRol().getDescripcion())
-                        || RolSistema.SUPERADMIN.name().equals(value.getRol().getDescripcion()))
+                .filter(value -> tieneRol(value, RolSistema.ADMINISTRADOR)
+                        || tieneRol(value, RolSistema.SUPERADMIN))
                 .orElseThrow(() -> new OperacionNoPermitidaException("Actor sin permisos para administrar tarifas"));
+    }
+
+    private static boolean tieneRol(Usuario usuario, RolSistema rol) {
+        return usuario.getRoles().stream().anyMatch(value -> Boolean.TRUE.equals(value.getActivo())
+                && rol.name().equals(value.getCodigo()));
     }
 
     private TarifaDisciplinaResponse response(TarifaDisciplina value) {

@@ -3,30 +3,15 @@ import { useSidebar } from "../hooks/context/useSidebar";
 import { ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useAuth } from "../hooks/context/useAuth";
-import { navigationItems, type NavigationItem } from "../config/navigation";
+import { filterNavigationItems, navigationItems } from "../config/navigation";
 import NavGroup from "./NavGroup";
-
-// Función utilitaria para filtrar los ítems de navegación sin mutar el array original.
-const filterNavigationItems = (
-  items: NavigationItem[],
-  hasRole: (role: string) => boolean
-): NavigationItem[] => {
-  return items
-    .filter((item) => !item.requiredRole || hasRole(item.requiredRole))
-    .map((item) => ({
-      ...item,
-      items: item.items
-        ? filterNavigationItems(item.items, hasRole)
-        : undefined,
-    }));
-};
 
 export default function Sidebar() {
   const { isExpanded, toggleSidebar, mobileSidebarOpen, setMobileSidebarOpen } =
     useSidebar();
-  const { hasRole } = useAuth();
+  const { hasPermission } = useAuth();
 
-  const filteredNavigation = filterNavigationItems(navigationItems, hasRole);
+  const filteredNavigation = filterNavigationItems(navigationItems, hasPermission);
 
   return (
     <>

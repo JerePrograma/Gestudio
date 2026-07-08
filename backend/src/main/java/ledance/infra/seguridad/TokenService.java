@@ -43,8 +43,7 @@ public class TokenService {
     }
 
     private String generarToken(Usuario usuario, UUID jwtId, Duration ttl, TokenType tipo) {
-        if (usuario.getId() == null || usuario.getNombreUsuario() == null || usuario.getRol() == null
-                || usuario.getAuthVersion() == null) {
+        if (usuario.getId() == null || usuario.getNombreUsuario() == null || usuario.getAuthVersion() == null) {
             throw new IllegalArgumentException("No se puede generar un token para un usuario incompleto");
         }
         Instant issuedAt = clock.instant();
@@ -54,7 +53,6 @@ public class TokenService {
                 .withSubject(usuario.getNombreUsuario())
                 .withClaim("id", usuario.getId())
                 .withClaim("type", tipo.name())
-                .withClaim("rol", usuario.getRol().getDescripcion())
                 .withClaim("auth_version", usuario.getAuthVersion())
                 .withJWTId(jwtId.toString())
                 .withIssuedAt(Date.from(issuedAt))
@@ -74,16 +72,15 @@ public class TokenService {
             DecodedJWT decoded = verifier.verify(token);
             String subject = decoded.getSubject();
             Long userId = decoded.getClaim("id").asLong();
-            String role = decoded.getClaim("rol").asString();
             Long authVersion = decoded.getClaim("auth_version").asLong();
             String type = decoded.getClaim("type").asString();
             String jwtId = decoded.getId();
             Date issuedAt = decoded.getIssuedAt();
             Date expiresAt = decoded.getExpiresAt();
-            if (subject == null || subject.isBlank() || userId == null || role == null || role.isBlank()
+            if (subject == null || subject.isBlank() || userId == null
                     || authVersion == null || type == null || jwtId == null
                     || issuedAt == null || expiresAt == null) throw new InvalidTokenException();
-            return new VerifiedToken(subject, userId, role, authVersion, jwtId,
+            return new VerifiedToken(subject, userId, authVersion, jwtId,
                     TokenType.valueOf(type), issuedAt.toInstant(), expiresAt.toInstant());
         } catch (InvalidTokenException e) {
             throw e;

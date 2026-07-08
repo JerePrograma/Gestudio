@@ -38,11 +38,11 @@ public class SecurityFilter extends OncePerRequestFilter {
             String token = authHeader.substring("Bearer ".length());
             try {
                 VerifiedToken verified = tokenService.verify(token, TokenType.ACCESS);
-                var userEntity = usuarioRepositorio.findById(verified.userId())
+                var userEntity = usuarioRepositorio.findWithAuthoritiesById(verified.userId())
                         .filter(user -> Objects.equals(user.getNombreUsuario(), verified.subject()))
                         .filter(user -> Boolean.TRUE.equals(user.getActivo()))
-                        .filter(user -> user.getRol() != null && Boolean.TRUE.equals(user.getRol().getActivo()))
-                        .filter(user -> Objects.equals(user.getRol().getDescripcion(), verified.role()))
+                        .filter(user -> user.getRoles().stream().anyMatch(
+                                role -> Boolean.TRUE.equals(role.getActivo())))
                         .filter(user -> Objects.equals(user.getAuthVersion(), verified.authVersion()))
                         .orElseThrow(InvalidTokenException::new);
                 var authentication = new UsernamePasswordAuthenticationToken(

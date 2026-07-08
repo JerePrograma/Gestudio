@@ -7,9 +7,16 @@ import {
   setAuthSession,
   subscribeAuthSession,
 } from "../../api/authSession";
-import { AuthContext, type UserProfile } from "./auth-context";
+import {
+  AuthContext,
+  profileHasPermission,
+  profileHasRole,
+  type UserProfile,
+} from "./auth-context";
 
-export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+export const AuthProvider: React.FC<{ children: ReactNode }> = ({
+  children,
+}) => {
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState(getAuthSession);
   const navigate = useNavigate();
@@ -47,9 +54,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  const hasRole = (role: string): boolean =>
-    user !== null &&
-    user.rol.trim().toUpperCase() === role.trim().toUpperCase();
+  const hasRole = (role: string): boolean => profileHasRole(user, role);
+  const hasAnyRole = (roles: string[]): boolean => roles.some(hasRole);
+  const hasPermission = (permission: string): boolean => profileHasPermission(user, permission);
+  const hasAnyPermission = (permissions: string[]): boolean => permissions.some(hasPermission);
 
   return (
     <AuthContext.Provider
@@ -61,6 +69,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         accessToken: session.accessToken,
         user,
         hasRole,
+        hasAnyRole,
+        hasPermission,
+        hasAnyPermission,
       }}
     >
       {children}

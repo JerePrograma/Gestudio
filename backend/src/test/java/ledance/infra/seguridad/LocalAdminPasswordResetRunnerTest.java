@@ -89,6 +89,7 @@ class LocalAdminPasswordResetRunnerTest {
         usuario.setContrasena(hash);
         usuario.setActivo(true);
         usuario.setRol(new Rol(1L, "ADMINISTRADOR", true));
+        usuario.setRoles(new java.util.LinkedHashSet<>(java.util.List.of(usuario.getRol())));
         usuario.setAuthVersion(2L);
         return usuario;
     }

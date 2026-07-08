@@ -99,6 +99,7 @@ class AutenticacionServiceTest {
         usuario.setContrasena(hash);
         usuario.setActivo(activo);
         usuario.setRol(new Rol(1L, "ADMINISTRADOR", rolActivo));
+        usuario.setRoles(new java.util.LinkedHashSet<>(java.util.List.of(usuario.getRol())));
         usuario.setAuthVersion(0L);
         return usuario;
     }

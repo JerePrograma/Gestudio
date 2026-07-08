@@ -17,4 +17,10 @@ public interface RolRepositorio extends JpaRepository<Rol, Long> {
 
     Optional<Rol> findByDescripcionIgnoreCase(String descripcion);
 
+    Optional<Rol> findByCodigoIgnoreCase(String codigo);
+
+    boolean existsByCodigoIgnoreCase(String codigo);
+
+    List<Rol> findAllByOrderByNombreAsc();
+
 }

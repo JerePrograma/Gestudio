@@ -87,7 +87,7 @@ export default function Header() {
               <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">{initial}</span>
               <div className="hidden max-w-36 lg:block">
                 <p className="truncate text-sm font-semibold">{user?.nombreUsuario ?? "Usuario"}</p>
-                <p className="truncate text-xs text-muted-foreground">{user?.rol ?? "Gestión"}</p>
+                <p className="truncate text-xs text-muted-foreground">{user?.roles.join(", ") || "Gestión"}</p>
               </div>
             </div>
           </div>

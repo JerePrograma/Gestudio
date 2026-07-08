@@ -35,7 +35,8 @@ class CanonicalArchitectureContractTest {
         try (Stream<Path> files = Files.list(migrations)) {
             assertThat(files.filter(Files::isRegularFile).map(path -> path.getFileName().toString()).toList())
                     .containsExactly("V1__canonical_schema.sql", "V2__security_superadmin_sessions_audit.sql",
-                            "V3__effective_dated_pricing.sql", "V4__cargo_liquidations_and_events.sql");
+                            "V3__effective_dated_pricing.sql", "V4__cargo_liquidations_and_events.sql",
+                            "V5__base_roles_permissions_seed.sql");
         }
     }
 

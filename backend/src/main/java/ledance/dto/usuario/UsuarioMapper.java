@@ -18,6 +18,7 @@ public interface UsuarioMapper {
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "contrasena", ignore = true)
     @Mapping(target = "rol", ignore = true)
+    @Mapping(target = "roles", ignore = true)
     @Mapping(target = "activo", constant = "true")
     @Mapping(target = "authorities", ignore = true)
     @Mapping(target = "authVersion", ignore = true)
@@ -31,9 +32,7 @@ public interface UsuarioMapper {
      * Se agrega @Named para que otros mappers (por ejemplo, PagoMapper) lo puedan usar.
      */
     @Named("toUsuarioResponse")
-    @Mapping(target = "id", source = "id")
-    @Mapping(target = "nombreUsuario", source = "nombreUsuario")
-    @Mapping(target = "rol", expression = "java(usuario.getRol() != null ? usuario.getRol().getDescripcion() : null)")
-    @Mapping(target = "activo", source = "activo")
-    UsuarioResponse toDTO(Usuario usuario);
+    default UsuarioResponse toDTO(Usuario usuario) {
+        return UsuarioResponse.from(usuario);
+    }
 }

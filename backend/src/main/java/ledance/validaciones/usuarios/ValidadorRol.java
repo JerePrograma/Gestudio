@@ -15,9 +15,10 @@ public class ValidadorRol implements Validador<UsuarioRegistroRequest> {
 
     @Override
     public void validar(UsuarioRegistroRequest request) {
-        boolean existeRol = rolRepositorio.findByDescripcion(request.rol().toUpperCase()).isPresent();
-        if (!existeRol) {
-            throw new RuntimeException("El rol proporcionado no es valido: " + request.rol());
+        for (String codigo : request.roles()) {
+            if (rolRepositorio.findByCodigoIgnoreCase(codigo.trim()).isEmpty()) {
+                throw new IllegalArgumentException("El rol proporcionado no es válido: " + codigo);
+            }
         }
     }
 }

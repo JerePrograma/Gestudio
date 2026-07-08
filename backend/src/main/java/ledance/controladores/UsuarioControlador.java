@@ -25,18 +25,16 @@ public class UsuarioControlador {
     }
 
     @PostMapping("/registro")
-    public ResponseEntity<String> registrarUsuario(@RequestBody @Validated UsuarioRegistroRequest datosRegistro,
-                                                    @AuthenticationPrincipal Usuario actor) {
-        String mensaje = usuarioService.registrarUsuario(datosRegistro, actor);
-        return ResponseEntity.ok(mensaje);
+    public ResponseEntity<UsuarioResponse> registrarUsuario(@RequestBody @Validated UsuarioRegistroRequest datosRegistro,
+                                                             @AuthenticationPrincipal Usuario actor) {
+        return ResponseEntity.ok(usuarioService.registrarUsuario(datosRegistro, actor));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<String> editarUsuario(@PathVariable Long id,
-                                                @RequestBody @Validated UsuarioModificacionRequest modificacionRequest,
-                                                @AuthenticationPrincipal Usuario actor) {
-        usuarioService.editarUsuario(id, modificacionRequest, actor);
-        return ResponseEntity.ok("Usuario actualizado correctamente.");
+    public ResponseEntity<UsuarioResponse> editarUsuario(@PathVariable Long id,
+                                                          @RequestBody @Validated UsuarioModificacionRequest modificacionRequest,
+                                                          @AuthenticationPrincipal Usuario actor) {
+        return ResponseEntity.ok(usuarioService.editarUsuario(id, modificacionRequest, actor));
     }
 
     @GetMapping("/{id}")

@@ -7,7 +7,6 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.web.AuthenticationEntryPoint;
-import org.springframework.security.authorization.AuthorityAuthorizationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -16,10 +15,7 @@ import org.springframework.security.config.Customizer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.access.hierarchicalroles.RoleHierarchy;
-import org.springframework.security.access.hierarchicalroles.RoleHierarchyImpl;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.access.intercept.RequestAuthorizationContext;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.http.HttpStatus;
 
@@ -40,12 +36,9 @@ public class SecurityConfigurations {
     }
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http, RoleHierarchy roleHierarchy,
+    public SecurityFilterChain securityFilterChain(HttpSecurity http,
                                                    SecurityFilter securityFilter,
                                                    AuthenticationEntryPoint authenticationEntryPoint) throws Exception {
-        AuthorityAuthorizationManager<RequestAuthorizationContext> administrador =
-                AuthorityAuthorizationManager.hasRole("ADMINISTRADOR");
-        administrador.setRoleHierarchy(roleHierarchy);
         return http
                 .csrf(AbstractHttpConfigurer::disable)  // ✅ Desactiva CSRF
                 .cors(Customizer.withDefaults())
@@ -62,11 +55,47 @@ public class SecurityConfigurations {
                     req.requestMatchers(HttpMethod.POST, "/api/login/refresh").permitAll();
                     req.requestMatchers(HttpMethod.POST, "/api/login/logout").permitAll();
                     req.requestMatchers(HttpMethod.GET, "/api/usuarios/perfil").authenticated();
-                    req.requestMatchers("/api/usuarios/**").hasRole("SUPERADMIN");
-                    req.requestMatchers("/api/roles/**").hasRole("SUPERADMIN");
-                    req.requestMatchers("/api/auditoria/seguridad/**").hasRole("SUPERADMIN");
-                    req.requestMatchers("/api/mensualidades/generar-periodo/manual").hasRole("SUPERADMIN");
-                    req.requestMatchers("/api/**").access(administrador);
+                    req.requestMatchers(HttpMethod.GET, "/api/usuarios/**").hasAuthority("PERM_USUARIOS_READ");
+                    req.requestMatchers("/api/usuarios/**").hasAuthority("PERM_USUARIOS_WRITE");
+                    req.requestMatchers(HttpMethod.GET, "/api/roles/**").hasAuthority("PERM_ROLES_READ");
+                    req.requestMatchers("/api/roles/**").hasAuthority("PERM_ROLES_WRITE");
+                    req.requestMatchers(HttpMethod.GET, "/api/permisos/**").hasAuthority("PERM_PERMISOS_READ");
+                    req.requestMatchers("/api/permisos/**").denyAll();
+                    req.requestMatchers(HttpMethod.GET, "/api/auditoria/seguridad/**").hasAuthority("PERM_AUDITORIA_READ");
+
+                    readWrite(req, "/api/alumnos/**", "ALUMNOS");
+                    readWrite(req, "/api/profesores/**", "PROFESORES");
+                    readWrite(req, "/api/disciplinas/**", "DISCIPLINAS");
+                    readWrite(req, "/api/inscripciones/**", "INSCRIPCIONES");
+                    readWrite(req, "/api/asistencias-diarias/**", "ASISTENCIAS");
+                    readWrite(req, "/api/asistencias-mensuales/**", "ASISTENCIAS");
+
+                    req.requestMatchers(HttpMethod.POST, "/api/pagos/*/anulacion").hasAuthority("PERM_PAGOS_ANULAR");
+                    readWrite(req, "/api/pagos/**", "PAGOS");
+                    req.requestMatchers(HttpMethod.GET, "/api/caja/**").hasAuthority("PERM_CAJA_READ");
+                    req.requestMatchers(HttpMethod.POST, "/api/egresos/*/anulacion").hasAuthority("PERM_EGRESOS_ANULAR");
+                    readWrite(req, "/api/egresos/**", "EGRESOS");
+                    readWrite(req, "/api/cargos/**", "CARGOS");
+                    readWrite(req, "/api/creditos/**", "CREDITOS");
+
+                    readWrite(req, "/api/conceptos/**", "CONCEPTOS");
+                    readWrite(req, "/api/sub-conceptos/**", "CONCEPTOS");
+                    readWrite(req, "/api/bonificaciones/**", "BONIFICACIONES");
+                    readWrite(req, "/api/recargos/**", "RECARGOS");
+                    readWrite(req, "/api/metodos-pago/**", "METODOS_PAGO");
+                    readWrite(req, "/api/stocks/**", "STOCK");
+
+                    req.requestMatchers(HttpMethod.POST, "/api/reportes/**").hasAuthority("PERM_REPORTES_EXPORT");
+                    req.requestMatchers(HttpMethod.GET, "/api/reportes/**").hasAuthority("PERM_REPORTES_READ");
+
+                    readWrite(req, "/api/matriculas/**", "INSCRIPCIONES");
+                    req.requestMatchers("/api/mensualidades/generar-periodo/manual")
+                            .hasAuthority("PERM_ROLES_WRITE");
+                    readWrite(req, "/api/mensualidades/**", "CARGOS");
+                    readWrite(req, "/api/salones/**", "DISCIPLINAS");
+                    readWrite(req, "/api/observaciones-profesores/**", "PROFESORES");
+                    req.requestMatchers(HttpMethod.GET, "/api/notificaciones/**").hasAuthority("PERM_ALUMNOS_READ");
+                    req.requestMatchers("/api/**").denyAll();
                     req.anyRequest().denyAll();
                 })
                 .addFilterBefore(securityFilter, UsernamePasswordAuthenticationFilter.class)
@@ -93,9 +122,13 @@ public class SecurityConfigurations {
         return configuration.getAuthenticationManager();
     }
 
-    @Bean
-    public RoleHierarchy roleHierarchy() {
-        return RoleHierarchyImpl.fromHierarchy("ROLE_SUPERADMIN > ROLE_ADMINISTRADOR");
+    private static void readWrite(
+            org.springframework.security.config.annotation.web.configurers.AuthorizeHttpRequestsConfigurer<HttpSecurity>
+                    .AuthorizationManagerRequestMatcherRegistry requests,
+            String pattern,
+            String permission) {
+        requests.requestMatchers(HttpMethod.GET, pattern).hasAuthority("PERM_" + permission + "_READ");
+        requests.requestMatchers(pattern).hasAuthority("PERM_" + permission + "_WRITE");
     }
 
     @Bean

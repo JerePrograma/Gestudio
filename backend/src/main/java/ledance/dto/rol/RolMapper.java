@@ -10,8 +10,8 @@ public interface RolMapper {
     /**
      * ✅ Convierte `Rol` en `RolResponse`.
      */
-    @Mapping(target = "id", source = "id")
-    @Mapping(target = "descripcion", source = "descripcion")
-    @Mapping(target = "activo", source = "activo")
-    RolResponse toDTO(Rol rol);
+    default RolResponse toDTO(Rol rol) {
+        return new RolResponse(rol.getId(), rol.getCodigo(), rol.getNombre(), rol.getDescripcionFuncional(),
+                rol.getActivo(), rol.getSistema(), rol.getEditable(), rol.getPermisos().size());
+    }
 }

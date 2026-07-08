@@ -5,7 +5,7 @@ export const usuarioEsquema = Yup.object().shape({
     .min(3, "El nombre de usuario debe tener al menos 3 caracteres")
     .required("El nombre de usuario es obligatorio"),
   contrasena: Yup.string()
-    .min(6, "La contraseña debe tener al menos 6 caracteres")
+    .min(12, "La contraseña debe tener al menos 12 caracteres")
     .required("La contraseña es obligatoria"),
-  rol: Yup.string().required("El rol es obligatorio"),
+  roles: Yup.array().of(Yup.string().required()).min(1, "Seleccione al menos un rol"),
 });

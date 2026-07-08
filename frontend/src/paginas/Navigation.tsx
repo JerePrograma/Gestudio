@@ -2,34 +2,17 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../hooks/context/useAuth";
-import { NavigationItem, navigationItems } from "../config/navigation";
+import { filterNavigationItems, navigationItems } from "../config/navigation";
 
 const NavigationMenu: React.FC = () => {
-  const { hasRole, user, loading } = useAuth();
+  const { hasPermission, user, loading } = useAuth();
 
   // Mientras se carga el perfil o no está definido, mostramos un fallback.
   if (loading || !user) {
     return <div>Cargando navegación...</div>;
   }
 
-  // Función recursiva para filtrar ítems según requiredRole.
-  const filterNavigationItems = (items: NavigationItem[]): NavigationItem[] => {
-    return items
-      .filter((item) => {
-        if (item.requiredRole) {
-          const allowed = hasRole(item.requiredRole);
-          return allowed;
-        }
-        return true;
-      })
-      .map((item) => ({
-        ...item,
-        items: item.items ? filterNavigationItems(item.items) : undefined,
-      }));
-  };
-
-  const filteredItems = filterNavigationItems(navigationItems);
-  console.log("Ítems de navegación filtrados:", filteredItems);
+  const filteredItems = filterNavigationItems(navigationItems, hasPermission);
 
   return (
     <nav>

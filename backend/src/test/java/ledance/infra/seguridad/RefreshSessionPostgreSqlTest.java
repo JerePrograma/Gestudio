@@ -84,6 +84,7 @@ class RefreshSessionPostgreSqlTest extends PostgreSqlIntegrationTest {
                 INSERT INTO usuarios(nombre_usuario, contrasena, rol_id, activo, auth_version)
                 VALUES (?, 'test-only', ?, true, 0) RETURNING id
                 """, Long.class, "refresh-" + suffix, role);
-        return usuarios.findById(id).orElseThrow();
+        jdbc.update("INSERT INTO usuario_roles(usuario_id, rol_id) VALUES (?, ?)", id, role);
+        return usuarios.findWithAuthoritiesById(id).orElseThrow();
     }
 }

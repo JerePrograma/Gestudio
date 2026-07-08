@@ -36,7 +36,8 @@ describe("interceptor de autenticación", () => {
     setAuthSession("old-access", {
       id: 1,
       nombreUsuario: "admin",
-      rol: "ADMINISTRADOR",
+      roles: ["ADMINISTRADOR"],
+      permisos: ["PAGOS_READ"],
       activo: true,
     });
     localStorage.setItem("accessToken", "legacy-access");
@@ -58,7 +59,7 @@ describe("interceptor de autenticación", () => {
         200,
         {
           accessToken: "new-access",
-          usuario: { id: 1, nombreUsuario: "admin", rol: "ADMINISTRADOR", activo: true },
+          usuario: { id: 1, nombreUsuario: "admin", roles: ["ADMINISTRADOR"], permisos: ["PAGOS_READ"], activo: true },
         },
       ));
     });
@@ -100,7 +101,7 @@ describe("interceptor de autenticación", () => {
     const refresh = vi.spyOn(axios, "post").mockResolvedValue({
       data: {
         accessToken: "new-access",
-        usuario: { id: 1, nombreUsuario: "admin", rol: "ADMINISTRADOR", activo: true },
+        usuario: { id: 1, nombreUsuario: "admin", roles: ["ADMINISTRADOR"], permisos: ["PAGOS_READ"], activo: true },
       },
     });
     const adapter = async (config: InternalAxiosRequestConfig) => {

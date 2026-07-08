@@ -88,13 +88,13 @@ const UsuariosPagina = () => {
       </div>
       <div className="page-card">
         <Tabla
-          headers={["ID", "Nombre", "Rol"]}
+          headers={["ID", "Nombre", "Roles"]}
           data={currentItems}
           getRowKey={(row) => row.id}
           customRender={(fila: UsuarioResponse) => [
             fila.id,
             fila.nombreUsuario,
-            fila.rol,
+            fila.roles.join(", "),
           ]}
           actions={(fila: UsuarioResponse) => (
             <div className="flex gap-2">

@@ -91,10 +91,12 @@ class CondicionEconomicaPostgreSqlTest extends PostgreSqlIntegrationTest {
     }
 
     private Long usuario(String username, Long roleId) {
-        return jdbc.queryForObject("""
+        Long id = jdbc.queryForObject("""
                 INSERT INTO usuarios(nombre_usuario, contrasena, rol_id, activo)
                 VALUES (?, 'test-only', ?, true) RETURNING id
                 """, Long.class, username, roleId);
+        jdbc.update("INSERT INTO usuario_roles(usuario_id, rol_id) VALUES (?, ?)", id, roleId);
+        return id;
     }
 
     private record Fixture(Long inscripcionId, Usuario superadmin, Usuario admin) { }

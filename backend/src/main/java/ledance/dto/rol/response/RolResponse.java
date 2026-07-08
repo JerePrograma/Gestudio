@@ -5,6 +5,11 @@ package ledance.dto.rol.response;
  */
 public record RolResponse(
         Long id,
-        String descripcion,
-        Boolean activo
+        String codigo,
+        String nombre,
+        String descripcionFuncional,
+        Boolean activo,
+        Boolean sistema,
+        Boolean editable,
+        int cantidadPermisos
 ) {}

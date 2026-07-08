@@ -28,7 +28,8 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
             "recargos", "recibos", "recibos_pendientes", "roles", "salones", "stocks",
             "sub_conceptos", "usuarios", "ventas_stock", "refresh_sessions",
             "bootstrap_ejecuciones", "auditoria_eventos", "disciplina_tarifas",
-            "inscripcion_condiciones_economicas", "cargo_liquidaciones", "cargo_eventos");
+            "inscripcion_condiciones_economicas", "cargo_liquidaciones", "cargo_eventos",
+            "permisos", "usuario_roles", "rol_permisos");
 
     @Test
     void aplicaFlywayDesdeVacioValidaHibernateYCumpleElContratoDelCatalogo() throws Exception {
@@ -43,10 +44,10 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
                     .baselineOnMigrate(false)
                     .load();
 
-            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(4);
+            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(5);
             ValidateResult validation = flyway.validateWithResult();
             assertThat(flyway.info().current()).isNotNull();
-            assertThat(flyway.info().current().getVersion()).isEqualTo(MigrationVersion.fromVersion("4"));
+            assertThat(flyway.info().current().getVersion()).isEqualTo(MigrationVersion.fromVersion("5"));
             assertThat(validation.validationSuccessful)
                     .withFailMessage(validation.getAllErrorMessages())
                     .isTrue();
@@ -54,6 +55,13 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
             try (Connection connection = DriverManager.getConnection(
                     jdbcUrl, POSTGRESQL.getUsername(), POSTGRESQL.getPassword())) {
                 assertThat(tablas(connection)).isEqualTo(EXPECTED_TABLES);
+                assertThat(contar(connection, "SELECT count(*) FROM permisos")).isEqualTo(39);
+                assertThat(contar(connection, "SELECT count(*) FROM roles WHERE sistema")).isEqualTo(6);
+                assertThat(contar(connection, """
+                        SELECT count(*) FROM rol_permisos rp
+                        JOIN roles r ON r.id = rp.rol_id
+                        WHERE r.codigo = 'SUPERADMIN'
+                        """)).isEqualTo(39);
                 assertThat(contar(connection, """
                         SELECT count(*)
                         FROM information_schema.columns
@@ -116,6 +124,46 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
                     "--spring.flyway.enabled=false",
                     "--spring.jpa.hibernate.ddl-auto=validate").close())
                     .doesNotThrowAnyException();
+        } finally {
+            eliminarBase(databaseName);
+        }
+    }
+
+    @Test
+    void v5ActualizaDesdeV4YBackfilleaElRolLegado() throws Exception {
+        String databaseName = "ledance_rbac_upgrade_" + UUID.randomUUID().toString().replace("-", "");
+        String jdbcUrl = POSTGRESQL.getJdbcUrl().replace(POSTGRESQL.getDatabaseName(), databaseName);
+        crearBase(databaseName);
+        try {
+            Flyway v4 = Flyway.configure()
+                    .dataSource(jdbcUrl, POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
+                    .target("4")
+                    .load();
+            v4.migrate();
+            try (Connection connection = DriverManager.getConnection(
+                    jdbcUrl, POSTGRESQL.getUsername(), POSTGRESQL.getPassword());
+                 Statement statement = connection.createStatement()) {
+                statement.executeUpdate("""
+                        INSERT INTO usuarios(nombre_usuario, contrasena, rol_id)
+                        SELECT 'usuario-v4', 'hash-no-real', id FROM roles WHERE descripcion = 'ADMINISTRADOR'
+                        """);
+            }
+
+            Flyway v5 = Flyway.configure()
+                    .dataSource(jdbcUrl, POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
+                    .load();
+            assertThat(v5.migrate().migrationsExecuted).isOne();
+
+            try (Connection connection = DriverManager.getConnection(
+                    jdbcUrl, POSTGRESQL.getUsername(), POSTGRESQL.getPassword())) {
+                assertThat(contar(connection, """
+                        SELECT count(*) FROM usuario_roles ur
+                        JOIN usuarios u ON u.id = ur.usuario_id
+                        JOIN roles r ON r.id = ur.rol_id
+                        WHERE u.nombre_usuario = 'usuario-v4' AND r.codigo = 'ADMINISTRADOR'
+                        """)).isOne();
+                assertThat(contar(connection, "SELECT count(*) FROM usuarios WHERE rol_id IS NULL")).isZero();
+            }
         } finally {
             eliminarBase(databaseName);
         }

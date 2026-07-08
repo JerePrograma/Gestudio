@@ -63,8 +63,8 @@ public class LocalAdminPasswordResetRunner implements ApplicationRunner {
 
         Usuario admin = usuarios.findByNombreUsuarioIgnoreCase(username)
                 .filter(Usuario::isEnabled)
-                .filter(user -> user.getRol() != null && Boolean.TRUE.equals(user.getRol().getActivo()))
-                .filter(user -> RolSistema.ADMINISTRADOR.name().equalsIgnoreCase(user.getRol().getDescripcion()))
+                .filter(user -> user.getRoles().stream().anyMatch(role -> Boolean.TRUE.equals(role.getActivo())
+                        && RolSistema.ADMINISTRADOR.name().equalsIgnoreCase(role.getCodigo())))
                 .orElseThrow(() -> new IllegalStateException("No existe el ADMINISTRADOR activo indicado"));
         if (passwordEncoder.matches(properties.password(), admin.getContrasena())) {
             log.info("Reset local omitido: la contraseña del usuario id={} ya coincide", admin.getId());

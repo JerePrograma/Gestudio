@@ -1,6 +1,6 @@
 import type React from "react";
 import { Link } from "react-router-dom";
-import { navigationItems, type NavigationItem } from "../config/navigation";
+import { filterNavigationItems, navigationItems, type NavigationItem } from "../config/navigation";
 import { ChevronDown, ExternalLink } from "lucide-react";
 import {
   Card,
@@ -19,21 +19,6 @@ import { ScrollArea } from "../componentes/ui/scroll-area";
 import { cn } from "../lib/utils";
 import { useAuth } from "../hooks/context/useAuth";
 import PageHeader from "../componentes/comunes/PageHeader";
-
-// Función utilitaria para filtrar los ítems de navegación de forma inmutable.
-const filterNavigationItems = (
-  items: NavigationItem[],
-  hasRole: (role: string) => boolean
-): NavigationItem[] => {
-  return items
-    .filter((item) => !item.requiredRole || hasRole(item.requiredRole))
-    .map((item) => ({
-      ...item,
-      items: item.items
-        ? filterNavigationItems(item.items, hasRole)
-        : undefined,
-    }));
-};
 
 const SingleCard: React.FC<{ item: NavigationItem }> = ({ item }) => {
   const Icon = item.icon;
@@ -121,10 +106,10 @@ const CategoryCard: React.FC<CategoryCardProps> = ({ item }) => {
 };
 
 const Dashboard: React.FC = () => {
-  const { hasRole } = useAuth();
+  const { hasPermission } = useAuth();
 
   // Utilizamos la función utilitaria para filtrar los ítems sin mutar el array original.
-  const filteredNavigation = filterNavigationItems(navigationItems, hasRole);
+  const filteredNavigation = filterNavigationItems(navigationItems, hasPermission);
 
   // Separamos los ítems en categorías (con sub-items) y accesos directos (sin sub-items)
   const categories = filteredNavigation.filter(

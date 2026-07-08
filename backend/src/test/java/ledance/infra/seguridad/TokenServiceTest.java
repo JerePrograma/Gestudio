@@ -19,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 class TokenServiceTest {
 
@@ -42,11 +43,12 @@ class TokenServiceTest {
 
         assertEquals(7L, verified.userId());
         assertEquals("tester", verified.subject());
-        assertEquals("ADMINISTRADOR", verified.role());
         assertEquals(0L, verified.authVersion());
         assertEquals(TokenType.ACCESS, verified.tokenType());
         assertEquals(now, verified.issuedAt());
         assertEquals(60, minutes);
+        assertNull(JWT.decode(token).getClaim("rol").asString());
+        assertNull(JWT.decode(token).getClaim("permisos").asList(String.class));
     }
 
     @Test
@@ -124,6 +126,7 @@ class TokenServiceTest {
         usuario.setId(7L);
         usuario.setNombreUsuario("tester");
         usuario.setRol(new Rol(1L, role, true));
+        usuario.setRoles(new java.util.LinkedHashSet<>(List.of(usuario.getRol())));
         usuario.setActivo(true);
         usuario.setAuthVersion(0L);
         return usuario;
@@ -140,7 +143,6 @@ class TokenServiceTest {
                 .withAudience(AUDIENCE)
                 .withSubject("tester")
                 .withClaim("id", 7L)
-                .withClaim("rol", "ADMINISTRADOR")
                 .withClaim("type", type.name())
                 .withClaim("auth_version", 0L)
                 .withJWTId(java.util.UUID.randomUUID().toString())

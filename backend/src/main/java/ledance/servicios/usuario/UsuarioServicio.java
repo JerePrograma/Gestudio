@@ -8,7 +8,6 @@ import ledance.dto.usuario.request.UsuarioModificacionRequest;
 import ledance.dto.usuario.request.UsuarioRegistroRequest;
 import ledance.dto.usuario.response.UsuarioResponse;
 import ledance.entidades.Rol;
-import ledance.entidades.RolSistema;
 import ledance.entidades.Usuario;
 import ledance.infra.errores.TratadorDeErrores.OperacionNoPermitidaException;
 import ledance.infra.seguridad.PasswordPolicy;
@@ -18,11 +17,18 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class UsuarioServicio {
+    private static final String SUPERADMIN = "SUPERADMIN";
+
     private final UsuarioRepositorio usuarios;
     private final PasswordEncoder passwordEncoder;
     private final PasswordPolicy passwordPolicy;
@@ -51,39 +57,44 @@ public class UsuarioServicio {
     }
 
     @Transactional
-    public String registrarUsuario(UsuarioRegistroRequest request, Usuario actor) {
-        Usuario actorActual = exigirSuperadmin(actor, "CREAR_USUARIO");
+    public UsuarioResponse registrarUsuario(UsuarioRegistroRequest request, Usuario actor) {
+        Usuario actorActual = exigirPermiso(actor, "PERM_USUARIOS_WRITE", "CREAR_USUARIO");
         String username = normalizarUsername(request.nombreUsuario());
         if (usuarios.findByNombreUsuarioIgnoreCase(username).isPresent()) {
             throw new IllegalArgumentException("El nombre de usuario ya está en uso");
         }
-        RolSistema rolSistema = rolSistema(request.rol());
-        passwordPolicy.validar(request.contrasena(), rolSistema);
+        Set<Rol> rolesNuevos = resolverRolesActivos(request.roles());
+        validarAsignables(actorActual, rolesNuevos);
+        passwordPolicy.validar(request.contrasena(), contieneRol(rolesNuevos, SUPERADMIN));
 
         Usuario usuario = mapper.toEntity(request);
         usuario.setNombreUsuario(username);
         usuario.setContrasena(passwordEncoder.encode(request.contrasena()));
-        usuario.setRol(rolActivo(rolSistema));
+        usuario.setRoles(rolesNuevos);
+        usuario.setRol(rolPrincipal(rolesNuevos));
         usuario.setActivo(true);
         usuario.setAuthVersion(0L);
         usuario.setPasswordChangedAt(clock.instant());
         usuarios.save(usuario);
         audit.registrar("USUARIOS", "USUARIO_CREADO", "USUARIO", id(usuario), actorActual,
                 null, null, null, snapshot(usuario), Map.of());
-        return "Usuario creado exitosamente.";
+        audit.registrar("USUARIOS", "ROLES_ASIGNADOS", "USUARIO", id(usuario), actorActual,
+                null, null, Map.of("roles", List.of()), Map.of("roles", codigos(rolesNuevos)), Map.of());
+        return mapper.toDTO(usuario);
     }
 
     @Transactional
-    public void editarUsuario(Long idUsuario, UsuarioModificacionRequest request, Usuario actor) {
-        Usuario actorActual = exigirSuperadmin(actor, "MODIFICAR_USUARIO");
+    public UsuarioResponse editarUsuario(Long idUsuario, UsuarioModificacionRequest request, Usuario actor) {
+        Usuario actorActual = exigirPermiso(actor, "PERM_USUARIOS_WRITE", "MODIFICAR_USUARIO");
         Usuario usuario = bloquearObjetivo(idUsuario);
         Map<String, ?> anterior = snapshot(usuario);
-        RolSistema rolActual = rolSistema(usuario.getRol().getDescripcion());
-        RolSistema rolNuevo = request.rol() == null || request.rol().isBlank()
-                ? rolActual : rolSistema(request.rol());
+        Set<String> rolesAnteriores = codigos(usuario.getRoles());
+        Set<Rol> rolesNuevos = request.roles() == null
+                ? new LinkedHashSet<>(usuario.getRoles()) : resolverRolesActivos(request.roles());
+        validarAsignables(actorActual, rolesNuevos);
         boolean activoNuevo = request.activo() == null ? Boolean.TRUE.equals(usuario.getActivo()) : request.activo();
-        if (rolActual == RolSistema.SUPERADMIN && Boolean.TRUE.equals(usuario.getActivo())
-                && (rolNuevo != RolSistema.SUPERADMIN || !activoNuevo)) {
+        if (contieneRol(usuario.getRoles(), SUPERADMIN) && Boolean.TRUE.equals(usuario.getActivo())
+                && (!contieneRol(rolesNuevos, SUPERADMIN) || !activoNuevo)) {
             impedirPerderUltimoSuperadmin(usuario.getId());
         }
 
@@ -96,46 +107,43 @@ public class UsuarioServicio {
         }
 
         boolean passwordCambiada = false;
-        boolean rolCambiado = false;
-        boolean estadoCambiado = false;
+        boolean rolesCambiados = !rolesAnteriores.equals(codigos(rolesNuevos));
+        boolean estadoCambiado = request.activo() != null
+                && request.activo() != Boolean.TRUE.equals(usuario.getActivo());
         if (request.contrasena() != null && !request.contrasena().isBlank()) {
-            passwordPolicy.validar(request.contrasena(), rolNuevo);
+            passwordPolicy.validar(request.contrasena(), contieneRol(rolesNuevos, SUPERADMIN));
             usuario.setContrasena(passwordEncoder.encode(request.contrasena()));
             usuario.setPasswordChangedAt(clock.instant());
             passwordCambiada = true;
         }
-        if (rolNuevo != rolActual) {
-            usuario.setRol(rolActivo(rolNuevo));
-            rolCambiado = true;
+        if (rolesCambiados) {
+            usuario.setRoles(rolesNuevos);
+            usuario.setRol(rolPrincipal(rolesNuevos));
         }
-        if (request.activo() != null && request.activo() != Boolean.TRUE.equals(usuario.getActivo())) {
-            usuario.setActivo(request.activo());
-            estadoCambiado = true;
-        }
-        if (passwordCambiada || rolCambiado || estadoCambiado) {
+        if (request.activo() != null) usuario.setActivo(request.activo());
+        if (passwordCambiada || rolesCambiados || estadoCambiado) {
             usuario.setAuthVersion(usuario.getAuthVersion() + 1);
         }
         usuarios.save(usuario);
         Map<String, ?> nuevo = snapshot(usuario);
         if (passwordCambiada) auditarCambio("PASSWORD_CAMBIADA", usuario, actorActual, anterior, nuevo);
-        if (rolCambiado) auditarCambio("ROL_CAMBIADO", usuario, actorActual, anterior, nuevo);
+        if (rolesCambiados) auditarRoles(usuario, actorActual, rolesAnteriores, codigos(rolesNuevos));
         if (estadoCambiado) auditarCambio(Boolean.TRUE.equals(usuario.getActivo())
                 ? "USUARIO_ACTIVADO" : "USUARIO_DESACTIVADO", usuario, actorActual, anterior, nuevo);
-        if (!passwordCambiada && !rolCambiado && !estadoCambiado) {
+        if (!passwordCambiada && !rolesCambiados && !estadoCambiado) {
             auditarCambio("USUARIO_MODIFICADO", usuario, actorActual, anterior, nuevo);
         }
+        return mapper.toDTO(usuario);
     }
 
     public UsuarioResponse obtenerUsuario(Long idUsuario) {
-        return convertirAUsuarioResponse(usuarios.findById(idUsuario)
+        return convertirAUsuarioResponse(usuarios.findWithAuthoritiesById(idUsuario)
                 .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado")));
     }
 
-    public List<Usuario> listarUsuarios(String rolDescripcion, Boolean activo) {
-        if (rolDescripcion != null && activo != null) {
-            return usuarios.findByRolAndActivo(rolActivo(rolSistema(rolDescripcion)), activo);
-        }
-        if (rolDescripcion != null) return usuarios.findByRol(rolActivo(rolSistema(rolDescripcion)));
+    public List<Usuario> listarUsuarios(String rolCodigo, Boolean activo) {
+        if (rolCodigo != null && activo != null) return usuarios.findByRoleCodeAndActivo(rolCodigo, activo);
+        if (rolCodigo != null) return usuarios.findByRoleCode(rolCodigo);
         if (activo != null) return usuarios.findByActivo(activo);
         return usuarios.findAll();
     }
@@ -149,26 +157,40 @@ public class UsuarioServicio {
         editarUsuario(idUsuario, new UsuarioModificacionRequest(null, null, null, false), actor);
     }
 
-    private Usuario exigirSuperadmin(Usuario actor, String operacion) {
+    private Usuario exigirPermiso(Usuario actor, String permiso, String operacion) {
         if (actor == null || actor.getId() == null) {
             auditFailures.registrarEscalamiento(actor, operacion);
-            throw new OperacionNoPermitidaException("SUPERADMIN autenticado requerido");
+            throw new OperacionNoPermitidaException("Usuario autenticado requerido");
         }
-        return usuarios.findById(actor.getId())
+        return usuarios.findWithAuthoritiesById(actor.getId())
                 .filter(Usuario::isEnabled)
-                .filter(user -> user.getRol() != null && Boolean.TRUE.equals(user.getRol().getActivo()))
-                .filter(user -> rolSistema(user.getRol().getDescripcion()) == RolSistema.SUPERADMIN)
+                .filter(user -> user.getAuthorities().stream().anyMatch(value -> permiso.equals(value.getAuthority())))
                 .orElseThrow(() -> {
                     auditFailures.registrarEscalamiento(actor, operacion);
-                    return new OperacionNoPermitidaException("La operación requiere SUPERADMIN");
+                    return new OperacionNoPermitidaException("La operación requiere " + permiso);
                 });
     }
 
+    private void validarAsignables(Usuario actor, Collection<Rol> rolesNuevos) {
+        if (contieneRol(actor.getRoles(), SUPERADMIN)) return;
+        Set<String> permisosActor = actor.getAuthorities().stream()
+                .map(value -> value.getAuthority())
+                .filter(value -> value.startsWith("PERM_"))
+                .collect(Collectors.toSet());
+        boolean excede = rolesNuevos.stream()
+                .flatMap(role -> role.getPermisos().stream())
+                .filter(permiso -> Boolean.TRUE.equals(permiso.getActivo()))
+                .map(permiso -> "PERM_" + permiso.getCodigo())
+                .anyMatch(permiso -> !permisosActor.contains(permiso));
+        if (excede || contieneRol(rolesNuevos, SUPERADMIN)) {
+            throw new OperacionNoPermitidaException("No puede asignar roles con permisos superiores a los propios");
+        }
+    }
+
     private Usuario bloquearObjetivo(Long idUsuario) {
-        Usuario snapshot = usuarios.findById(idUsuario)
+        Usuario snapshot = usuarios.findWithAuthoritiesById(idUsuario)
                 .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
-        if (Boolean.TRUE.equals(snapshot.getActivo())
-                && rolSistema(snapshot.getRol().getDescripcion()) == RolSistema.SUPERADMIN) {
+        if (Boolean.TRUE.equals(snapshot.getActivo()) && contieneRol(snapshot.getRoles(), SUPERADMIN)) {
             return usuarios.findActiveSuperadminsForUpdate().stream()
                     .filter(user -> user.getId().equals(idUsuario)).findFirst()
                     .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
@@ -184,26 +206,38 @@ public class UsuarioServicio {
         }
     }
 
-    private Rol rolActivo(RolSistema rol) {
-        return roles.findByDescripcionIgnoreCase(rol.name())
-                .filter(existing -> Boolean.TRUE.equals(existing.getActivo()))
-                .orElseThrow(() -> new IllegalArgumentException("Rol no válido: " + rol));
+    private Set<Rol> resolverRolesActivos(List<String> codigos) {
+        if (codigos == null || codigos.isEmpty()) throw new IllegalArgumentException("Debe asignar al menos un rol");
+        Set<Rol> encontrados = codigos.stream()
+                .map(UsuarioServicio::normalizarCodigo)
+                .distinct()
+                .map(codigo -> roles.findByCodigoIgnoreCase(codigo)
+                        .filter(role -> Boolean.TRUE.equals(role.getActivo()))
+                        .orElseThrow(() -> new IllegalArgumentException("Rol no válido o inactivo: " + codigo)))
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (encontrados.isEmpty()) throw new IllegalArgumentException("Debe asignar al menos un rol");
+        return encontrados;
     }
 
-    private static RolSistema rolSistema(String rol) {
-        try {
-            return RolSistema.valueOf(rol == null ? "" : rol.trim().toUpperCase());
-        } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Rol reservado no válido: " + rol, e);
-        }
+    private static Rol rolPrincipal(Collection<Rol> roles) {
+        return roles.stream().min(Comparator
+                .comparingInt((Rol role) -> switch (role.getCodigo()) {
+                    case "SUPERADMIN" -> 0;
+                    case "ADMINISTRADOR" -> 1;
+                    default -> 2;
+                })
+                .thenComparing(Rol::getCodigo)).orElseThrow();
     }
 
-    private static String normalizarUsername(String username) {
-        String normalizado = username == null ? "" : username.trim();
-        if (normalizado.length() < 3 || normalizado.length() > 100) {
-            throw new IllegalArgumentException("El username debe tener entre 3 y 100 caracteres");
-        }
-        return normalizado;
+    private void auditarRoles(Usuario usuario, Usuario actor, Set<String> anteriores, Set<String> nuevos) {
+        Set<String> asignados = new LinkedHashSet<>(nuevos);
+        asignados.removeAll(anteriores);
+        Set<String> removidos = new LinkedHashSet<>(anteriores);
+        removidos.removeAll(nuevos);
+        if (!asignados.isEmpty()) audit.registrar("USUARIOS", "ROLES_ASIGNADOS", "USUARIO", id(usuario), actor,
+                null, null, Map.of("roles", anteriores), Map.of("roles", nuevos), Map.of("asignados", asignados));
+        if (!removidos.isEmpty()) audit.registrar("USUARIOS", "ROLES_REMOVIDOS", "USUARIO", id(usuario), actor,
+                null, null, Map.of("roles", anteriores), Map.of("roles", nuevos), Map.of("removidos", removidos));
     }
 
     private void auditarCambio(String accion, Usuario usuario, Usuario actor,
@@ -215,9 +249,34 @@ public class UsuarioServicio {
     private static Map<String, ?> snapshot(Usuario usuario) {
         return Map.of(
                 "username", usuario.getNombreUsuario(),
-                "rol", usuario.getRol().getDescripcion(),
+                "roles", codigos(usuario.getRoles()),
                 "activo", Boolean.TRUE.equals(usuario.getActivo()),
                 "authVersion", usuario.getAuthVersion());
+    }
+
+    private static Set<String> codigos(Collection<Rol> roles) {
+        return roles.stream().map(Rol::getCodigo).sorted()
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    private static boolean contieneRol(Collection<Rol> roles, String codigo) {
+        return roles.stream().anyMatch(role -> codigo.equalsIgnoreCase(role.getCodigo()));
+    }
+
+    private static String normalizarUsername(String username) {
+        String normalizado = username == null ? "" : username.trim();
+        if (normalizado.length() < 3 || normalizado.length() > 100) {
+            throw new IllegalArgumentException("El username debe tener entre 3 y 100 caracteres");
+        }
+        return normalizado;
+    }
+
+    private static String normalizarCodigo(String codigo) {
+        String normalizado = codigo == null ? "" : codigo.trim().toUpperCase();
+        if (!normalizado.matches("[A-Z][A-Z0-9_]{1,49}")) {
+            throw new IllegalArgumentException("Código de rol inválido: " + codigo);
+        }
+        return normalizado;
     }
 
     private static String id(Usuario usuario) {

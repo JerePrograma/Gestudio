@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.util.Map;
+import java.util.LinkedHashSet;
 
 @Service
 public class SuperadminBootstrapService {
@@ -57,7 +58,7 @@ public class SuperadminBootstrapService {
         } catch (IllegalArgumentException e) {
             throw new IllegalStateException("APP_BOOTSTRAP_SUPERADMIN_PASSWORD: " + e.getMessage(), e);
         }
-        var role = roles.findByDescripcionIgnoreCase(RolSistema.SUPERADMIN.name())
+        var role = roles.findByCodigoIgnoreCase(RolSistema.SUPERADMIN.name())
                 .filter(existing -> Boolean.TRUE.equals(existing.getActivo()))
                 .orElseThrow(() -> new IllegalStateException("No existe el rol SUPERADMIN activo"));
         if (usuarios.findByNombreUsuarioIgnoreCase(username).isPresent()) {
@@ -68,6 +69,7 @@ public class SuperadminBootstrapService {
         superadmin.setNombreUsuario(username);
         superadmin.setContrasena(passwordEncoder.encode(password));
         superadmin.setRol(role);
+        superadmin.setRoles(new LinkedHashSet<>(java.util.List.of(role)));
         superadmin.setActivo(true);
         superadmin.setAuthVersion(0L);
         superadmin.setPasswordChangedAt(clock.instant());

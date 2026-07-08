@@ -371,37 +371,59 @@ export interface StockResponse {
 export interface UsuarioRegistroRequest {
   nombreUsuario: string;
   contrasena: string;
-  rol: string;
+  roles: string[];
 }
 
 export interface UsuarioModificacionRequest {
   nombreUsuario: string;
   // La contraseña se hace opcional, para permitir actualizarla o dejarla sin cambios
   contrasena?: string;
-  rol: string;
+  roles: string[];
   activo: boolean;
 }
 
 export interface UsuarioResponse {
   id: number;
   nombreUsuario: string;
-  rol: string;
+  roles: string[];
+  permisos: string[];
   activo: boolean;
 }
 
 export interface RolRegistroRequest {
-  descripcion: string;
+  codigo: string;
+  nombre: string;
+  descripcionFuncional?: string;
 }
 
 export interface RolModificacionRequest {
-  descripcion: string;
+  nombre: string;
+  descripcionFuncional?: string;
   activo: boolean;
 }
 
 export interface RolResponse {
   id: number;
-  descripcion: string;
+  codigo: string;
+  nombre: string;
+  descripcionFuncional?: string;
   activo: boolean;
+  sistema: boolean;
+  editable: boolean;
+  cantidadPermisos: number;
+}
+
+export interface PermisoResponse {
+  id: number;
+  codigo: string;
+  descripcion: string;
+  modulo: string;
+  activo: boolean;
+  sistema: boolean;
+}
+
+export interface RolDetalleResponse extends Omit<RolResponse, "cantidadPermisos"> {
+  permisos: PermisoResponse[];
 }
 
 // src/types/conceptosTypes.ts

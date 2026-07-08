@@ -36,7 +36,8 @@ public class AutenticacionService {
             throw exception;
         }
         Usuario usuario = (Usuario) authentication.getPrincipal();
-        if (!usuario.isEnabled() || usuario.getRol() == null || !Boolean.TRUE.equals(usuario.getRol().getActivo())) {
+        if (!usuario.isEnabled() || usuario.getRoles().stream()
+                .noneMatch(role -> Boolean.TRUE.equals(role.getActivo()))) {
             auditFailures.registrarAnonimo("LOGIN_RECHAZADO", username, Map.of("motivo", "USUARIO_INACTIVO"));
             throw new BadCredentialsException("Credenciales inválidas");
         }
@@ -61,7 +62,7 @@ public class AutenticacionService {
     private Resultado resultado(RefreshSessionService.Emision emision) {
         Usuario user = emision.usuario();
         return new Resultado(emision.accessToken(), emision.refreshToken(), emision.session().getExpiresAt(),
-                new UsuarioResponse(user.getId(), user.getNombreUsuario(), user.getRol().getDescripcion(), user.getActivo()));
+                UsuarioResponse.from(user));
     }
 
     public record Resultado(String accessToken, String refreshToken, java.time.Instant refreshExpiresAt,

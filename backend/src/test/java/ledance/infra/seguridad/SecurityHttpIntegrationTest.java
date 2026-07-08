@@ -8,6 +8,7 @@ import ledance.controladores.AutenticacionControlador;
 import ledance.controladores.RolControlador;
 import ledance.dto.usuario.response.UsuarioResponse;
 import ledance.entidades.Rol;
+import ledance.entidades.Permiso;
 import ledance.entidades.Usuario;
 import ledance.infra.configuracion.AppProperties;
 import ledance.infra.configuracion.ConfiguracionCors;
@@ -105,12 +106,7 @@ class SecurityHttpIntegrationTest {
         when(usuarioServicio.convertirAUsuarioResponse(any(Usuario.class)))
                 .thenAnswer(invocation -> {
                     Usuario user = invocation.getArgument(0);
-                    return new UsuarioResponse(
-                            user.getId(),
-                            user.getNombreUsuario(),
-                            user.getRol().getDescripcion(),
-                            user.getActivo()
-                    );
+                    return UsuarioResponse.from(user);
                 });
         when(usuarioServicio.listarUsuarios(isNull(), isNull())).thenReturn(List.of());
         when(rolServicio.listarRoles()).thenReturn(List.of());
@@ -119,7 +115,7 @@ class SecurityHttpIntegrationTest {
     @Test
     void accessValidoAutenticaUsuarioActivo() throws Exception {
         Usuario user = usuario(1L, "admin", "ADMINISTRADOR", true);
-        when(usuarioRepositorio.findById(1L)).thenReturn(Optional.of(user));
+        when(usuarioRepositorio.findWithAuthoritiesById(1L)).thenReturn(Optional.of(user));
 
         mockMvc.perform(get("/api/usuarios/perfil")
                         .header(HttpHeaders.AUTHORIZATION, bearer(tokenService.generarAccessToken(user))))
@@ -181,9 +177,9 @@ class SecurityHttpIntegrationTest {
     @Test
     void accessVencidoFirmaInvalidaEIssuerInvalidoDevuelven401() throws Exception {
         Instant now = Instant.now();
-        String expired = rawToken(SECRET, ISSUER, now.minusSeconds(120), now.minusSeconds(60), "ACCESS", 1L, "ADMINISTRADOR");
-        String wrongSignature = rawToken("another-security-test-secret-with-at-least-32-chars", ISSUER, now, now.plusSeconds(60), "ACCESS", 1L, "ADMINISTRADOR");
-        String wrongIssuer = rawToken(SECRET, "wrong-issuer", now, now.plusSeconds(60), "ACCESS", 1L, "ADMINISTRADOR");
+        String expired = rawToken(SECRET, ISSUER, now.minusSeconds(120), now.minusSeconds(60), "ACCESS", 1L);
+        String wrongSignature = rawToken("another-security-test-secret-with-at-least-32-chars", ISSUER, now, now.plusSeconds(60), "ACCESS", 1L);
+        String wrongIssuer = rawToken(SECRET, "wrong-issuer", now, now.plusSeconds(60), "ACCESS", 1L);
 
         assertUnauthorized(expired);
         assertUnauthorized(wrongSignature);
@@ -200,20 +196,21 @@ class SecurityHttpIntegrationTest {
     @Test
     void usuarioInactivoYSinRolNoQuedanAutorizados() throws Exception {
         Usuario inactive = usuario(1L, "inactive", "ADMINISTRADOR", false);
-        when(usuarioRepositorio.findById(1L)).thenReturn(Optional.of(inactive));
+        when(usuarioRepositorio.findWithAuthoritiesById(1L)).thenReturn(Optional.of(inactive));
         assertUnauthorized(tokenService.generarAccessToken(inactive));
 
         Usuario withoutRole = usuario(2L, "without-role", "OPERADOR", true);
         String token = tokenService.generarAccessToken(withoutRole);
         withoutRole.setRol(null);
-        when(usuarioRepositorio.findById(2L)).thenReturn(Optional.of(withoutRole));
+        withoutRole.getRoles().clear();
+        when(usuarioRepositorio.findWithAuthoritiesById(2L)).thenReturn(Optional.of(withoutRole));
         assertUnauthorized(token);
     }
 
     @Test
-    void usuariosRequiereSuperadminYLaJerarquiaConservaAccesoAdministrativo() throws Exception {
+    void usuariosRequierePermisoYSuperadminConservaAccesoOperativo() throws Exception {
         Usuario operator = usuario(2L, "operator", "OPERADOR", true);
-        when(usuarioRepositorio.findById(2L)).thenReturn(Optional.of(operator));
+        when(usuarioRepositorio.findWithAuthoritiesById(2L)).thenReturn(Optional.of(operator));
         String operatorToken = tokenService.generarAccessToken(operator);
 
         mockMvc.perform(get("/api/usuarios")
@@ -224,19 +221,63 @@ class SecurityHttpIntegrationTest {
                 .andExpect(status().isForbidden());
 
         Usuario admin = usuario(1L, "admin", "ADMINISTRADOR", true);
-        when(usuarioRepositorio.findById(1L)).thenReturn(Optional.of(admin));
+        when(usuarioRepositorio.findWithAuthoritiesById(1L)).thenReturn(Optional.of(admin));
         mockMvc.perform(get("/api/usuarios")
                         .header(HttpHeaders.AUTHORIZATION, bearer(tokenService.generarAccessToken(admin))))
                 .andExpect(status().isForbidden());
 
         Usuario superadmin = usuario(3L, "root", "SUPERADMIN", true);
-        when(usuarioRepositorio.findById(3L)).thenReturn(Optional.of(superadmin));
+        when(usuarioRepositorio.findWithAuthoritiesById(3L)).thenReturn(Optional.of(superadmin));
         mockMvc.perform(get("/api/usuarios")
                         .header(HttpHeaders.AUTHORIZATION, bearer(tokenService.generarAccessToken(superadmin))))
                 .andExpect(status().isOk());
         mockMvc.perform(get("/api/pagos/recibo/999")
                         .header(HttpHeaders.AUTHORIZATION, bearer(tokenService.generarAccessToken(superadmin))))
                 .andExpect(result -> assertThat(result.getResponse().getStatus()).isNotIn(401, 403));
+    }
+
+    @Test
+    void multiplesRolesSumanPermisosActivos() throws Exception {
+        Usuario user = usuario(10L, "multi", "RECEPCION", true);
+        Rol cobranzas = new Rol(11L, "COBRANZAS", true);
+        cobranzas.getPermisos().add(permiso("PAGOS_READ"));
+        user.getRoles().add(cobranzas);
+        when(usuarioRepositorio.findWithAuthoritiesById(10L)).thenReturn(Optional.of(user));
+
+        mockMvc.perform(get("/api/pagos/999")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(tokenService.generarAccessToken(user))))
+                .andExpect(result -> assertThat(result.getResponse().getStatus()).isNotIn(401, 403));
+    }
+
+    @Test
+    void rolInactivoYPermisoInactivoNoAutorizan() throws Exception {
+        Usuario inactiveRole = usuario(11L, "inactive-role", "LECTURA", true);
+        Rol activeWithoutPermission = inactiveRole.getRol();
+        Rol disabled = new Rol(12L, "COBRANZAS", false);
+        disabled.getPermisos().add(permiso("PAGOS_READ"));
+        inactiveRole.setRoles(new java.util.LinkedHashSet<>(List.of(activeWithoutPermission, disabled)));
+        when(usuarioRepositorio.findWithAuthoritiesById(11L)).thenReturn(Optional.of(inactiveRole));
+        mockMvc.perform(get("/api/pagos/999")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(tokenService.generarAccessToken(inactiveRole))))
+                .andExpect(status().isForbidden());
+
+        Usuario inactivePermission = usuario(12L, "inactive-permission", "LECTURA", true);
+        Permiso permiso = permiso("PAGOS_READ");
+        permiso.setActivo(false);
+        inactivePermission.getRol().getPermisos().add(permiso);
+        when(usuarioRepositorio.findWithAuthoritiesById(12L)).thenReturn(Optional.of(inactivePermission));
+        mockMvc.perform(get("/api/pagos/999")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(tokenService.generarAccessToken(inactivePermission))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void cambioDeAuthVersionInvalidaElAccessToken() throws Exception {
+        Usuario user = usuario(13L, "versioned", "ADMINISTRADOR", true);
+        String token = tokenService.generarAccessToken(user);
+        user.setAuthVersion(1L);
+        when(usuarioRepositorio.findWithAuthoritiesById(13L)).thenReturn(Optional.of(user));
+        assertUnauthorized(token);
     }
 
     @Test
@@ -252,7 +293,7 @@ class SecurityHttpIntegrationTest {
                 .andExpect(status().isUnauthorized());
 
         Usuario operator = usuario(2L, "operator", "OPERADOR", true);
-        when(usuarioRepositorio.findById(2L)).thenReturn(Optional.of(operator));
+        when(usuarioRepositorio.findWithAuthoritiesById(2L)).thenReturn(Optional.of(operator));
         String token = tokenService.generarAccessToken(operator);
         mockMvc.perform(post("/api/usuarios/registro")
                         .header(HttpHeaders.AUTHORIZATION, bearer(token))
@@ -275,7 +316,7 @@ class SecurityHttpIntegrationTest {
                 .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
 
         Usuario operator = usuario(2L, "operator", "OPERADOR", true);
-        when(usuarioRepositorio.findById(2L)).thenReturn(Optional.of(operator));
+        when(usuarioRepositorio.findWithAuthoritiesById(2L)).thenReturn(Optional.of(operator));
         mockMvc.perform(post("/api/pagos")
                         .header(HttpHeaders.AUTHORIZATION, bearer(tokenService.generarAccessToken(operator)))
                         .contentType(MediaType.APPLICATION_JSON).content(body))
@@ -294,10 +335,10 @@ class SecurityHttpIntegrationTest {
 
         for (String endpoint : endpoints) {
             mockMvc.perform(get(endpoint)).andExpect(status().isUnauthorized());
-            when(usuarioRepositorio.findById(2L)).thenReturn(Optional.of(operator));
+            when(usuarioRepositorio.findWithAuthoritiesById(2L)).thenReturn(Optional.of(operator));
             mockMvc.perform(get(endpoint).header(HttpHeaders.AUTHORIZATION, bearer(tokenService.generarAccessToken(operator))))
                     .andExpect(status().isForbidden());
-            when(usuarioRepositorio.findById(1L)).thenReturn(Optional.of(admin));
+            when(usuarioRepositorio.findWithAuthoritiesById(1L)).thenReturn(Optional.of(admin));
             mockMvc.perform(get(endpoint).header(HttpHeaders.AUTHORIZATION, bearer(tokenService.generarAccessToken(admin))))
                     .andExpect(result -> assertThat(result.getResponse().getStatus()).isNotIn(401, 403));
         }
@@ -306,7 +347,7 @@ class SecurityHttpIntegrationTest {
     @Test
     void pagoConIdempotencyKeyInvalidaDevuelve400() throws Exception {
         Usuario admin = usuario(1L, "admin", "ADMINISTRADOR", true);
-        when(usuarioRepositorio.findById(1L)).thenReturn(Optional.of(admin));
+        when(usuarioRepositorio.findWithAuthoritiesById(1L)).thenReturn(Optional.of(admin));
         String body = """
                 {"alumnoId":1,"metodoPagoId":1,"montoRecibido":"10.00",
                  "idempotencyKey":"","aplicaciones":[],"generarCredito":true}
@@ -329,7 +370,7 @@ class SecurityHttpIntegrationTest {
     @Test
     void errorInternoNoExponeDetalleDeLaExcepcion() throws Exception {
         Usuario superadmin = usuario(1L, "root", "SUPERADMIN", true);
-        when(usuarioRepositorio.findById(1L)).thenReturn(Optional.of(superadmin));
+        when(usuarioRepositorio.findWithAuthoritiesById(1L)).thenReturn(Optional.of(superadmin));
         when(usuarioServicio.listarUsuarios(isNull(), isNull()))
                 .thenThrow(new RuntimeException("cadena interna sensible"));
 
@@ -364,7 +405,10 @@ class SecurityHttpIntegrationTest {
         usuario.setId(id);
         usuario.setNombreUsuario(username);
         usuario.setContrasena("encoded-password");
-        usuario.setRol(new Rol(id, role, true));
+        Rol rol = new Rol(id, role, true);
+        defaultPermissions(role).forEach(code -> rol.getPermisos().add(permiso(code)));
+        usuario.setRol(rol);
+        usuario.setRoles(new java.util.LinkedHashSet<>(List.of(rol)));
         usuario.setActivo(active);
         usuario.setAuthVersion(0L);
         return usuario;
@@ -376,20 +420,38 @@ class SecurityHttpIntegrationTest {
             Instant issuedAt,
             Instant expiresAt,
             String type,
-            Long userId,
-            String role) {
+            Long userId) {
         return JWT.create()
                 .withIssuer(issuer)
                 .withAudience("le-dance-web")
                 .withSubject("admin")
                 .withClaim("id", userId)
-                .withClaim("rol", role)
                 .withClaim("type", type)
                 .withClaim("auth_version", 0L)
                 .withJWTId(UUID.randomUUID().toString())
                 .withIssuedAt(Date.from(issuedAt))
                 .withExpiresAt(Date.from(expiresAt))
                 .sign(Algorithm.HMAC256(secret));
+    }
+
+    private List<String> defaultPermissions(String role) {
+        if ("SUPERADMIN".equals(role)) return List.of(
+                "USUARIOS_READ", "USUARIOS_WRITE", "ROLES_READ", "ROLES_WRITE", "PERMISOS_READ",
+                "PAGOS_READ", "PAGOS_WRITE", "PAGOS_ANULAR", "CARGOS_READ", "CREDITOS_READ",
+                "CAJA_READ", "EGRESOS_READ", "STOCK_READ", "REPORTES_READ");
+        if ("ADMINISTRADOR".equals(role)) return List.of(
+                "PAGOS_READ", "PAGOS_WRITE", "PAGOS_ANULAR", "CARGOS_READ", "CREDITOS_READ",
+                "CAJA_READ", "EGRESOS_READ", "STOCK_READ", "REPORTES_READ");
+        return List.of();
+    }
+
+    private Permiso permiso(String code) {
+        Permiso permiso = new Permiso();
+        permiso.setCodigo(code);
+        permiso.setDescripcion(code);
+        permiso.setModulo("TEST");
+        permiso.setActivo(true);
+        return permiso;
     }
 
     @TestConfiguration(proxyBeanMethods = false)
@@ -424,6 +486,6 @@ class SecurityHttpIntegrationTest {
     private AutenticacionService.Resultado resultado(Usuario user) {
         return new AutenticacionService.Resultado("access-token", "refresh-token",
                 Instant.now().plusSeconds(3600),
-                new UsuarioResponse(user.getId(), user.getNombreUsuario(), user.getRol().getDescripcion(), user.getActivo()));
+                UsuarioResponse.from(user));
     }
 }

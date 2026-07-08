@@ -2,5 +2,9 @@ package ledance.entidades;
 
 public enum RolSistema {
     SUPERADMIN,
-    ADMINISTRADOR
+    ADMINISTRADOR,
+    RECEPCION,
+    COBRANZAS,
+    PROFESOR,
+    LECTURA
 }

@@ -17,7 +17,8 @@ public class UsuarioDetailsService implements UserDetailsService {
     @Override
     public UserDetails loadUserByUsername(String username) {
         return usuarios.findByNombreUsuarioIgnoreCase(username.trim())
-                .filter(usuario -> usuario.getRol() != null && Boolean.TRUE.equals(usuario.getRol().getActivo()))
+                .filter(usuario -> usuario.getRoles().stream()
+                        .anyMatch(role -> Boolean.TRUE.equals(role.getActivo())))
                 .orElseThrow(() -> new UsernameNotFoundException("Usuario no encontrado"));
     }
 }

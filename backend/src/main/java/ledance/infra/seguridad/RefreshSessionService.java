@@ -59,11 +59,11 @@ public class RefreshSessionService {
         }
         if (actual.getRevokedAt() != null || !actual.getExpiresAt().isAfter(now)) throw new InvalidTokenException();
 
-        Usuario usuario = usuarios.findById(actual.getUsuario().getId())
+        Usuario usuario = usuarios.findWithAuthoritiesById(actual.getUsuario().getId())
                 .filter(Usuario::isEnabled)
-                .filter(user -> user.getRol() != null && Boolean.TRUE.equals(user.getRol().getActivo()))
+                .filter(user -> user.getRoles().stream()
+                        .anyMatch(role -> Boolean.TRUE.equals(role.getActivo())))
                 .filter(user -> Objects.equals(user.getNombreUsuario(), verified.subject()))
-                .filter(user -> Objects.equals(user.getRol().getDescripcion(), verified.role()))
                 .filter(user -> Objects.equals(user.getAuthVersion(), verified.authVersion()))
                 .filter(user -> Objects.equals(user.getAuthVersion(), actual.getAuthVersion()))
                 .orElseThrow(InvalidTokenException::new);
