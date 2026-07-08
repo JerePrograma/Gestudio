@@ -4,6 +4,7 @@ import ledance.auditoria.application.AuditFailureService;
 import ledance.dto.request.LoginRequest;
 import ledance.dto.usuario.response.UsuarioResponse;
 import ledance.entidades.Usuario;
+import ledance.repositorios.UsuarioRepositorio;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -14,34 +15,54 @@ import java.util.Map;
 
 @Service
 public class AutenticacionService {
+
     private final AuthenticationManager authenticationManager;
     private final RefreshSessionService sessions;
     private final AuditFailureService auditFailures;
+    private final UsuarioRepositorio usuarios;
 
-    public AutenticacionService(AuthenticationManager authenticationManager, RefreshSessionService sessions,
-                                AuditFailureService auditFailures) {
+    public AutenticacionService(AuthenticationManager authenticationManager,
+                                RefreshSessionService sessions,
+                                AuditFailureService auditFailures,
+                                UsuarioRepositorio usuarios) {
         this.authenticationManager = authenticationManager;
         this.sessions = sessions;
         this.auditFailures = auditFailures;
+        this.usuarios = usuarios;
     }
 
     public Resultado login(LoginRequest request, String userAgent, String ip) {
         String username = request.nombreUsuario().trim();
+
         final org.springframework.security.core.Authentication authentication;
+
         try {
             authentication = authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(username, request.contrasena()));
         } catch (AuthenticationException exception) {
-            auditFailures.registrarAnonimo("LOGIN_RECHAZADO", username, Map.of("motivo", "CREDENCIALES_INVALIDAS"));
+            auditFailures.registrarAnonimo(
+                    "LOGIN_RECHAZADO",
+                    username,
+                    Map.of("motivo", "CREDENCIALES_INVALIDAS")
+            );
             throw exception;
         }
+
         Usuario usuario = (Usuario) authentication.getPrincipal();
-        if (!usuario.isEnabled() || usuario.getRoles().stream()
-                .noneMatch(role -> Boolean.TRUE.equals(role.getActivo()))) {
-            auditFailures.registrarAnonimo("LOGIN_RECHAZADO", username, Map.of("motivo", "USUARIO_INACTIVO"));
-            throw new BadCredentialsException("Credenciales inválidas");
-        }
-        return resultado(sessions.iniciar(usuario, userAgent, ip));
+
+        Usuario usuarioCompleto = usuarios.findByIdConRolesYPermisos(usuario.getId())
+                .filter(Usuario::isEnabled)
+                .filter(user -> user.rolesEfectivos().stream().anyMatch(rol -> Boolean.TRUE.equals(rol.getActivo())))
+                .orElseThrow(() -> {
+                    auditFailures.registrarAnonimo(
+                            "LOGIN_RECHAZADO",
+                            username,
+                            Map.of("motivo", "USUARIO_INACTIVO")
+                    );
+                    return new BadCredentialsException("Credenciales inválidas");
+                });
+
+        return resultado(sessions.iniciar(usuarioCompleto, userAgent, ip));
     }
 
     public Resultado refresh(String refreshToken, String userAgent, String ip) {
@@ -50,7 +71,11 @@ public class AutenticacionService {
         } catch (RefreshTokenReuseException exception) {
             throw exception;
         } catch (InvalidTokenException exception) {
-            auditFailures.registrarAnonimo("REFRESH_RECHAZADO", null, Map.of("motivo", "TOKEN_INVALIDO"));
+            auditFailures.registrarAnonimo(
+                    "REFRESH_RECHAZADO",
+                    null,
+                    Map.of("motivo", "TOKEN_INVALIDO")
+            );
             throw exception;
         }
     }
@@ -61,11 +86,26 @@ public class AutenticacionService {
 
     private Resultado resultado(RefreshSessionService.Emision emision) {
         Usuario user = emision.usuario();
-        return new Resultado(emision.accessToken(), emision.refreshToken(), emision.session().getExpiresAt(),
-                UsuarioResponse.from(user));
+
+        return new Resultado(
+                emision.accessToken(),
+                emision.refreshToken(),
+                emision.session().getExpiresAt(),
+                new UsuarioResponse(
+                        user.getId(),
+                        user.getNombreUsuario(),
+                        user.codigosRolesActivos().stream().toList(),
+                        user.codigosPermisosActivos().stream().toList(),
+                        user.getActivo()
+                )
+        );
     }
 
-    public record Resultado(String accessToken, String refreshToken, java.time.Instant refreshExpiresAt,
-                            UsuarioResponse usuario) {
+    public record Resultado(
+            String accessToken,
+            String refreshToken,
+            java.time.Instant refreshExpiresAt,
+            UsuarioResponse usuario
+    ) {
     }
 }

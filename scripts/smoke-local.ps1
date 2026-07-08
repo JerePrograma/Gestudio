@@ -23,6 +23,7 @@ $postgresPassword = $null
 $jwtSecret = $null
 $adminPassword = $null
 $http = $null
+$cookieContainer = $null
 $caught = $null
 $originalEnvironment = @{}
 
@@ -170,6 +171,9 @@ function Invoke-SmokeHttp {
         if (-not [string]::IsNullOrWhiteSpace($Token)) {
             $request.Headers.Authorization = [Net.Http.Headers.AuthenticationHeaderValue]::new("Bearer", $Token)
         }
+        if ($Uri -match '/login/(refresh|logout)$') {
+            [void]$request.Headers.TryAddWithoutValidation("Origin", $script:frontendOrigin)
+        }
         if ($null -ne $Body) {
             $json = $Body | ConvertTo-Json -Depth 12 -Compress
             $request.Content = [Net.Http.StringContent]::new($json, [Text.Encoding]::UTF8, "application/json")
@@ -183,6 +187,21 @@ function Invoke-SmokeHttp {
         finally { $response.Dispose() }
     }
     finally { $request.Dispose() }
+}
+
+function Get-RefreshToken {
+    $cookie = $script:cookieContainer.GetCookies([Uri]($script:apiBase + "/login"))["ledance_refresh"]
+    if ($null -eq $cookie -or [string]::IsNullOrWhiteSpace($cookie.Value)) {
+        throw "Login/refresh sin cookie HttpOnly"
+    }
+    return $cookie.Value
+}
+
+function Set-RefreshToken {
+    param([Parameter(Mandatory)][string] $Value)
+    $cookie = [Net.Cookie]::new("ledance_refresh", $Value, "/api/login", "127.0.0.1")
+    $cookie.HttpOnly = $true
+    $script:cookieContainer.Add([Uri]($script:apiBase + "/login"), $cookie)
 }
 
 function Invoke-Api {
@@ -207,12 +226,12 @@ function Login {
         contrasena = $script:adminPassword
     } -Token $null -ExpectedStatus 200
     Assert-True -Condition (-not [string]::IsNullOrWhiteSpace($response.Json.accessToken)) -Message "Login sin access token"
-    Assert-True -Condition (-not [string]::IsNullOrWhiteSpace($response.Json.refreshToken)) -Message "Login sin refresh token"
+    Assert-True -Condition ($response.Json.PSObject.Properties.Name -notcontains "refreshToken") -Message "El refresh token no debe exponerse en el body"
     Assert-Equal -Actual $response.Json.usuario.nombreUsuario -Expected $script:adminUsername -Message "Username de login incorrecto"
-    Assert-Equal -Actual $response.Json.usuario.rol -Expected "ADMINISTRADOR" -Message "Rol de login incorrecto"
+    Assert-True -Condition ($response.Json.usuario.roles -contains "SUPERADMIN") -Message "Rol de login incorrecto"
     Assert-Equal -Actual $response.Json.usuario.activo -Expected $true -Message "Usuario de login inactivo"
     $script:accessToken = [string]$response.Json.accessToken
-    $script:refreshToken = [string]$response.Json.refreshToken
+    $script:refreshToken = Get-RefreshToken
     return $response.Json.usuario
 }
 
@@ -244,6 +263,7 @@ $jwtSecret = New-HexSecret 64
 $adminPassword = "Smoke-$(New-HexSecret 24)"
 $adminUsername = "smoke-admin-$suffix"
 $apiBase = "http://127.0.0.1:$backendPort/api"
+$frontendOrigin = "http://127.0.0.1:$frontendPort"
 
 try {
     Push-Location $repoRoot
@@ -268,13 +288,13 @@ try {
             SPRING_FLYWAY_ENABLED = "true"
             SPRING_FLYWAY_BASELINE_ON_MIGRATE = "false"
             APP_SCHEDULING_ENABLED = "false"
-            APP_BOOTSTRAP_ADMIN_ENABLED = "true"
-            APP_BOOTSTRAP_ADMIN_USERNAME = $adminUsername
-            APP_BOOTSTRAP_ADMIN_PASSWORD = $adminPassword
+            APP_BOOTSTRAP_SUPERADMIN_ENABLED = "true"
+            APP_BOOTSTRAP_SUPERADMIN_USERNAME = $adminUsername
+            APP_BOOTSTRAP_SUPERADMIN_PASSWORD = $adminPassword
             JWT_SECRET = $jwtSecret
             JWT_ISSUER = "le-dance-smoke"
             APP_TIME_ZONE = "America/Argentina/Buenos_Aires"
-            APP_CORS_ALLOWED_ORIGINS = "http://127.0.0.1:$frontendPort"
+            APP_CORS_ALLOWED_ORIGINS = $frontendOrigin
             VITE_API_BASE_URL = $apiBase
             VITE_APP_TIME_ZONE = "America/Argentina/Buenos_Aires"
         }
@@ -293,17 +313,20 @@ try {
         Wait-ServiceHealthy -Service "db"
         Wait-ServiceHealthy -Service "backend"
         Wait-ServiceHealthy -Service "frontend"
-        $http = [Net.Http.HttpClient]::new()
+        $cookieContainer = [Net.CookieContainer]::new()
+        $handler = [Net.Http.HttpClientHandler]::new()
+        $handler.CookieContainer = $cookieContainer
+        $http = [Net.Http.HttpClient]::new($handler, $true)
         $http.Timeout = [TimeSpan]::FromSeconds(30)
         $front = Invoke-SmokeHttp -Method "GET" -Uri "http://127.0.0.1:$frontendPort/" -Body $null -Token $null
         Assert-Equal -Actual $front.Status -Expected 200 -Message "Frontend no responde"
         Pass "Stack healthy"
 
-        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM flyway_schema_history") -Expected "1" -Message "Flyway no tiene exactamente una fila"
-        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM flyway_schema_history WHERE version = '1' AND success") -Expected "1" -Message "Flyway V1 no esta aplicada"
-        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM flyway_schema_history WHERE NOT success OR version <> '1'") -Expected "0" -Message "Hay migraciones fallidas o futuras"
-        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM roles WHERE lower(descripcion) = 'administrador' AND activo") -Expected "1" -Message "Falta ADMINISTRADOR activo"
-        Pass "Flyway V1"
+        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM flyway_schema_history WHERE success") -Expected "5" -Message "Flyway no aplico V1-V5"
+        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM flyway_schema_history WHERE version = '5' AND success") -Expected "1" -Message "Flyway V5 no esta aplicada"
+        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM flyway_schema_history WHERE NOT success OR version::int NOT BETWEEN 1 AND 5") -Expected "0" -Message "Hay migraciones fallidas o inesperadas"
+        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM roles WHERE codigo = 'SUPERADMIN' AND activo") -Expected "1" -Message "Falta SUPERADMIN activo"
+        Pass "Flyway V1-V5"
 
         $quotedUser = $adminUsername.Replace("'", "''")
         Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM usuarios") -Expected "1" -Message "El bootstrap no creo exactamente un usuario"
@@ -311,7 +334,8 @@ try {
         $bootstrapParts = $bootstrap.Split("|")
         Assert-Equal -Actual $bootstrapParts.Count -Expected 4 -Message "Usuario bootstrap no encontrado"
         Assert-Equal -Actual $bootstrapParts[1] -Expected "t" -Message "Usuario bootstrap inactivo"
-        Assert-Equal -Actual $bootstrapParts[2] -Expected "ADMINISTRADOR" -Message "Rol bootstrap incorrecto"
+        Assert-Equal -Actual $bootstrapParts[2] -Expected "SUPERADMIN" -Message "Rol bootstrap incorrecto"
+        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM usuario_roles ur JOIN roles r ON r.id=ur.rol_id WHERE ur.usuario_id=$($bootstrapParts[0]) AND r.codigo='SUPERADMIN'") -Expected "1" -Message "Bootstrap sin rol efectivo"
         Assert-True -Condition ($bootstrapParts[3] -ne $adminPassword) -Message "La password plana fue persistida"
         Assert-True -Condition ($bootstrapParts[3] -match '^\$2[aby]\$') -Message "La password persistida no es BCrypt"
         $adminId = [long]$bootstrapParts[0]
@@ -323,24 +347,27 @@ try {
         Assert-Equal -Actual ([long]$loginUser.id) -Expected $adminId -Message "ID de login incorrecto"
         $profile = Invoke-Api -Method "GET" -Path "/usuarios/perfil" -ExpectedStatus 200
         Assert-Equal -Actual $profile.Json.nombreUsuario -Expected $adminUsername -Message "Perfil incorrecto"
-        Assert-Equal -Actual $profile.Json.rol -Expected "ADMINISTRADOR" -Message "Rol de perfil incorrecto"
+        Assert-True -Condition ($profile.Json.roles -contains "SUPERADMIN") -Message "Rol de perfil incorrecto"
         Pass "Login"
 
-        Invoke-Api -Method "POST" -Path "/login/refresh" -Token $accessToken -ExpectedStatus 401 | Out-Null
+        Set-RefreshToken -Value $accessToken
+        Invoke-Api -Method "POST" -Path "/login/refresh" -Token $null -ExpectedStatus 401 | Out-Null
+        Set-RefreshToken -Value $refreshToken
         Invoke-Api -Method "GET" -Path "/usuarios/perfil" -Token $refreshToken -ExpectedStatus 401 | Out-Null
         $oldAccess = $accessToken
         $oldRefresh = $refreshToken
-        $refreshed = Invoke-Api -Method "POST" -Path "/login/refresh" -Token $refreshToken -ExpectedStatus 200
+        $refreshed = Invoke-Api -Method "POST" -Path "/login/refresh" -Token $null -ExpectedStatus 200
         Assert-True -Condition ($refreshed.Json.accessToken -ne $oldAccess) -Message "Refresh no roto access token"
-        Assert-True -Condition ($refreshed.Json.refreshToken -ne $oldRefresh) -Message "Refresh no roto refresh token"
-        Assert-Equal -Actual $refreshed.Json.usuario.rol -Expected "ADMINISTRADOR" -Message "Rol de refresh incorrecto"
+        $newRefresh = Get-RefreshToken
+        Assert-True -Condition ($newRefresh -ne $oldRefresh) -Message "Refresh no roto refresh token"
+        Assert-True -Condition ($refreshed.Json.usuario.roles -contains "SUPERADMIN") -Message "Rol de refresh incorrecto"
         $accessToken = [string]$refreshed.Json.accessToken
-        $refreshToken = [string]$refreshed.Json.refreshToken
+        $refreshToken = $newRefresh
         Pass "Refresh"
 
-        (Get-Content -Raw $envFile).Replace("APP_BOOTSTRAP_ADMIN_ENABLED=true", "APP_BOOTSTRAP_ADMIN_ENABLED=false") |
+        (Get-Content -Raw $envFile).Replace("APP_BOOTSTRAP_SUPERADMIN_ENABLED=true", "APP_BOOTSTRAP_SUPERADMIN_ENABLED=false") |
             Set-Content -LiteralPath $envFile -Encoding ASCII
-        [Environment]::SetEnvironmentVariable("APP_BOOTSTRAP_ADMIN_ENABLED", "false", "Process")
+        [Environment]::SetEnvironmentVariable("APP_BOOTSTRAP_SUPERADMIN_ENABLED", "false", "Process")
         Restart-Backend
         Login | Out-Null
         Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM usuarios") -Expected "1" -Message "El reinicio creo otro usuario"
@@ -516,7 +543,7 @@ try {
         Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM aplicaciones_pago WHERE pago_id IN ($($partial.id),$($finalPayment.id))") -Expected "2" -Message "Cantidad final de aplicaciones incorrecta"
         Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM stocks WHERE cantidad_actual < 0") -Expected "0" -Message "Stock negativo"
         Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM (SELECT pago_id,tipo FROM recibos_pendientes GROUP BY pago_id,tipo HAVING count(*) > 1) x") -Expected "0" -Message "Outbox duplicado"
-        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM flyway_schema_history WHERE NOT success OR version <> '1'") -Expected "0" -Message "Historial Flyway final invalido"
+        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM flyway_schema_history WHERE NOT success OR version::int NOT BETWEEN 1 AND 5") -Expected "0" -Message "Historial Flyway final invalido"
         Assert-AuditZero -RelativePath "docs/refactor/sql/03-orphans.sql"
         Assert-AuditZero -RelativePath "docs/refactor/sql/04-financial-inconsistencies.sql"
         Assert-AuditZero -RelativePath "docs/refactor/sql/05-state-inconsistencies.sql"

@@ -85,6 +85,22 @@ class UsuarioServicioTest {
     }
 
     @Test
+    void superadminInactivoNoPermiteAsignarPermisosSuperiores() {
+        superadmin.setActivo(false);
+        Rol gestor = rol(4L, "GESTOR_USUARIOS", "USUARIOS_WRITE");
+        Usuario gestorConRolInactivo = usuario(4L, "gestor", true, gestor, superadmin);
+        when(usuarios.findWithAuthoritiesById(gestorConRolInactivo.getId()))
+                .thenReturn(Optional.of(gestorConRolInactivo));
+
+        assertThatThrownBy(() -> service.registrarUsuario(
+                new UsuarioRegistroRequest("nuevo", "clave-segura-usuario", List.of("RECEPCION")),
+                gestorConRolInactivo))
+                .isInstanceOf(OperacionNoPermitidaException.class)
+                .hasMessageContaining("permisos superiores");
+        verify(usuarios, never()).save(any());
+    }
+
+    @Test
     void editarRolesInvalidaSesiones() {
         Usuario objetivo = usuario(8L, "operador", true, recepcion);
         when(usuarios.findWithAuthoritiesById(objetivo.getId())).thenReturn(Optional.of(objetivo));

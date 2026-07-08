@@ -1,14 +1,11 @@
 package ledance.dto.usuario.request;
 
-import java.util.List;
+import java.util.Set;
 
-/**
- * DTO para modificar un usuario existente.
- * La contraseña se podra actualizar (o dejar en blanco para mantener la actual).
- */
 public record UsuarioModificacionRequest(
         String nombreUsuario,
-        String contrasena, // Opcional; si es nulo o vacio, se mantiene la contraseña actual
-        List<String> roles,
+        String contrasena,
+        Set<String> roles,
         Boolean activo
-) {}
+) {
+}

@@ -6,11 +6,14 @@ import rolesApi from "../../api/rolesApi";
 import Boton from "../../componentes/comunes/Boton";
 import Tabla from "../../componentes/comunes/Tabla";
 import type { RolResponse } from "../../types/types";
+import { useAuth } from "../../hooks/context/useAuth";
 
 const RolesPagina = () => {
   const [roles, setRoles] = useState<RolResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const { hasPermission } = useAuth();
+  const puedeEscribir = hasPermission("ROLES_WRITE");
 
   const cargar = useCallback(() => {
     setLoading(true);
@@ -37,11 +40,13 @@ const RolesPagina = () => {
   return (
     <div className="page-container">
       <h1 className="page-title">Roles y permisos</h1>
-      <div className="page-button-group flex justify-end mb-4">
-        <Boton onClick={() => navigate("/roles/formulario")} className="page-button">
-          <PlusCircle className="w-5 h-5 mr-2" />Nuevo rol
-        </Boton>
-      </div>
+      {puedeEscribir && (
+        <div className="page-button-group flex justify-end mb-4">
+          <Boton onClick={() => navigate("/roles/formulario")} className="page-button">
+            <PlusCircle className="w-5 h-5 mr-2" />Nuevo rol
+          </Boton>
+        </div>
+      )}
       <div className="page-card">
         <Tabla
           headers={["Código", "Nombre", "Estado", "Tipo", "Permisos"]}
@@ -54,7 +59,7 @@ const RolesPagina = () => {
             rol.sistema ? "Sistema" : "Personalizado",
             rol.cantidadPermisos,
           ]}
-          actions={(rol) => (
+          actions={puedeEscribir ? (rol) => (
             <div className="flex gap-2">
               <Boton
                 onClick={() => navigate(`/roles/formulario?id=${rol.id}`)}
@@ -71,7 +76,7 @@ const RolesPagina = () => {
                 <Trash2 className="w-4 h-4 mr-2" />Desactivar
               </Boton>
             </div>
-          )}
+          ) : undefined}
         />
       </div>
     </div>

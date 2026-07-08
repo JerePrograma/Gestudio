@@ -52,13 +52,13 @@ class TarifaDisciplinaPostgreSqlTest extends PostgreSqlIntegrationTest {
     }
 
     @Test
-    void administradorSoloProgramaFuturoYLaCreacionQuedaAuditada() {
+    void permisoDeEscrituraProgramaFuturoYLaCreacionQuedaAuditada() {
         Fixture fixture = fixture("permisos");
         LocalDate future = LocalDate.now().plusDays(10);
         var request = new TarifaDisciplinaRequest(future, new BigDecimal("150.00"),
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, "Ajuste futuro verificado");
 
-        var created = tarifas.crear(fixture.disciplinaId(), request, fixture.admin());
+        var created = tarifas.crear(fixture.disciplinaId(), request, fixture.gestor());
         assertThat(created.valorCuota()).isEqualTo("150.00");
         assertThat(jdbc.queryForObject("""
                 SELECT count(*) FROM auditoria_eventos
@@ -67,7 +67,7 @@ class TarifaDisciplinaPostgreSqlTest extends PostgreSqlIntegrationTest {
 
         var historical = new TarifaDisciplinaRequest(LocalDate.of(2020, 1, 1), new BigDecimal("90.00"),
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, "Historia documentada");
-        assertThatThrownBy(() -> tarifas.crear(fixture.disciplinaId(), historical, fixture.admin()))
+        assertThatThrownBy(() -> tarifas.crear(fixture.disciplinaId(), historical, fixture.gestor()))
                 .isInstanceOf(OperacionNoPermitidaException.class)
                 .hasMessageContaining("SUPERADMIN");
         assertThat(tarifas.crear(fixture.disciplinaId(), historical, fixture.superadmin()).valorCuota())
@@ -77,9 +77,8 @@ class TarifaDisciplinaPostgreSqlTest extends PostgreSqlIntegrationTest {
     private Fixture fixture(String prefix) {
         String suffix = prefix + "-" + UUID.randomUUID();
         Long superRole = jdbc.queryForObject("SELECT id FROM roles WHERE descripcion = 'SUPERADMIN'", Long.class);
-        Long adminRole = jdbc.queryForObject("SELECT id FROM roles WHERE descripcion = 'ADMINISTRADOR'", Long.class);
         Long superId = usuario("root-" + suffix, superRole);
-        Long adminId = usuario("admin-" + suffix, adminRole);
+        Long gestorId = usuarioConPermiso("gestor-" + suffix, "DISCIPLINAS_WRITE");
         Long profesorId = jdbc.queryForObject("""
                 INSERT INTO profesores(nombre, apellido, activo) VALUES (?, 'Test', true) RETURNING id
                 """, Long.class, "Profesor-" + suffix);
@@ -88,7 +87,7 @@ class TarifaDisciplinaPostgreSqlTest extends PostgreSqlIntegrationTest {
                 VALUES (?, ?, 999, 0, 0, 0, true) RETURNING id
                 """, Long.class, "Disciplina-" + suffix, profesorId);
         return new Fixture(disciplinaId, usuarios.findById(superId).orElseThrow(),
-                usuarios.findById(adminId).orElseThrow());
+                usuarios.findById(gestorId).orElseThrow());
     }
 
     private Long usuario(String username, Long roleId) {
@@ -100,6 +99,19 @@ class TarifaDisciplinaPostgreSqlTest extends PostgreSqlIntegrationTest {
         return id;
     }
 
+    private Long usuarioConPermiso(String username, String permiso) {
+        String codigo = "GESTOR_TARIFAS_" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        Long roleId = jdbc.queryForObject("""
+                INSERT INTO roles(descripcion, activo, codigo, nombre, sistema, editable)
+                VALUES (?, true, ?, ?, false, true) RETURNING id
+                """, Long.class, codigo, codigo, codigo);
+        jdbc.update("""
+                INSERT INTO rol_permisos(rol_id, permiso_id)
+                SELECT ?, id FROM permisos WHERE codigo = ?
+                """, roleId, permiso);
+        return usuario(username, roleId);
+    }
+
     private void insertarTarifa(Long disciplinaId, Long usuarioId, LocalDate desde, String valor) {
         jdbc.update("""
                 INSERT INTO disciplina_tarifas(
@@ -109,5 +121,5 @@ class TarifaDisciplinaPostgreSqlTest extends PostgreSqlIntegrationTest {
                 """, disciplinaId, desde, new BigDecimal(valor), usuarioId);
     }
 
-    private record Fixture(Long disciplinaId, Usuario superadmin, Usuario admin) { }
+    private record Fixture(Long disciplinaId, Usuario superadmin, Usuario gestor) { }
 }

@@ -1,5 +1,8 @@
 # Inventario y política de endpoints
 
+> Inventario histórico previo a V5. La fuente ejecutable actual es
+> `SecurityConfigurations`; la autorización vigente usa `PERM_*`.
+
 Estado: 2026-07-01. La política se evalúa en este orden:
 
 1. `OPTIONS /**`, `POST /api/login` y `POST /api/login/refresh`: públicos.

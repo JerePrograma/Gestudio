@@ -91,9 +91,9 @@ public class CondicionEconomicaServicio {
 
     private Usuario actorAutorizado(Usuario actor) {
         if (actor == null || actor.getId() == null) throw new OperacionNoPermitidaException("Actor requerido");
-        return usuarios.findById(actor.getId()).filter(Usuario::isEnabled)
-                .filter(value -> tieneRol(value, RolSistema.ADMINISTRADOR)
-                        || tieneRol(value, RolSistema.SUPERADMIN))
+        return usuarios.findWithAuthoritiesById(actor.getId()).filter(Usuario::isEnabled)
+                .filter(value -> value.getAuthorities().stream()
+                        .anyMatch(authority -> "PERM_INSCRIPCIONES_WRITE".equals(authority.getAuthority())))
                 .orElseThrow(() -> new OperacionNoPermitidaException("Actor sin permisos para administrar condiciones"));
     }
 

@@ -4,6 +4,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import ledance.entidades.Rol;
 import ledance.repositorios.UsuarioRepositorio;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -11,6 +12,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+
 import java.io.IOException;
 import java.util.Objects;
 
@@ -21,7 +23,8 @@ public class SecurityFilter extends OncePerRequestFilter {
     private final UsuarioRepositorio usuarioRepositorio;
     private final AuthenticationEntryPoint authenticationEntryPoint;
 
-    public SecurityFilter(TokenService tokenService, UsuarioRepositorio usuarioRepositorio,
+    public SecurityFilter(TokenService tokenService,
+                          UsuarioRepositorio usuarioRepositorio,
                           AuthenticationEntryPoint authenticationEntryPoint) {
         this.tokenService = tokenService;
         this.usuarioRepositorio = usuarioRepositorio;
@@ -34,27 +37,42 @@ public class SecurityFilter extends OncePerRequestFilter {
                                     FilterChain filterChain)
             throws ServletException, IOException {
         String authHeader = request.getHeader("Authorization");
+
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             String token = authHeader.substring("Bearer ".length());
+
             try {
                 VerifiedToken verified = tokenService.verify(token, TokenType.ACCESS);
-                var userEntity = usuarioRepositorio.findWithAuthoritiesById(verified.userId())
+
+                var userEntity = usuarioRepositorio.findByIdConRolesYPermisos(verified.userId())
                         .filter(user -> Objects.equals(user.getNombreUsuario(), verified.subject()))
                         .filter(user -> Boolean.TRUE.equals(user.getActivo()))
-                        .filter(user -> user.getRoles().stream().anyMatch(
-                                role -> Boolean.TRUE.equals(role.getActivo())))
+                        .filter(user -> user.rolesEfectivos().stream().anyMatch(Rol::estaActivo))
+                        .filter(user -> user.rolesEfectivos().stream()
+                                .map(Rol::getCodigo)
+                                .filter(Objects::nonNull)
+                                .anyMatch(role -> Objects.equals(role, verified.role())))
                         .filter(user -> Objects.equals(user.getAuthVersion(), verified.authVersion()))
                         .orElseThrow(InvalidTokenException::new);
+
                 var authentication = new UsernamePasswordAuthenticationToken(
-                        userEntity, null, userEntity.getAuthorities());
+                        userEntity,
+                        null,
+                        userEntity.getAuthorities()
+                );
+
                 SecurityContextHolder.getContext().setAuthentication(authentication);
             } catch (InvalidTokenException ex) {
                 SecurityContextHolder.clearContext();
-                authenticationEntryPoint.commence(request, response,
-                        new BadCredentialsException("Token inválido", ex));
+                authenticationEntryPoint.commence(
+                        request,
+                        response,
+                        new BadCredentialsException("Token inválido", ex)
+                );
                 return;
             }
         }
+
         filterChain.doFilter(request, response);
     }
 

@@ -1,5 +1,9 @@
 # Fase 2 - Seguridad crítica (snapshot histórico)
 
+> Este documento precede V5. El contrato vigente usa `roles[]`, `permisos[]`,
+> authorities efectivas y refresh por cookie HttpOnly; consulte
+> `docs/development/local-development.md#contrato-rbac`.
+
 > Evidencia anterior a la política catch-all administrativa. El inventario
 > vigente es `07-security-endpoints.md`.
 

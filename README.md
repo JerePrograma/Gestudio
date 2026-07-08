@@ -8,9 +8,15 @@ Monorepo de gestión para alumnos, inscripciones, disciplinas, asistencias, mens
 - Frontend: React 18, TypeScript, Vite 6, Node 22.14.0 y npm.
 - Desarrollo local: Windows PowerShell y Docker Compose.
 
-El repositorio está en etapa pre-productiva y soporta una sola baseline Flyway:
-`backend/src/main/resources/db/migration/V1__canonical_schema.sql`. No existe una
-ruta de upgrade desde el esquema heredado V1-V060.
+El repositorio está en etapa pre-productiva. Flyway parte de
+`V1__canonical_schema.sql` y aplica las migraciones forward-only V2–V5; V5
+incorpora roles múltiples y permisos. No existe una ruta de upgrade desde el
+historial retirado V1-V060.
+
+La autorización usa permisos efectivos calculados en backend. El contrato de
+sesión devuelve `roles[]` y `permisos[]`; el refresh token vive sólo en una
+cookie HttpOnly. `usuarios.rol_id` se conserva temporalmente como compatibilidad,
+pero no es la fuente de autorización.
 
 ## Inicio rápido en Windows
 

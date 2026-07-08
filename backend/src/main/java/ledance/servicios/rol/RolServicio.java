@@ -1,64 +1,76 @@
 package ledance.servicios.rol;
 
-import ledance.auditoria.application.AuditService;
-import ledance.dto.permiso.response.PermisoResponse;
+import jakarta.transaction.Transactional;
 import ledance.dto.rol.RolMapper;
 import ledance.dto.rol.request.RolModificacionRequest;
-import ledance.dto.rol.request.RolPermisosRequest;
 import ledance.dto.rol.request.RolRegistroRequest;
-import ledance.dto.rol.response.RolDetalleResponse;
 import ledance.dto.rol.response.RolResponse;
 import ledance.entidades.Permiso;
 import ledance.entidades.Rol;
 import ledance.entidades.Usuario;
 import ledance.infra.errores.TratadorDeErrores.OperacionNoPermitidaException;
+import ledance.infra.seguridad.RbacService;
 import ledance.repositorios.PermisoRepositorio;
 import ledance.repositorios.RolRepositorio;
 import ledance.repositorios.UsuarioRepositorio;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 @Service
 public class RolServicio {
+
+    private static final String PERM_ROLES_ADMIN = "PERM_ROLES_ADMIN";
+
     private final RolRepositorio roles;
     private final PermisoRepositorio permisos;
     private final UsuarioRepositorio usuarios;
-    private final RolMapper mapper;
-    private final AuditService audit;
+    private final RolMapper rolMapper;
+    private final RbacService rbac;
 
-    public RolServicio(RolRepositorio roles, PermisoRepositorio permisos, UsuarioRepositorio usuarios,
-                       RolMapper mapper, AuditService audit) {
+    public RolServicio(RolRepositorio roles,
+                       PermisoRepositorio permisos,
+                       UsuarioRepositorio usuarios,
+                       RolMapper rolMapper,
+                       RbacService rbac) {
         this.roles = roles;
         this.permisos = permisos;
         this.usuarios = usuarios;
-        this.mapper = mapper;
-        this.audit = audit;
+        this.rolMapper = rolMapper;
+        this.rbac = rbac;
     }
 
-    @Transactional(readOnly = true)
-    public RolDetalleResponse obtenerRolPorId(Long id) {
-        return detalle(buscar(id));
+    public RolResponse obtenerRolPorId(Long id) {
+        Rol rol = roles.findWithPermisosById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Rol no encontrado."));
+        return rolMapper.toDTO(rol);
     }
 
-    @Transactional(readOnly = true)
     public List<RolResponse> listarRoles() {
-        return roles.findAllByOrderByNombreAsc().stream().map(mapper::toDTO).toList();
+        return roles.findAllByOrderByCodigoAsc().stream()
+                .map(rolMapper::toDTO)
+                .toList();
     }
 
     @Transactional
-    public RolDetalleResponse crear(RolRegistroRequest request, Usuario actor) {
-        String codigo = normalizarCodigo(request.codigo());
-        if (roles.existsByCodigoIgnoreCase(codigo) || roles.existsByDescripcion(codigo)) {
-            throw new IllegalArgumentException("Ya existe un rol con el código " + codigo);
+    public RolResponse crearRol(RolRegistroRequest request, Usuario actor) {
+        Usuario actorActual = rbac.exigirPermiso(actor, PERM_ROLES_ADMIN, "CREAR_ROL");
+
+        String codigo = normalizarCodigoRol(request.codigo());
+
+        if ("SUPERADMIN".equals(codigo)) {
+            throw new OperacionNoPermitidaException("SUPERADMIN no puede crearse desde panel");
         }
+
+        if (roles.existsByCodigoIgnoreCase(codigo)) {
+            throw new IllegalArgumentException("Ya existe un rol con código: " + codigo);
+        }
+
+        Set<Permiso> permisosAsignados = permisosExistentes(request.permisos());
+        validarNoEscalaPermisos(actorActual, permisosAsignados);
+
         Rol rol = new Rol();
         rol.setCodigo(codigo);
         rol.setDescripcion(codigo);
@@ -67,122 +79,133 @@ public class RolServicio {
         rol.setActivo(true);
         rol.setSistema(false);
         rol.setEditable(true);
-        rol = roles.save(rol);
-        audit.registrar("SEGURIDAD", "ROL_CREADO", "ROL", rol.getId().toString(), actor,
-                null, null, null, snapshot(rol), Map.of());
-        return detalle(rol);
+        rol.setPermisos(permisosAsignados);
+
+        return rolMapper.toDTO(roles.saveAndFlush(rol));
     }
 
     @Transactional
-    public RolDetalleResponse modificar(Long id, RolModificacionRequest request, Usuario actor) {
-        Rol rol = buscarEditable(id);
-        Map<String, ?> anterior = snapshot(rol);
-        boolean cambiaEstado = request.activo() != null && request.activo() != Boolean.TRUE.equals(rol.getActivo());
-        if (Boolean.FALSE.equals(request.activo())) validarDesactivacion(rol);
+    public RolResponse actualizarRol(Long id, RolModificacionRequest request, Usuario actor) {
+        Usuario actorActual = rbac.exigirPermiso(actor, PERM_ROLES_ADMIN, "MODIFICAR_ROL");
+
+        Rol rol = roles.findWithPermisosById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Rol no encontrado."));
+
+        if (rol.esSuperadminSistema()) {
+            throw new OperacionNoPermitidaException("SUPERADMIN no puede editarse desde panel");
+        }
+
+        if (rol.esSistema() && !rol.esEditable()) {
+            throw new OperacionNoPermitidaException("El rol sistema no es editable");
+        }
+
+        Set<Permiso> permisosAsignados = request.permisos() == null
+                ? rol.getPermisos()
+                : permisosExistentes(request.permisos());
+
+        validarNoEscalaPermisos(actorActual, permisosAsignados);
+
         rol.setNombre(request.nombre().trim());
         rol.setDescripcionFuncional(limpiar(request.descripcionFuncional()));
-        if (request.activo() != null) rol.setActivo(request.activo());
-        if (cambiaEstado) invalidarUsuarios(rol);
-        audit.registrar("SEGURIDAD", "ROL_MODIFICADO", "ROL", rol.getId().toString(), actor,
-                null, null, anterior, snapshot(rol), Map.of());
-        return detalle(rol);
+
+        if (request.activo() != null) {
+            rol.setActivo(request.activo());
+        }
+
+        rol.setPermisos(permisosAsignados);
+
+        Rol saved = roles.saveAndFlush(rol);
+        usuarios.incrementarAuthVersionPorRolId(saved.getId());
+
+        return rolMapper.toDTO(saved);
     }
 
     @Transactional
-    public void desactivar(Long id, Usuario actor) {
-        Rol rol = buscarEditable(id);
-        validarDesactivacion(rol);
-        Map<String, ?> anterior = snapshot(rol);
-        rol.setActivo(false);
-        invalidarUsuarios(rol);
-        audit.registrar("SEGURIDAD", "ROL_DESACTIVADO", "ROL", rol.getId().toString(), actor,
-                null, null, anterior, snapshot(rol), Map.of());
-    }
+    public RolResponse clonarRol(Long id, RolRegistroRequest request, Usuario actor) {
+        Usuario actorActual = rbac.exigirPermiso(actor, PERM_ROLES_ADMIN, "CLONAR_ROL");
 
-    @Transactional
-    public RolDetalleResponse asignarPermisos(Long id, RolPermisosRequest request, Usuario actor) {
-        Rol rol = buscarEditable(id);
-        Set<String> codigos = request.permisos().stream()
-                .map(RolServicio::normalizarCodigoPermiso)
-                .collect(Collectors.toCollection(LinkedHashSet::new));
-        List<Permiso> encontrados = permisos.findByCodigoInAndActivoTrue(codigos);
-        if (encontrados.size() != codigos.size()) {
-            throw new IllegalArgumentException("Uno o más permisos no existen o están inactivos");
+        Rol origen = roles.findWithPermisosById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Rol origen no encontrado."));
+
+        String codigo = normalizarCodigoRol(request.codigo());
+
+        if (roles.existsByCodigoIgnoreCase(codigo)) {
+            throw new IllegalArgumentException("Ya existe un rol con código: " + codigo);
         }
-        Set<String> anteriores = rol.getPermisos().stream().map(Permiso::getCodigo)
-                .collect(Collectors.toCollection(LinkedHashSet::new));
-        rol.setPermisos(encontrados.stream()
-                .sorted(Comparator.comparing(Permiso::getCodigo))
-                .collect(Collectors.toCollection(LinkedHashSet::new)));
-        roles.save(rol);
-        if (!anteriores.equals(codigos)) invalidarUsuarios(rol);
-        audit.registrar("SEGURIDAD", "PERMISOS_ROL_MODIFICADOS", "ROL", rol.getId().toString(), actor,
-                null, null, Map.of("permisos", anteriores), Map.of("permisos", codigos), Map.of());
-        return detalle(rol);
+
+        Set<Permiso> permisosAsignados = request.permisos() == null || request.permisos().isEmpty()
+                ? new LinkedHashSet<>(origen.getPermisos())
+                : permisosExistentes(request.permisos());
+
+        validarNoEscalaPermisos(actorActual, permisosAsignados);
+
+        Rol clon = new Rol();
+        clon.setCodigo(codigo);
+        clon.setDescripcion(codigo);
+        clon.setNombre(request.nombre().trim());
+        clon.setDescripcionFuncional(limpiar(request.descripcionFuncional()));
+        clon.setActivo(true);
+        clon.setSistema(false);
+        clon.setEditable(true);
+        clon.setPermisos(permisosAsignados);
+
+        return rolMapper.toDTO(roles.saveAndFlush(clon));
     }
 
-    private Rol buscar(Long id) {
-        return roles.findById(id).orElseThrow(() -> new IllegalArgumentException("Rol no encontrado"));
-    }
+    private Set<Permiso> permisosExistentes(Set<String> codigos) {
+        Set<Permiso> result = new LinkedHashSet<>();
 
-    private Rol buscarEditable(Long id) {
-        Rol rol = buscar(id);
-        if (Boolean.TRUE.equals(rol.getSistema()) || !Boolean.TRUE.equals(rol.getEditable())) {
-            throw new OperacionNoPermitidaException("Los roles de sistema no se pueden modificar");
+        if (codigos == null) {
+            return result;
         }
-        return rol;
+
+        for (String codigo : codigos) {
+            String normalizado = normalizarCodigoPermiso(codigo);
+
+            Permiso permiso = permisos.findByCodigoIgnoreCase(normalizado)
+                    .filter(Permiso::estaActivo)
+                    .orElseThrow(() -> new IllegalArgumentException("Permiso no válido o inactivo: " + codigo));
+
+            result.add(permiso);
+        }
+
+        return result;
     }
 
-    private void validarDesactivacion(Rol rol) {
-        if (Boolean.FALSE.equals(rol.getActivo())) return;
-        boolean dejaUsuarioSinRol = usuarios.findByRoleCode(rol.getCodigo()).stream()
-                .filter(Usuario::isEnabled)
-                .anyMatch(usuario -> usuario.getRoles().stream()
-                        .filter(asignado -> !asignado.getId().equals(rol.getId()))
-                        .noneMatch(asignado -> Boolean.TRUE.equals(asignado.getActivo())));
-        if (dejaUsuarioSinRol) {
-            throw new OperacionNoPermitidaException("El rol está en uso y dejaría usuarios activos sin acceso");
+    private void validarNoEscalaPermisos(Usuario actor, Set<Permiso> permisosAsignados) {
+        if (actor.esSuperadminSistema()) {
+            return;
+        }
+
+        Set<String> permisosActor = actor.codigosPermisosActivos();
+
+        for (Permiso permiso : permisosAsignados) {
+            if (!permisosActor.contains(permiso.getCodigo())) {
+                throw new OperacionNoPermitidaException(
+                        "No se puede asignar un permiso que el actor no posee: " + permiso.getCodigo()
+                );
+            }
         }
     }
 
-    private void invalidarUsuarios(Rol rol) {
-        usuarios.findByRoleCode(rol.getCodigo()).forEach(usuario -> {
-            usuario.setAuthVersion(usuario.getAuthVersion() + 1);
-            usuarios.save(usuario);
-        });
-    }
+    private static String normalizarCodigoRol(String codigo) {
+        String normalizado = codigo == null ? "" : codigo.trim().toUpperCase();
 
-    private RolDetalleResponse detalle(Rol rol) {
-        return new RolDetalleResponse(rol.getId(), rol.getCodigo(), rol.getNombre(),
-                rol.getDescripcionFuncional(), rol.getActivo(), rol.getSistema(), rol.getEditable(),
-                rol.getPermisos().stream().sorted(Comparator.comparing(Permiso::getModulo)
-                                .thenComparing(Permiso::getCodigo))
-                        .map(PermisoResponse::from).toList());
-    }
-
-    private static Map<String, ?> snapshot(Rol rol) {
-        return Map.of(
-                "codigo", rol.getCodigo(),
-                "nombre", rol.getNombre(),
-                "activo", Boolean.TRUE.equals(rol.getActivo()),
-                "permisos", rol.getPermisos().stream().map(Permiso::getCodigo).sorted().toList());
-    }
-
-    private static String normalizarCodigo(String value) {
-        String codigo = value == null ? "" : value.trim().toUpperCase(Locale.ROOT)
-                .replaceAll("[^A-Z0-9]+", "_").replaceAll("^_+|_+$", "");
-        if (!codigo.matches("[A-Z][A-Z0-9_]{1,49}")) {
-            throw new IllegalArgumentException("El código debe ser uppercase snake case y tener hasta 50 caracteres");
+        if (!normalizado.matches("^[A-Z][A-Z0-9_]{2,49}$")) {
+            throw new IllegalArgumentException("Código de rol inválido: " + codigo);
         }
-        return codigo;
+
+        return normalizado;
     }
 
-    private static String normalizarCodigoPermiso(String value) {
-        String codigo = value == null ? "" : value.trim().toUpperCase(Locale.ROOT);
-        if (!codigo.matches("[A-Z][A-Z0-9_]{1,99}")) {
-            throw new IllegalArgumentException("Código de permiso inválido: " + value);
+    private static String normalizarCodigoPermiso(String codigo) {
+        String normalizado = codigo == null ? "" : codigo.trim().toUpperCase();
+
+        if (!normalizado.matches("^PERM_[A-Z0-9_]{3,95}$")) {
+            throw new IllegalArgumentException("Código de permiso inválido: " + codigo);
         }
-        return codigo;
+
+        return normalizado;
     }
 
     private static String limpiar(String value) {

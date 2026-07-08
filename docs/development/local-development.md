@@ -41,9 +41,10 @@ No hay componente Python requerido.
 
 La configuración común vive en `backend/src/main/resources/application.yml`. No existe un perfil predeterminado: fuera de Compose, el script local o el IDE deben declarar `SPRING_PROFILES_ACTIVE=dev`. Los perfiles no contienen secretos reales.
 
-Flyway aplica exactamente una migración canónica V1 sobre un esquema vacío. El
-historial retirado V1-V060 no forma parte del runtime ni constituye una ruta de
-upgrade soportada.
+Flyway aplica V1 como baseline canónica y luego las migraciones forward-only
+V2–V5. V5 crea el catálogo RBAC y backfillea `usuario_roles` desde
+`usuarios.rol_id`. El historial retirado V1-V060 no forma parte del runtime ni
+constituye una ruta de upgrade soportada.
 
 Los scripts no importan `.env`. Para ejecutar Maven/Vite con puertos distintos, exportá las variables en la misma terminal; las rutas con espacios se asignan como strings normales de PowerShell:
 
@@ -102,16 +103,16 @@ docker compose ps
 docker compose -f docker-compose.yml -f docker-compose.prod.yml config
 ```
 
-## Bootstrap único del administrador
+## Bootstrap único del superadministrador
 
 Sólo para una base sin usuarios, exportá temporalmente las tres variables antes
 de iniciar el backend:
 
 ```powershell
-$env:APP_BOOTSTRAP_ADMIN_ENABLED = "true"
-$env:APP_BOOTSTRAP_ADMIN_USERNAME = "admin-inicial"
+$env:APP_BOOTSTRAP_SUPERADMIN_ENABLED = "true"
+$env:APP_BOOTSTRAP_SUPERADMIN_USERNAME = "admin-inicial"
 $bootstrapSecret = Read-Host "Clave inicial" -AsSecureString
-$env:APP_BOOTSTRAP_ADMIN_PASSWORD = [System.Net.NetworkCredential]::new("", $bootstrapSecret).Password
+$env:APP_BOOTSTRAP_SUPERADMIN_PASSWORD = [System.Net.NetworkCredential]::new("", $bootstrapSecret).Password
 Remove-Variable bootstrapSecret
 ```
 
@@ -119,11 +120,24 @@ En producción preferí el mecanismo de secretos del entorno. Una vez creado el
 usuario, detené el proceso y eliminá las variables del proceso o del secret
 store. Si la bandera continúa activa al reiniciar, la aplicación falla cerrado.
 
-El rol operativo de máximo privilegio actual es `ADMINISTRADOR`; no existe un
-rol `SUPER_ADMIN`. El bootstrap sólo crea ese usuario cuando `usuarios` está
-vacía, usa BCrypt y exige una clave externa de 12 a 72 bytes UTF-8. Después del
-primer arranque se debe recrear el backend con
-`APP_BOOTSTRAP_ADMIN_ENABLED=false`.
+El rol de máximo privilegio es `SUPERADMIN`. El bootstrap reclama una ejecución
+única, sincroniza `usuarios.rol_id` y `usuario_roles`, usa BCrypt y exige una
+clave externa de 16 a 72 bytes UTF-8. Después del primer arranque se debe recrear
+el backend con `APP_BOOTSTRAP_SUPERADMIN_ENABLED=false`.
+
+El alias `APP_BOOTSTRAP_ADMIN_*` queda sólo por compatibilidad. El reset de una
+clave local existente usa `APP_BOOTSTRAP_ADMIN_RESET_EXISTING_PASSWORD=true` en
+perfil `dev`; no convierte el bootstrap en reconciliador.
+
+## Contrato RBAC
+
+- Login, refresh y perfil devuelven `roles[]` y `permisos[]` sin prefijos.
+- Spring genera `ROLE_` y `PERM_` sólo al construir authorities.
+- Roles y permisos inactivos no autorizan.
+- Los JWT no copian authorities; contienen identidad y `auth_version`.
+- El refresh token no aparece en JSON: se rota en una cookie HttpOnly.
+- `usuarios.rol_id` es compatibilidad temporal; `usuario_roles` es la relación
+  efectiva y los cambios de seguridad incrementan `auth_version`.
 
 ## Smoke integrado local
 

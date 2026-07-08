@@ -12,9 +12,10 @@ public class PasswordPolicy {
         validar(password, rol == RolSistema.SUPERADMIN);
     }
 
-    public void validar(String password, boolean superadmin) {
+    public void validar(String password, boolean usuarioSuperadmin) {
         int bytes = password == null ? 0 : password.getBytes(StandardCharsets.UTF_8).length;
-        int minimo = superadmin ? 16 : 12;
+        int minimo = usuarioSuperadmin ? 16 : 12;
+
         if (bytes < minimo || bytes > 72) {
             throw new IllegalArgumentException(
                     "La contraseña debe tener entre " + minimo + " y 72 bytes UTF-8");

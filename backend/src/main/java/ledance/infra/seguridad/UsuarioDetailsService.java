@@ -1,5 +1,6 @@
 package ledance.infra.seguridad;
 
+import ledance.entidades.Usuario;
 import ledance.repositorios.UsuarioRepositorio;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -8,6 +9,7 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class UsuarioDetailsService implements UserDetailsService {
+
     private final UsuarioRepositorio usuarios;
 
     public UsuarioDetailsService(UsuarioRepositorio usuarios) {
@@ -16,9 +18,14 @@ public class UsuarioDetailsService implements UserDetailsService {
 
     @Override
     public UserDetails loadUserByUsername(String username) {
-        return usuarios.findByNombreUsuarioIgnoreCase(username.trim())
-                .filter(usuario -> usuario.getRoles().stream()
-                        .anyMatch(role -> Boolean.TRUE.equals(role.getActivo())))
+        return usuarios.findByNombreUsuarioIgnoreCaseConRolesYPermisos(username.trim())
+                .filter(UsuarioDetailsService::usuarioHabilitado)
                 .orElseThrow(() -> new UsernameNotFoundException("Usuario no encontrado"));
+    }
+
+    private static boolean usuarioHabilitado(Usuario usuario) {
+        return usuario.isEnabled()
+                && usuario.rolesEfectivos().stream()
+                .anyMatch(rol -> Boolean.TRUE.equals(rol.getActivo()));
     }
 }

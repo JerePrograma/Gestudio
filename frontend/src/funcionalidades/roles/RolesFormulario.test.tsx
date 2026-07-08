@@ -55,7 +55,35 @@ describe("RolesFormulario", () => {
       codigo: "OPERADOR",
       nombre: "Operador",
       descripcionFuncional: undefined,
+      permisos: ["ALUMNOS_READ"],
     }));
-    expect(api.asignarPermisos).toHaveBeenCalledWith(7, ["ALUMNOS_READ"]);
+    expect(api.asignarPermisos).not.toHaveBeenCalled();
+  });
+
+  it("edita metadatos y permisos en un solo request", async () => {
+    api.obtenerRol.mockResolvedValue({
+      id: 7,
+      codigo: "OPERADOR",
+      nombre: "Operador",
+      activo: true,
+      sistema: false,
+      editable: true,
+      permisos: [{ id: 1, codigo: "ALUMNOS_READ", descripcion: "Consultar alumnos", modulo: "ALUMNOS", activo: true, sistema: true }],
+    });
+    api.modificarRol.mockResolvedValue({ id: 7 });
+
+    render(<MemoryRouter initialEntries={["/roles/formulario?id=7"]}><RolesFormulario /></MemoryRouter>);
+
+    expect(await screen.findByDisplayValue("Operador")).toBeVisible();
+    fireEvent.click(screen.getByText("PAGOS_WRITE").closest("label")!.querySelector("input")!);
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+
+    await waitFor(() => expect(api.modificarRol).toHaveBeenCalledWith(7, {
+      nombre: "Operador",
+      descripcionFuncional: undefined,
+      activo: true,
+      permisos: ["ALUMNOS_READ", "PAGOS_WRITE"],
+    }));
+    expect(api.asignarPermisos).not.toHaveBeenCalled();
   });
 });

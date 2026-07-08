@@ -10,11 +10,6 @@ import org.mapstruct.Named;
 @Mapper(componentModel = "spring")
 public interface UsuarioMapper {
 
-    /**
-     * Convierte UsuarioRegistroRequest en una entidad Usuario.
-     * Se ignora el id (generado automaticamente), la contraseña (se encripta en el servicio)
-     * y el rol (se asigna en el servicio). Ademas, se fija activo en true.
-     */
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "contrasena", ignore = true)
     @Mapping(target = "rol", ignore = true)
@@ -26,13 +21,14 @@ public interface UsuarioMapper {
     @Mapping(target = "version", ignore = true)
     Usuario toEntity(UsuarioRegistroRequest request);
 
-    /**
-     * Convierte Usuario en UsuarioResponse.
-     * Se extrae el nombre del rol en lugar de enviar el objeto completo.
-     * Se agrega @Named para que otros mappers (por ejemplo, PagoMapper) lo puedan usar.
-     */
     @Named("toUsuarioResponse")
     default UsuarioResponse toDTO(Usuario usuario) {
-        return UsuarioResponse.from(usuario);
+        return new UsuarioResponse(
+                usuario.getId(),
+                usuario.getNombreUsuario(),
+                usuario.codigosRolesActivos().stream().toList(),
+                usuario.codigosPermisosActivos().stream().toList(),
+                usuario.getActivo()
+        );
     }
 }

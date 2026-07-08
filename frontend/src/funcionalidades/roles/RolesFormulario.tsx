@@ -58,18 +58,21 @@ const RolesFormulario = () => {
 
   const guardar = async (form: Values) => {
     try {
-      const rol = id
-        ? await rolesApi.modificar(Number(id), {
+      if (id) {
+        await rolesApi.modificar(Number(id), {
             nombre: form.nombre,
             descripcionFuncional: form.descripcionFuncional || undefined,
             activo: form.activo,
-          })
-        : await rolesApi.crear({
+            permisos: form.permisos,
+          });
+      } else {
+        await rolesApi.crear({
             codigo: form.codigo,
             nombre: form.nombre,
             descripcionFuncional: form.descripcionFuncional || undefined,
+            permisos: form.permisos,
           });
-      await rolesApi.asignarPermisos(rol.id, form.permisos);
+      }
       toast.success("Rol guardado.");
       navigate("/roles");
     } catch {

@@ -394,12 +394,14 @@ export interface RolRegistroRequest {
   codigo: string;
   nombre: string;
   descripcionFuncional?: string;
+  permisos: string[];
 }
 
 export interface RolModificacionRequest {
   nombre: string;
   descripcionFuncional?: string;
   activo: boolean;
+  permisos: string[];
 }
 
 export interface RolResponse {

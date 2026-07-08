@@ -9,6 +9,7 @@ import type { UsuarioResponse } from "../../types/types";
 import usuariosApi from "../../api/usuariosApi";
 import { toast } from "react-toastify";
 import ListaConCargaManual from "../../componentes/comunes/ListaConCargaManual";
+import { useAuth } from "../../hooks/context/useAuth";
 
 const itemsPerPage = 25;
 
@@ -19,6 +20,8 @@ const UsuariosPagina = () => {
   // Se utiliza visibleCount en lugar de currentPage para la lógica de infinite scroll
   const [visibleCount, setVisibleCount] = useState(itemsPerPage);
   const navigate = useNavigate();
+  const { hasPermission } = useAuth();
+  const puedeEscribir = hasPermission("USUARIOS_WRITE");
 
   const fetchUsuarios = useCallback(async () => {
     try {
@@ -76,16 +79,18 @@ const UsuariosPagina = () => {
   return (
     <div className="page-container">
       <h1 className="page-title">Usuarios</h1>
-      <div className="page-button-group flex justify-end mb-4">
-        <Boton
-          onClick={() => navigate("/usuarios/formulario")}
-          className="page-button"
-          aria-label="Registrar nuevo usuario"
-        >
-          <PlusCircle className="w-5 h-5 mr-2" />
-          Registrar Nuevo Usuario
-        </Boton>
-      </div>
+      {puedeEscribir && (
+        <div className="page-button-group flex justify-end mb-4">
+          <Boton
+            onClick={() => navigate("/usuarios/formulario")}
+            className="page-button"
+            aria-label="Registrar nuevo usuario"
+          >
+            <PlusCircle className="w-5 h-5 mr-2" />
+            Registrar Nuevo Usuario
+          </Boton>
+        </div>
+      )}
       <div className="page-card">
         <Tabla
           headers={["ID", "Nombre", "Roles"]}
@@ -96,7 +101,7 @@ const UsuariosPagina = () => {
             fila.nombreUsuario,
             fila.roles.join(", "),
           ]}
-          actions={(fila: UsuarioResponse) => (
+          actions={puedeEscribir ? (fila: UsuarioResponse) => (
             <div className="flex gap-2">
               <Boton
                 onClick={() => navigate(`/usuarios/formulario?id=${fila.id}`)}
@@ -115,7 +120,7 @@ const UsuariosPagina = () => {
                 Eliminar
               </Boton>
             </div>
-          )}
+          ) : undefined}
         />
       </div>
       {hasMore && (

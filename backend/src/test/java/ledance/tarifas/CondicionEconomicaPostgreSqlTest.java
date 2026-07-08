@@ -56,7 +56,10 @@ class CondicionEconomicaPostgreSqlTest extends PostgreSqlIntegrationTest {
 
         var historical = new CondicionEconomicaRequest(LocalDate.of(2020, 1, 1), null, null,
                 "Planilla histórica verificada");
-        assertThatThrownBy(() -> condiciones.crear(fixture.inscripcionId(), historical, fixture.admin()))
+        var future = new CondicionEconomicaRequest(LocalDate.now().plusDays(10), null, null,
+                "Condición futura autorizada");
+        assertThat(condiciones.crear(fixture.inscripcionId(), future, fixture.gestor()).id()).isPositive();
+        assertThatThrownBy(() -> condiciones.crear(fixture.inscripcionId(), historical, fixture.gestor()))
                 .isInstanceOf(OperacionNoPermitidaException.class)
                 .hasMessageContaining("SUPERADMIN");
         var created = condiciones.crear(fixture.inscripcionId(), historical, fixture.superadmin());
@@ -69,9 +72,8 @@ class CondicionEconomicaPostgreSqlTest extends PostgreSqlIntegrationTest {
     private Fixture fixture(String prefix) {
         String suffix = prefix + "-" + UUID.randomUUID();
         Long superRole = jdbc.queryForObject("SELECT id FROM roles WHERE descripcion = 'SUPERADMIN'", Long.class);
-        Long adminRole = jdbc.queryForObject("SELECT id FROM roles WHERE descripcion = 'ADMINISTRADOR'", Long.class);
         Long superId = usuario("root-condition-" + suffix, superRole);
-        Long adminId = usuario("admin-condition-" + suffix, adminRole);
+        Long gestorId = usuarioConPermiso("gestor-condition-" + suffix, "INSCRIPCIONES_WRITE");
         Long profesorId = jdbc.queryForObject("INSERT INTO profesores(nombre, apellido) VALUES (?, 'Test') RETURNING id",
                 Long.class, "Profesor-" + suffix);
         Long disciplinaId = jdbc.queryForObject("""
@@ -87,7 +89,7 @@ class CondicionEconomicaPostgreSqlTest extends PostgreSqlIntegrationTest {
                 VALUES (?, ?, DATE '2020-01-01', 'ACTIVA') RETURNING id
                 """, Long.class, alumnoId, disciplinaId);
         return new Fixture(inscripcionId, usuarios.findById(superId).orElseThrow(),
-                usuarios.findById(adminId).orElseThrow());
+                usuarios.findById(gestorId).orElseThrow());
     }
 
     private Long usuario(String username, Long roleId) {
@@ -99,5 +101,18 @@ class CondicionEconomicaPostgreSqlTest extends PostgreSqlIntegrationTest {
         return id;
     }
 
-    private record Fixture(Long inscripcionId, Usuario superadmin, Usuario admin) { }
+    private Long usuarioConPermiso(String username, String permiso) {
+        String codigo = "GESTOR_CONDICIONES_" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        Long roleId = jdbc.queryForObject("""
+                INSERT INTO roles(descripcion, activo, codigo, nombre, sistema, editable)
+                VALUES (?, true, ?, ?, false, true) RETURNING id
+                """, Long.class, codigo, codigo, codigo);
+        jdbc.update("""
+                INSERT INTO rol_permisos(rol_id, permiso_id)
+                SELECT ?, id FROM permisos WHERE codigo = ?
+                """, roleId, permiso);
+        return usuario(username, roleId);
+    }
+
+    private record Fixture(Long inscripcionId, Usuario superadmin, Usuario gestor) { }
 }

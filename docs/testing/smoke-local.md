@@ -2,9 +2,9 @@
 
 ## Alcance
 
-`scripts/smoke-local.ps1` valida una baseline V1 vacía en un proyecto Docker
-Compose único. Genera en memoria credenciales PostgreSQL, JWT y un administrador
-temporal con rol `ADMINISTRADOR`; no existe ni se agrega `SUPER_ADMIN`.
+`scripts/smoke-local.ps1` valida V1–V5 desde una base vacía en un proyecto Docker
+Compose único. Genera en memoria credenciales PostgreSQL, JWT y un usuario
+temporal con rol efectivo `SUPERADMIN`.
 
 El stack usa puertos host libres, red propia, volumen PostgreSQL propio y volumen
 de recibos propio. El puerto PostgreSQL se publica sólo para probar el aislamiento:
@@ -34,7 +34,8 @@ elimina al finalizar y las variables de proceso originales se restauran.
 
 Por API:
 
-- 401 anónimo, login, perfil, refresh y separación access/refresh;
+- 401 anónimo, login, perfil, refresh por cookie HttpOnly y separación
+  access/refresh;
 - recreación del backend con bootstrap deshabilitado y un solo usuario;
 - salón, profesor, disciplina, subconcepto, concepto y método de pago;
 - alumno, listado/búsqueda, inscripción sin duplicado y matrícula automática;
@@ -44,8 +45,9 @@ Por API:
 
 Por SQL de solo lectura:
 
-- exactamente una migración Flyway exitosa, versión 1;
-- rol/usuario bootstrap activo, BCrypt y ninguna contraseña plana;
+- exactamente cinco migraciones Flyway exitosas, V1–V5;
+- rol/usuario bootstrap activo, vínculo en `usuario_roles`, BCrypt y ninguna
+  contraseña plana;
 - pagos, aplicaciones, caja, stock y outbox sin duplicados;
 - saldos no negativos, FKs y relaciones usadas sin huérfanos;
 - auditorías canónicas `03-orphans.sql`, `04-financial-inconsistencies.sql` y
