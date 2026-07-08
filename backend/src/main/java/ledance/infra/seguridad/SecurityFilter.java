@@ -5,6 +5,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import ledance.entidades.Rol;
+import ledance.entidades.Usuario;
 import ledance.repositorios.UsuarioRepositorio;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -42,17 +43,21 @@ public class SecurityFilter extends OncePerRequestFilter {
             String token = authHeader.substring("Bearer ".length());
 
             try {
+                SecurityContextHolder.clearContext();
+
                 VerifiedToken verified = tokenService.verify(token, TokenType.ACCESS);
 
-                var userEntity = usuarioRepositorio.findByIdConRolesYPermisos(verified.userId())
+                UsuarioRepositorio repo = usuarioRepositorio;
+
+                var userEntity = repo.findByIdConRolesYPermisos(verified.userId())
                         .filter(user -> Objects.equals(user.getNombreUsuario(), verified.subject()))
-                        .filter(user -> Boolean.TRUE.equals(user.getActivo()))
+                        .filter(Usuario::isEnabled)
+                        .filter(user -> Objects.equals(user.getAuthVersion(), verified.authVersion()))
                         .filter(user -> user.rolesEfectivos().stream().anyMatch(Rol::estaActivo))
                         .filter(user -> user.rolesEfectivos().stream()
                                 .map(Rol::getCodigo)
                                 .filter(Objects::nonNull)
-                                .anyMatch(role -> Objects.equals(role, verified.role())))
-                        .filter(user -> Objects.equals(user.getAuthVersion(), verified.authVersion()))
+                                .anyMatch(role -> role.equalsIgnoreCase(verified.role())))
                         .orElseThrow(InvalidTokenException::new);
 
                 var authentication = new UsernamePasswordAuthenticationToken(

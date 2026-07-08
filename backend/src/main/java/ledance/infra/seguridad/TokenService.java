@@ -44,11 +44,17 @@ public class TokenService {
     }
 
     private String generarToken(Usuario usuario, UUID jwtId, Duration ttl, TokenType tipo) {
-        if (usuario.getId() == null
+        if (usuario == null
+                || usuario.getId() == null
                 || usuario.getNombreUsuario() == null
                 || usuario.getRol() == null
                 || usuario.getAuthVersion() == null) {
             throw new IllegalArgumentException("No se puede generar un token para un usuario incompleto");
+        }
+
+        String rolPrincipal = rolPrincipalCodigo(usuario);
+        if (rolPrincipal == null || rolPrincipal.isBlank()) {
+            throw new IllegalArgumentException("No se puede generar un token sin rol principal");
         }
 
         Instant issuedAt = clock.instant();
@@ -59,7 +65,7 @@ public class TokenService {
                 .withSubject(usuario.getNombreUsuario())
                 .withClaim("id", usuario.getId())
                 .withClaim("type", tipo.name())
-                .withClaim("rol", rolPrincipalCodigo(usuario))
+                .withClaim("rol", rolPrincipal)
                 .withClaim("roles", usuario.codigosRolesActivos().stream().toList())
                 .withClaim("auth_version", usuario.getAuthVersion())
                 .withJWTId(jwtId.toString())
@@ -90,6 +96,7 @@ public class TokenService {
 
         try {
             DecodedJWT decoded = verifier.verify(token);
+
             String subject = decoded.getSubject();
             Long userId = decoded.getClaim("id").asLong();
             String role = decoded.getClaim("rol").asString();
@@ -103,8 +110,8 @@ public class TokenService {
                     || userId == null
                     || role == null || role.isBlank()
                     || authVersion == null
-                    || type == null
-                    || jwtId == null
+                    || type == null || type.isBlank()
+                    || jwtId == null || jwtId.isBlank()
                     || issuedAt == null
                     || expiresAt == null) {
                 throw new InvalidTokenException();

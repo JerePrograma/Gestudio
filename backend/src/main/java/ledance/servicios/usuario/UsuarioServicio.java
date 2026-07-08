@@ -124,8 +124,10 @@ public class UsuarioServicio {
         if (request.nombreUsuario() != null && !request.nombreUsuario().isBlank()) {
             String username = normalizarUsername(request.nombreUsuario());
 
+            Long usuarioIdActual = usuario.getId();
+
             usuarios.findByNombreUsuarioIgnoreCase(username)
-                    .filter(existing -> !existing.getId().equals(usuario.getId()))
+                    .filter(existing -> !existing.getId().equals(usuarioIdActual))
                     .ifPresent(existing -> {
                         throw new IllegalArgumentException("El nombre de usuario ya está en uso");
                     });
