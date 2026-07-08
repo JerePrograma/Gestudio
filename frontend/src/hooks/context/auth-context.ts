@@ -6,6 +6,7 @@ export interface UserProfile {
   email?: string;
   roles: string[];
   permisos: string[];
+  activo: boolean;
 }
 
 export interface AuthContextProps {
@@ -15,19 +16,89 @@ export interface AuthContextProps {
   logout: () => Promise<void>;
   accessToken: string | null;
   user: UserProfile | null;
+
+  /**
+   * Compatibilidad transicional.
+   * La autorización funcional debe preferir permisos.
+   */
   hasRole: (role: string) => boolean;
   hasAnyRole: (roles: string[]) => boolean;
+
   hasPermission: (permission: string) => boolean;
+  hasAllPermissions: (permissions: string[]) => boolean;
   hasAnyPermission: (permissions: string[]) => boolean;
 }
 
-const normalize = (value: string, prefix: string): string =>
-  value.trim().toUpperCase().replace(new RegExp(`^${prefix}`), "");
+const normalizeAuthority = (value: string, prefix: string): string => {
+  const normalized = value.trim().toUpperCase();
+  return normalized.startsWith(prefix)
+    ? normalized.substring(prefix.length)
+    : normalized;
+};
 
-export const profileHasRole = (user: UserProfile | null, role: string): boolean =>
-  user?.roles.some((value) => normalize(value, "ROLE_") === normalize(role, "ROLE_")) ?? false;
+const hasAuthority = (
+  values: string[] | undefined,
+  expected: string,
+  prefix: string,
+): boolean => {
+  const normalizedExpected = normalizeAuthority(expected, prefix);
 
-export const profileHasPermission = (user: UserProfile | null, permission: string): boolean =>
-  user?.permisos.some((value) => normalize(value, "PERM_") === normalize(permission, "PERM_")) ?? false;
+  return (
+    values?.some(
+      (value) => normalizeAuthority(value, prefix) === normalizedExpected,
+    ) ?? false
+  );
+};
 
-export const AuthContext = createContext<AuthContextProps | undefined>(undefined);
+export const profileHasRole = (
+  user: UserProfile | null,
+  role: string,
+): boolean => hasAuthority(user?.roles, role, "ROLE_");
+
+export const profileHasAnyRole = (
+  user: UserProfile | null,
+  roles: string[],
+): boolean => roles.some((role) => profileHasRole(user, role));
+
+export const profileHasPermission = (
+  user: UserProfile | null,
+  permission: string,
+): boolean => hasAuthority(user?.permisos, permission, "PERM_");
+
+export const profileHasAllPermissions = (
+  user: UserProfile | null,
+  permissions: string[],
+): boolean =>
+  permissions.every((permission) => profileHasPermission(user, permission));
+
+export const profileHasAnyPermission = (
+  user: UserProfile | null,
+  permissions: string[],
+): boolean =>
+  permissions.some((permission) => profileHasPermission(user, permission));
+
+export const sanitizeUserProfile = (value: unknown): UserProfile => {
+  const raw = value as Partial<UserProfile>;
+
+  if (
+    !raw ||
+    typeof raw.id !== "number" ||
+    typeof raw.nombreUsuario !== "string" ||
+    typeof raw.activo !== "boolean"
+  ) {
+    throw new Error("Perfil de usuario inválido");
+  }
+
+  return {
+    id: raw.id,
+    nombreUsuario: raw.nombreUsuario,
+    email: raw.email,
+    roles: Array.isArray(raw.roles) ? raw.roles : [],
+    permisos: Array.isArray(raw.permisos) ? raw.permisos : [],
+    activo: raw.activo,
+  };
+};
+
+export const AuthContext = createContext<AuthContextProps | undefined>(
+  undefined,
+);

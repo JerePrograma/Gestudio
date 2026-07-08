@@ -110,6 +110,7 @@ public class PagoServicio {
     @Transactional
     public PagoResponse registrarPago(PagoRegistroRequest request, Usuario principal) {
         String hash = hash(request);
+        Usuario usuario = rbac.exigirPermiso(principal, PERM_PAGOS_REGISTRAR, "REGISTRAR_PAGO");
 
         Pago previo = pagos.findByIdempotencyKey(request.idempotencyKey()).orElse(null);
         if (previo != null) {
@@ -123,8 +124,6 @@ public class PagoServicio {
         if (previo != null) {
             return validarReintento(previo, hash);
         }
-
-        Usuario usuario = rbac.exigirPermiso(principal, PERM_PAGOS_REGISTRAR, "REGISTRAR_PAGO");
 
         MetodoPago metodo = metodos.findById(request.metodoPagoId())
                 .filter(m -> Boolean.TRUE.equals(m.getActivo()))
@@ -271,6 +270,7 @@ public class PagoServicio {
     @Transactional
     public PagoResponse anularPago(Long pagoId, PagoAnulacionRequest request, Usuario principal) {
         String reversalHash = RequestHash.sha256("ANULAR_PAGO", pagoId.toString(), request.motivo());
+        Usuario usuario = rbac.exigirPermiso(principal, PERM_PAGOS_ANULAR, "ANULAR_PAGO");
 
         Pago pago = pagos.findByIdForUpdate(pagoId)
                 .orElseThrow(() -> new EntityNotFoundException("Pago no encontrado"));
@@ -286,8 +286,6 @@ public class PagoServicio {
 
             throw new OperacionNoPermitidaException("El pago ya fue anulado");
         }
-
-        Usuario usuario = rbac.exigirPermiso(principal, PERM_PAGOS_ANULAR, "ANULAR_PAGO");
 
         alumnos.findActivoByIdForUpdate(pago.getAlumno().getId())
                 .orElseThrow(() -> new OperacionNoPermitidaException("El alumno está inactivo"));

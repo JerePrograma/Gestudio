@@ -384,7 +384,7 @@ class PagoCanonicoPostgreSqlTest extends PostgreSqlIntegrationTest {
         Long cargo1 = cargo(alumno, concepto, importe1, "Cargo A " + suffix);
         Long cargo2 = cargo(alumno, concepto, importe2, "Cargo B " + suffix);
 
-        Usuario principal = usuarios.findById(usuario).orElseThrow();
+        Usuario principal = usuarios.findByIdConRolesYPermisos(usuario).orElseThrow();
 
         return new Escenario(alumno, metodo, cargo1, cargo2, principal);
     }
@@ -398,10 +398,14 @@ class PagoCanonicoPostgreSqlTest extends PostgreSqlIntegrationTest {
 
         for (String permiso : permisos) {
             jdbc.update("""
-                    INSERT INTO permisos(codigo, descripcion, activo)
-                    VALUES (?, ?, true)
-                    ON CONFLICT (codigo) DO NOTHING
-                    """, permiso, permiso);
+                    INSERT INTO permisos(codigo, descripcion, modulo, activo, sistema)
+                    VALUES (?, ?, ?, true, true)
+                    ON CONFLICT (codigo) DO UPDATE
+                    SET descripcion = EXCLUDED.descripcion,
+                        modulo = EXCLUDED.modulo,
+                        activo = true,
+                        sistema = true
+                    """, permiso, permiso, moduloDe(permiso));
 
             jdbc.update("""
                     INSERT INTO rol_permisos(rol_id, permiso_id)
@@ -411,6 +415,20 @@ class PagoCanonicoPostgreSqlTest extends PostgreSqlIntegrationTest {
                     ON CONFLICT DO NOTHING
                     """, rolId, permiso);
         }
+    }
+
+    private static String moduloDe(String permiso) {
+        String normalizado = permiso == null ? "" : permiso.trim().toUpperCase();
+
+        if (!normalizado.startsWith("PERM_")) {
+            return "GENERAL";
+        }
+
+        String sinPrefijo = normalizado.substring("PERM_".length());
+        int separador = sinPrefijo.indexOf('_');
+        String modulo = separador <= 0 ? sinPrefijo : sinPrefijo.substring(0, separador);
+
+        return modulo.length() < 2 ? "GENERAL" : modulo;
     }
 
     private Long cargo(Long alumno, Long concepto, BigDecimal importe, String descripcion) {

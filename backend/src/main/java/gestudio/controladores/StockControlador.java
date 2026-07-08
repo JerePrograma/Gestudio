@@ -4,15 +4,18 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.PositiveOrZero;
+import gestudio.dto.PageResponse;
 import gestudio.dto.cargo.response.CargoResponse;
 import gestudio.dto.stock.request.ReversionStockRequest;
 import gestudio.dto.stock.request.StockRegistroRequest;
 import gestudio.dto.stock.request.VentaStockRequest;
 import gestudio.dto.stock.response.StockResponse;
-import gestudio.dto.PageResponse;
 import gestudio.entidades.Usuario;
 import gestudio.servicios.stock.StockServicio;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -20,11 +23,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
-import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
@@ -32,6 +32,7 @@ import java.util.List;
 @RequestMapping("/api/stocks")
 @Validated
 public class StockControlador {
+
     private final StockServicio stocks;
 
     public StockControlador(StockServicio stocks) {
@@ -63,13 +64,16 @@ public class StockControlador {
     }
 
     @PutMapping("/{id}")
-    public StockResponse actualizar(@PathVariable Long id, @Valid @RequestBody StockRegistroRequest request) {
-        return stocks.actualizarStock(id, request);
+    public StockResponse actualizar(@PathVariable Long id,
+                                    @Valid @RequestBody StockRegistroRequest request,
+                                    @AuthenticationPrincipal Usuario usuario) {
+        return stocks.actualizarStock(id, request, usuario);
     }
 
     @DeleteMapping("/{id}")
-    public void darBaja(@PathVariable Long id) {
-        stocks.eliminarStock(id);
+    public void darBaja(@PathVariable Long id,
+                        @AuthenticationPrincipal Usuario usuario) {
+        stocks.eliminarStock(id, usuario);
     }
 
     @PostMapping("/ventas")

@@ -62,8 +62,43 @@ public class SecurityConfigurations {
                     req.requestMatchers("/api/roles/**").hasAuthority("PERM_ROLES_ADMIN");
                     req.requestMatchers("/api/permisos/**").hasAuthority("PERM_ROLES_ADMIN");
                     req.requestMatchers("/api/auditoria/seguridad/**").hasAuthority("PERM_AUDITORIA_SEGURIDAD_LEER");
+
                     req.requestMatchers("/api/mensualidades/generar-periodo/manual")
                             .hasAuthority("PERM_MENSUALIDADES_GENERAR_MANUAL");
+
+                    req.requestMatchers(HttpMethod.POST, "/api/pagos/**")
+                            .hasAuthority("PERM_PAGOS_REGISTRAR");
+                    req.requestMatchers(HttpMethod.POST, "/api/pagos/*/anulacion")
+                            .hasAuthority("PERM_PAGOS_ANULAR");
+                    req.requestMatchers(HttpMethod.POST, "/api/pagos/*/anular")
+                            .hasAuthority("PERM_PAGOS_ANULAR");
+
+                    req.requestMatchers(HttpMethod.POST, "/api/egresos/**")
+                            .hasAuthority("PERM_EGRESOS_ADMIN");
+                    req.requestMatchers(HttpMethod.PUT, "/api/egresos/**")
+                            .hasAuthority("PERM_EGRESOS_ADMIN");
+                    req.requestMatchers(HttpMethod.DELETE, "/api/egresos/**")
+                            .hasAuthority("PERM_EGRESOS_ADMIN");
+
+                    req.requestMatchers(HttpMethod.POST, "/api/stocks/ventas")
+                            .hasAuthority("PERM_STOCK_VENDER");
+                    req.requestMatchers(HttpMethod.POST, "/api/stocks/ventas/*/reversion")
+                            .hasAuthority("PERM_STOCK_ADMIN");
+                    req.requestMatchers(HttpMethod.POST, "/api/stocks/**")
+                            .hasAuthority("PERM_STOCK_ADMIN");
+                    req.requestMatchers(HttpMethod.PUT, "/api/stocks/**")
+                            .hasAuthority("PERM_STOCK_ADMIN");
+                    req.requestMatchers(HttpMethod.DELETE, "/api/stocks/**")
+                            .hasAuthority("PERM_STOCK_ADMIN");
+
+                    req.requestMatchers(HttpMethod.POST, "/api/creditos/consumos/**")
+                            .hasAuthority("PERM_CREDITOS_CONSUMIR");
+                    req.requestMatchers(HttpMethod.POST, "/api/creditos/**")
+                            .hasAuthority("PERM_CREDITOS_ADMIN");
+                    req.requestMatchers(HttpMethod.PUT, "/api/creditos/**")
+                            .hasAuthority("PERM_CREDITOS_ADMIN");
+                    req.requestMatchers(HttpMethod.DELETE, "/api/creditos/**")
+                            .hasAuthority("PERM_CREDITOS_ADMIN");
 
                     req.requestMatchers("/api/**").hasAuthority("PERM_APP_ACCESO");
 

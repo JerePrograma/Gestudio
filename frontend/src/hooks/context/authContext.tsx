@@ -9,8 +9,12 @@ import {
 } from "../../api/authSession";
 import {
   AuthContext,
+  profileHasAllPermissions,
+  profileHasAnyPermission,
+  profileHasAnyRole,
   profileHasPermission,
   profileHasRole,
+  sanitizeUserProfile,
   type UserProfile,
 } from "./auth-context";
 
@@ -37,12 +41,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
     contrasena: string,
   ): Promise<void> => {
     clearAuthStorage();
+
     const { data } = await api.post(
       "/login",
       { nombreUsuario, contrasena },
       { withCredentials: true },
     );
-    setAuthSession(data.accessToken, data.usuario);
+
+    setAuthSession(data.accessToken, sanitizeUserProfile(data.usuario));
   };
 
   const logout = async (): Promise<void> => {
@@ -55,9 +61,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
   };
 
   const hasRole = (role: string): boolean => profileHasRole(user, role);
-  const hasAnyRole = (roles: string[]): boolean => roles.some(hasRole);
-  const hasPermission = (permission: string): boolean => profileHasPermission(user, permission);
-  const hasAnyPermission = (permissions: string[]): boolean => permissions.some(hasPermission);
+
+  const hasAnyRole = (roles: string[]): boolean =>
+    profileHasAnyRole(user, roles);
+
+  const hasPermission = (permission: string): boolean =>
+    profileHasPermission(user, permission);
+
+  const hasAllPermissions = (permissions: string[]): boolean =>
+    profileHasAllPermissions(user, permissions);
+
+  const hasAnyPermission = (permissions: string[]): boolean =>
+    profileHasAnyPermission(user, permissions);
 
   return (
     <AuthContext.Provider
@@ -71,6 +86,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
         hasRole,
         hasAnyRole,
         hasPermission,
+        hasAllPermissions,
         hasAnyPermission,
       }}
     >

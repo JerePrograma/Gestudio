@@ -254,7 +254,7 @@ class IdempotenciaCanonicaPostgreSqlTest extends PostgreSqlIntegrationTest {
                 RETURNING id
                 """, "Stock " + suffix);
 
-        return new Fixture(alumno, metodo, stockId, usuarios.findById(user).orElseThrow());
+        return new Fixture(alumno, metodo, stockId, usuarios.findByIdConRolesYPermisos(user).orElseThrow());
     }
 
     private void otorgarPermisos(Long usuarioId, Long rolId, String... permisos) {
@@ -266,10 +266,14 @@ class IdempotenciaCanonicaPostgreSqlTest extends PostgreSqlIntegrationTest {
 
         for (String permiso : permisos) {
             jdbc.update("""
-                    INSERT INTO permisos(codigo, descripcion, activo)
-                    VALUES (?, ?, true)
-                    ON CONFLICT (codigo) DO NOTHING
-                    """, permiso, permiso);
+                    INSERT INTO permisos(codigo, descripcion, modulo, activo, sistema)
+                    VALUES (?, ?, ?, true, true)
+                    ON CONFLICT (codigo) DO UPDATE
+                    SET descripcion = EXCLUDED.descripcion,
+                        modulo = EXCLUDED.modulo,
+                        activo = true,
+                        sistema = true
+                    """, permiso, permiso, moduloDe(permiso));
 
             jdbc.update("""
                     INSERT INTO rol_permisos(rol_id, permiso_id)
@@ -279,6 +283,20 @@ class IdempotenciaCanonicaPostgreSqlTest extends PostgreSqlIntegrationTest {
                     ON CONFLICT DO NOTHING
                     """, rolId, permiso);
         }
+    }
+
+    private static String moduloDe(String permiso) {
+        String normalizado = permiso == null ? "" : permiso.trim().toUpperCase();
+
+        if (!normalizado.startsWith("PERM_")) {
+            return "GENERAL";
+        }
+
+        String sinPrefijo = normalizado.substring("PERM_".length());
+        int separador = sinPrefijo.indexOf('_');
+        String modulo = separador <= 0 ? sinPrefijo : sinPrefijo.substring(0, separador);
+
+        return modulo.length() < 2 ? "GENERAL" : modulo;
     }
 
     private int count(String table, String key) {

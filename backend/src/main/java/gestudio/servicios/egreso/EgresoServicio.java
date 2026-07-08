@@ -56,19 +56,9 @@ public class EgresoServicio {
     @Transactional
     public EgresoResponse agregarEgreso(EgresoRegistroRequest request, Usuario principal) {
         String hash = hash(request);
-
-        Egreso previo = egresos.findByIdempotencyKey(request.idempotencyKey()).orElse(null);
-        if (previo != null) {
-            if (!previo.getRequestHash().equals(hash)) {
-                throw new OperacionNoPermitidaException("La idempotency key ya fue usada con otro contenido");
-            }
-
-            return respuesta(previo);
-        }
-
         Usuario usuario = rbac.exigirPermiso(principal, PERM_EGRESOS_ADMIN, "REGISTRAR_EGRESO");
 
-        previo = egresos.findByIdempotencyKey(request.idempotencyKey()).orElse(null);
+        Egreso previo = egresos.findByIdempotencyKey(request.idempotencyKey()).orElse(null);
         if (previo != null) {
             if (!previo.getRequestHash().equals(hash)) {
                 throw new OperacionNoPermitidaException("La idempotency key ya fue usada con otro contenido");
@@ -112,6 +102,7 @@ public class EgresoServicio {
     @Transactional
     public EgresoResponse anular(Long id, EgresoAnulacionRequest request, Usuario principal) {
         String reversalHash = RequestHash.sha256("ANULAR_EGRESO", id.toString(), request.motivo());
+        Usuario usuario = rbac.exigirPermiso(principal, PERM_EGRESOS_ADMIN, "ANULAR_EGRESO");
 
         Egreso egreso = egresos.findByIdForUpdate(id)
                 .orElseThrow(() -> new EntityNotFoundException("Egreso no encontrado"));
@@ -127,8 +118,6 @@ public class EgresoServicio {
 
             throw new OperacionNoPermitidaException("El egreso ya fue anulado");
         }
-
-        Usuario usuario = rbac.exigirPermiso(principal, PERM_EGRESOS_ADMIN, "ANULAR_EGRESO");
 
         MovimientoCaja original = caja.findByEgresoIdAndTipo(id, TipoMovimientoCaja.EGRESO)
                 .orElseThrow(() -> new IllegalStateException("Egreso sin movimiento de caja"));
