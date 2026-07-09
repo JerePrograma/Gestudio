@@ -13,6 +13,7 @@ import gestudio.entidades.MovimientoCredito;
 import gestudio.entidades.TipoMovimientoCredito;
 import gestudio.entidades.Usuario;
 import gestudio.infra.errores.TratadorDeErrores.OperacionNoPermitidaException;
+import gestudio.infra.idempotencia.IdempotencyLockService;
 import gestudio.infra.idempotencia.RequestHash;
 import gestudio.infra.seguridad.RbacService;
 import gestudio.repositorios.AlumnoRepositorio;
@@ -38,19 +39,22 @@ public class CreditoServicio {
     private final CargoServicio cargoServicio;
     private final CargoEventoServicio eventos;
     private final RbacService rbac;
+    private final IdempotencyLockService idempotencyLocks;
 
     public CreditoServicio(MovimientoCreditoRepositorio movimientos,
                            AlumnoRepositorio alumnos,
                            CargoRepositorio cargos,
                            CargoServicio cargoServicio,
                            CargoEventoServicio eventos,
-                           RbacService rbac) {
+                           RbacService rbac,
+                           IdempotencyLockService idempotencyLocks) {
         this.movimientos = movimientos;
         this.alumnos = alumnos;
         this.cargos = cargos;
         this.cargoServicio = cargoServicio;
         this.eventos = eventos;
         this.rbac = rbac;
+        this.idempotencyLocks = idempotencyLocks;
     }
 
     @Transactional
@@ -63,6 +67,8 @@ public class CreditoServicio {
                 request.cargoId().toString(),
                 decimal(monedaPositiva(request.importe()))
         );
+
+        idempotencyLocks.lock("CONSUMIR_CREDITO", request.idempotencyKey());
 
         MovimientoCredito previo = movimientos.findByIdempotencyKey(request.idempotencyKey()).orElse(null);
         if (previo != null) {
@@ -142,6 +148,8 @@ public class CreditoServicio {
                 request.motivo()
         );
 
+        idempotencyLocks.lock("REVERTIR_CONSUMO_CREDITO", request.idempotencyKey());
+
         MovimientoCredito previo = movimientos.findByIdempotencyKey(request.idempotencyKey()).orElse(null);
         if (previo != null) {
             validarReintento(previo, requestHash);
@@ -216,6 +224,8 @@ public class CreditoServicio {
                 request.direccion(),
                 request.motivo()
         );
+
+        idempotencyLocks.lock("AJUSTAR_CREDITO", request.idempotencyKey());
 
         MovimientoCredito previo = movimientos.findByIdempotencyKey(request.idempotencyKey()).orElse(null);
         if (previo != null) {

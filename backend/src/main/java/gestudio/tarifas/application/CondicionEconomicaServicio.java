@@ -25,6 +25,7 @@ import java.util.Map;
 @Service
 public class CondicionEconomicaServicio {
 
+    private static final String PERM_CONDICIONES_ECONOMICAS_ADMIN = "PERM_CONDICIONES_ECONOMICAS_ADMIN";
     private static final String PERM_TARIFAS_ADMIN = "PERM_TARIFAS_ADMIN";
     private static final String PERM_TARIFAS_HISTORICAS = "PERM_TARIFAS_HISTORICAS";
 
@@ -131,7 +132,8 @@ public class CondicionEconomicaServicio {
 
         return usuarios.findByIdConRolesYPermisos(actor.getId())
                 .filter(Usuario::isEnabled)
-                .filter(usuario -> usuario.tienePermiso(PERM_TARIFAS_ADMIN))
+                .filter(usuario -> usuario.tienePermiso(PERM_CONDICIONES_ECONOMICAS_ADMIN)
+                        || usuario.tienePermiso(PERM_TARIFAS_ADMIN))
                 .orElseThrow(() -> new OperacionNoPermitidaException("Actor sin permisos para administrar condiciones económicas"));
     }
 

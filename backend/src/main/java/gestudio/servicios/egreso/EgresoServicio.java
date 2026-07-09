@@ -11,6 +11,7 @@ import gestudio.entidades.MovimientoCaja;
 import gestudio.entidades.TipoMovimientoCaja;
 import gestudio.entidades.Usuario;
 import gestudio.infra.errores.TratadorDeErrores.OperacionNoPermitidaException;
+import gestudio.infra.idempotencia.IdempotencyLockService;
 import gestudio.infra.idempotencia.RequestHash;
 import gestudio.infra.seguridad.RbacService;
 import gestudio.repositorios.EgresoRepositorio;
@@ -20,7 +21,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,20 +41,20 @@ public class EgresoServicio {
     private final MovimientoCajaRepositorio caja;
     private final Clock clock;
     private final RbacService rbac;
-    private final JdbcTemplate jdbc;
+    private final IdempotencyLockService idempotencyLocks;
 
     public EgresoServicio(EgresoRepositorio egresos,
                           MetodoPagoRepositorio metodos,
                           MovimientoCajaRepositorio caja,
                           Clock clock,
                           RbacService rbac,
-                          JdbcTemplate jdbc) {
+                          IdempotencyLockService idempotencyLocks) {
         this.egresos = egresos;
         this.metodos = metodos;
         this.caja = caja;
         this.clock = clock;
         this.rbac = rbac;
-        this.jdbc = jdbc;
+        this.idempotencyLocks = idempotencyLocks;
     }
 
     @Transactional
@@ -62,7 +62,7 @@ public class EgresoServicio {
         String hash = hash(request);
         Usuario usuario = rbac.exigirPermiso(principal, PERM_EGRESOS_ADMIN, "REGISTRAR_EGRESO");
 
-        bloquearIdempotencyKey("REGISTRAR_EGRESO", request.idempotencyKey());
+        idempotencyLocks.lock("REGISTRAR_EGRESO", request.idempotencyKey());
 
         Egreso previo = egresos.findByIdempotencyKey(request.idempotencyKey()).orElse(null);
         if (previo != null) {
@@ -109,6 +109,8 @@ public class EgresoServicio {
     public EgresoResponse anular(Long id, EgresoAnulacionRequest request, Usuario principal) {
         String reversalHash = RequestHash.sha256("ANULAR_EGRESO", id.toString(), request.motivo());
         Usuario usuario = rbac.exigirPermiso(principal, PERM_EGRESOS_ADMIN, "ANULAR_EGRESO");
+
+        idempotencyLocks.lock("ANULAR_EGRESO", request.idempotencyKey());
 
         Egreso egreso = egresos.findByIdForUpdate(id)
                 .orElseThrow(() -> new EntityNotFoundException("Egreso no encontrado"));
@@ -162,14 +164,6 @@ public class EgresoServicio {
         return egresos.findAll(pageable).map(this::respuesta);
     }
 
-    private void bloquearIdempotencyKey(String operacion, String idempotencyKey) {
-        jdbc.query(
-                "SELECT pg_advisory_xact_lock(hashtextextended(?, 0))",
-                ps -> ps.setString(1, operacion + ":" + idempotencyKey),
-                rs -> null
-        );
-    }
-
     private EgresoResponse respuesta(Egreso e) {
         return new EgresoResponse(
                 e.getId(),
@@ -184,13 +178,17 @@ public class EgresoServicio {
     }
 
     private static BigDecimal monedaPositiva(String valor) {
-        BigDecimal importe = new BigDecimal(valor).setScale(2, RoundingMode.UNNECESSARY);
+        try {
+            BigDecimal importe = new BigDecimal(valor).setScale(2, RoundingMode.UNNECESSARY);
 
-        if (importe.signum() <= 0) {
-            throw new IllegalArgumentException("El monto debe ser mayor que cero");
+            if (importe.signum() <= 0) {
+                throw new IllegalArgumentException("El monto debe ser mayor que cero");
+            }
+
+            return importe;
+        } catch (ArithmeticException | NumberFormatException e) {
+            throw new IllegalArgumentException("El monto debe tener como máximo dos decimales");
         }
-
-        return importe;
     }
 
     private static String decimal(BigDecimal valor) {

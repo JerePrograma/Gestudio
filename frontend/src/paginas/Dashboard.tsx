@@ -22,6 +22,7 @@ import PageHeader from "../componentes/comunes/PageHeader";
 
 const SingleCard: React.FC<{ item: NavigationItem }> = ({ item }) => {
   const Icon = item.icon;
+
   return (
     <Link to={item.href ?? "#"} className="block h-full">
       <Card className="group h-full transition-colors hover:border-primary/35 hover:shadow-md">
@@ -32,9 +33,11 @@ const SingleCard: React.FC<{ item: NavigationItem }> = ({ item }) => {
                 <Icon className="size-6 text-primary" />
               </div>
             )}
+
             <CardTitle className="line-clamp-2">{item.label}</CardTitle>
           </div>
         </CardHeader>
+
         <CardContent>
           <div className="flex items-center text-sm font-semibold text-primary">
             Acceder
@@ -53,8 +56,9 @@ interface CategoryCardProps {
 const CategoryCard: React.FC<CategoryCardProps> = ({ item }) => {
   const Icon = item.icon;
   const subItems = item.items || [];
+
   return (
-    <Card className="overflow-hidden h-full">
+    <Card className="h-full overflow-hidden">
       <Collapsible>
         <CollapsibleTrigger className="w-full">
           <CardHeader className="group cursor-pointer hover:bg-muted/50">
@@ -65,8 +69,10 @@ const CategoryCard: React.FC<CategoryCardProps> = ({ item }) => {
                     <Icon className="h-6 w-6 text-primary" />
                   </div>
                 )}
+
                 <div className="text-left">
                   <CardTitle className="line-clamp-2">{item.label}</CardTitle>
+
                   {item.description && (
                     <CardDescription className="line-clamp-2">
                       {item.description}
@@ -74,10 +80,12 @@ const CategoryCard: React.FC<CategoryCardProps> = ({ item }) => {
                   )}
                 </div>
               </div>
+
               <ChevronDown className="h-5 w-5 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180" />
             </div>
           </CardHeader>
         </CollapsibleTrigger>
+
         <CollapsibleContent className="pl-4">
           <CardContent className="grid gap-4 p-6 pt-0">
             <ScrollArea className="max-h-[300px]">
@@ -87,12 +95,13 @@ const CategoryCard: React.FC<CategoryCardProps> = ({ item }) => {
                     variant="ghost"
                     className={cn(
                       "w-full justify-start gap-2 font-normal",
-                      "hover:bg-muted hover:text-primary"
+                      "hover:bg-muted hover:text-primary",
                     )}
                   >
                     {subItem.icon && (
                       <subItem.icon className="h-4 w-4 shrink-0" />
                     )}
+
                     <span className="truncate">{subItem.label}</span>
                   </Button>
                 </Link>
@@ -108,39 +117,44 @@ const CategoryCard: React.FC<CategoryCardProps> = ({ item }) => {
 const Dashboard: React.FC = () => {
   const { hasPermission } = useAuth();
 
-  // Utilizamos la función utilitaria para filtrar los ítems sin mutar el array original.
   const filteredNavigation = filterNavigationItems(navigationItems, hasPermission);
 
-  // Separamos los ítems en categorías (con sub-items) y accesos directos (sin sub-items)
   const categories = filteredNavigation.filter(
-    (item) => item.items && item.items.length > 0
+    (item) => item.items && item.items.length > 0,
   );
+
   const singleItems = filteredNavigation.filter(
-    (item) => !item.items || item.items.length === 0
+    (item) => !item.items || item.items.length === 0,
   );
 
   return (
     <div className="page-container">
-      <PageHeader eyebrow="LE DANCE" title="Panel de control" description="Accesos rápidos a la operación diaria y la administración del sistema." />
-      {/* Accesos Directos */}
+      <PageHeader
+        eyebrow="Gestudio"
+        title="Panel de control"
+        description="Accesos rápidos a la operación diaria y la administración del sistema."
+      />
+
       {singleItems.length > 0 && (
         <section className="space-y-4">
           <h2 className="text-xl font-semibold tracking-tight">
             Accesos frecuentes
           </h2>
-          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
             {singleItems.map((item) => (
               <SingleCard key={item.id} item={item} />
             ))}
           </div>
         </section>
       )}
-      {/* Categorías */}
+
       <section className="space-y-4">
         <h2 className="text-xl font-semibold tracking-tight">
           Gestión del sistema
         </h2>
-        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4">
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4">
           {categories.map((category) => (
             <CategoryCard key={category.id} item={category} />
           ))}

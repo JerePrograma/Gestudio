@@ -26,6 +26,7 @@ import gestudio.entidades.TipoMovimientoCaja;
 import gestudio.entidades.TipoMovimientoCredito;
 import gestudio.entidades.Usuario;
 import gestudio.infra.errores.TratadorDeErrores.OperacionNoPermitidaException;
+import gestudio.infra.idempotencia.IdempotencyLockService;
 import gestudio.infra.idempotencia.RequestHash;
 import gestudio.infra.seguridad.RbacService;
 import gestudio.repositorios.AlumnoRepositorio;
@@ -78,6 +79,7 @@ public class PagoServicio {
     private final CargoEventoServicio eventos;
     private final Clock clock;
     private final RbacService rbac;
+    private final IdempotencyLockService idempotencyLocks;
 
     public PagoServicio(PagoRepositorio pagos,
                         CargoRepositorio cargos,
@@ -91,7 +93,8 @@ public class PagoServicio {
                         CargoServicio cargoServicio,
                         CargoEventoServicio eventos,
                         Clock clock,
-                        RbacService rbac) {
+                        RbacService rbac,
+                        IdempotencyLockService idempotencyLocks) {
         this.pagos = pagos;
         this.cargos = cargos;
         this.aplicaciones = aplicaciones;
@@ -105,12 +108,15 @@ public class PagoServicio {
         this.eventos = eventos;
         this.clock = clock;
         this.rbac = rbac;
+        this.idempotencyLocks = idempotencyLocks;
     }
 
     @Transactional
     public PagoResponse registrarPago(PagoRegistroRequest request, Usuario principal) {
         String hash = hash(request);
         Usuario usuario = rbac.exigirPermiso(principal, PERM_PAGOS_REGISTRAR, "REGISTRAR_PAGO");
+
+        idempotencyLocks.lock("REGISTRAR_PAGO", request.idempotencyKey());
 
         Pago previo = pagos.findByIdempotencyKey(request.idempotencyKey()).orElse(null);
         if (previo != null) {
@@ -271,6 +277,8 @@ public class PagoServicio {
     public PagoResponse anularPago(Long pagoId, PagoAnulacionRequest request, Usuario principal) {
         String reversalHash = RequestHash.sha256("ANULAR_PAGO", pagoId.toString(), request.motivo());
         Usuario usuario = rbac.exigirPermiso(principal, PERM_PAGOS_ANULAR, "ANULAR_PAGO");
+
+        idempotencyLocks.lock("ANULAR_PAGO", request.idempotencyKey());
 
         Pago pago = pagos.findByIdForUpdate(pagoId)
                 .orElseThrow(() -> new EntityNotFoundException("Pago no encontrado"));

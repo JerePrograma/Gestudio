@@ -1,4 +1,5 @@
 import { lazy } from "react";
+import { PERMISSIONS } from "../config/permissions";
 
 export const prefetch = { dashboard: () => import("../paginas/Dashboard") };
 
@@ -10,6 +11,7 @@ const Reportes = lazy(() => import("../paginas/Reportes"));
 export const publicRoutes = [
   { path: "/login", Component: Login },
 ];
+
 export const protectedRoutes = [
   { path: "/", Component: Dashboard },
   { path: "/reportes", Component: Reportes },
@@ -20,6 +22,7 @@ const UsuariosPagina = lazy(() => import("../funcionalidades/usuarios/UsuariosPa
 const UsuariosFormulario = lazy(() => import("../funcionalidades/usuarios/UsuariosFormulario"));
 const RolesPagina = lazy(() => import("../funcionalidades/roles/RolesPagina"));
 const RolesFormulario = lazy(() => import("../funcionalidades/roles/RolesFormulario"));
+
 export const adminRoutes = [
   { path: "/usuarios", Component: UsuariosPagina },
   { path: "/usuarios/formulario", Component: UsuariosFormulario },
@@ -94,40 +97,45 @@ export const otherProtectedRoutes = [
 ];
 
 export const routePermissions: Record<string, string> = {
-  "/reportes": "REPORTES_READ",
-  "/usuarios": "USUARIOS_READ",
-  "/usuarios/formulario": "USUARIOS_WRITE",
-  "/roles": "ROLES_READ",
-  "/roles/formulario": "ROLES_WRITE",
-  "/profesores": "PROFESORES_READ",
-  "/profesores/formulario": "PROFESORES_WRITE",
-  "/disciplinas": "DISCIPLINAS_READ",
-  "/disciplinas/formulario": "DISCIPLINAS_WRITE",
-  "/disciplinas/:id/tarifas": "DISCIPLINAS_WRITE",
-  "/alumnos": "ALUMNOS_READ",
-  "/alumnos/formulario": "ALUMNOS_WRITE",
-  "/salones": "DISCIPLINAS_READ",
-  "/salones/formulario": "DISCIPLINAS_WRITE",
-  "/bonificaciones": "BONIFICACIONES_READ",
-  "/bonificaciones/formulario": "BONIFICACIONES_WRITE",
-  "/inscripciones": "INSCRIPCIONES_READ",
-  "/inscripciones/formulario": "INSCRIPCIONES_WRITE",
-  "/inscripciones/:id/condiciones-economicas": "INSCRIPCIONES_WRITE",
-  "/asistencias/alumnos": "ASISTENCIAS_WRITE",
-  "/asistencias-mensuales": "ASISTENCIAS_READ",
-  "/pagos": "PAGOS_READ",
-  "/pagos/formulario": "PAGOS_WRITE",
-  "/caja": "CAJA_READ",
-  "/egresos": "EGRESOS_READ",
-  "/stocks": "STOCK_READ",
-  "/stocks/formulario": "STOCK_WRITE",
-  "/conceptos": "CONCEPTOS_READ",
-  "/conceptos/formulario-concepto": "CONCEPTOS_WRITE",
-  "/metodos-pago": "METODOS_PAGO_READ",
-  "/metodos-pago/formulario": "METODOS_PAGO_WRITE",
-  "/recargos": "RECARGOS_READ",
-  "/recargos/formulario": "RECARGOS_WRITE",
-  "/alumnos-por-disciplina": "REPORTES_READ",
-  "/subconceptos": "CONCEPTOS_READ",
-  "/subconceptos/formulario": "CONCEPTOS_WRITE",
+  "/": PERMISSIONS.APP_ACCESS,
+  "/reportes": PERMISSIONS.APP_ACCESS,
+  "/unauthorized": PERMISSIONS.APP_ACCESS,
+
+  "/usuarios": PERMISSIONS.USUARIOS_ADMIN,
+  "/usuarios/formulario": PERMISSIONS.USUARIOS_ADMIN,
+  "/roles": PERMISSIONS.ROLES_ADMIN,
+  "/roles/formulario": PERMISSIONS.ROLES_ADMIN,
+
+  "/profesores": PERMISSIONS.APP_ACCESS,
+  "/profesores/formulario": PERMISSIONS.APP_ACCESS,
+  "/disciplinas": PERMISSIONS.APP_ACCESS,
+  "/disciplinas/formulario": PERMISSIONS.APP_ACCESS,
+  "/disciplinas/:id/tarifas": PERMISSIONS.TARIFAS_ADMIN,
+  "/alumnos": PERMISSIONS.APP_ACCESS,
+  "/alumnos/formulario": PERMISSIONS.APP_ACCESS,
+  "/salones": PERMISSIONS.APP_ACCESS,
+  "/salones/formulario": PERMISSIONS.APP_ACCESS,
+  "/bonificaciones": PERMISSIONS.APP_ACCESS,
+  "/bonificaciones/formulario": PERMISSIONS.APP_ACCESS,
+  "/inscripciones": PERMISSIONS.APP_ACCESS,
+  "/inscripciones/formulario": PERMISSIONS.APP_ACCESS,
+  "/inscripciones/:id/condiciones-economicas": PERMISSIONS.CONDICIONES_ECONOMICAS_ADMIN,
+  "/asistencias/alumnos": PERMISSIONS.APP_ACCESS,
+  "/asistencias-mensuales": PERMISSIONS.APP_ACCESS,
+
+  "/pagos": PERMISSIONS.APP_ACCESS,
+  "/pagos/formulario": PERMISSIONS.PAGOS_REGISTRAR,
+  "/caja": PERMISSIONS.APP_ACCESS,
+  "/egresos": PERMISSIONS.EGRESOS_ADMIN,
+  "/stocks": PERMISSIONS.APP_ACCESS,
+  "/stocks/formulario": PERMISSIONS.STOCK_ADMIN,
+  "/conceptos": PERMISSIONS.APP_ACCESS,
+  "/conceptos/formulario-concepto": PERMISSIONS.PAGOS_REGISTRAR,
+  "/metodos-pago": PERMISSIONS.APP_ACCESS,
+  "/metodos-pago/formulario": PERMISSIONS.APP_ACCESS,
+  "/recargos": PERMISSIONS.APP_ACCESS,
+  "/recargos/formulario": PERMISSIONS.APP_ACCESS,
+  "/alumnos-por-disciplina": PERMISSIONS.APP_ACCESS,
+  "/subconceptos": PERMISSIONS.APP_ACCESS,
+  "/subconceptos/formulario": PERMISSIONS.APP_ACCESS,
 };

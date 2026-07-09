@@ -18,6 +18,7 @@ import gestudio.entidades.Usuario;
 import gestudio.entidades.VentaStock;
 import gestudio.infra.errores.SinStockException;
 import gestudio.infra.errores.TratadorDeErrores.OperacionNoPermitidaException;
+import gestudio.infra.idempotencia.IdempotencyLockService;
 import gestudio.infra.idempotencia.RequestHash;
 import gestudio.infra.seguridad.RbacService;
 import gestudio.repositorios.AlumnoRepositorio;
@@ -57,6 +58,7 @@ public class StockServicio {
     private final StockMapper mapper;
     private final Clock clock;
     private final RbacService rbac;
+    private final IdempotencyLockService idempotencyLocks;
 
     public StockServicio(StockRepositorio stocks,
                          VentaStockRepositorio ventas,
@@ -66,7 +68,8 @@ public class StockServicio {
                          CargoServicio cargoServicio,
                          StockMapper mapper,
                          Clock clock,
-                         RbacService rbac) {
+                         RbacService rbac,
+                         IdempotencyLockService idempotencyLocks) {
         this.stocks = stocks;
         this.ventas = ventas;
         this.movimientos = movimientos;
@@ -76,6 +79,7 @@ public class StockServicio {
         this.mapper = mapper;
         this.clock = clock;
         this.rbac = rbac;
+        this.idempotencyLocks = idempotencyLocks;
     }
 
     @Transactional
@@ -144,7 +148,9 @@ public class StockServicio {
     public void eliminarStock(Long id, Usuario principal) {
         rbac.exigirPermiso(principal, PERM_STOCK_ADMIN, "ELIMINAR_STOCK");
 
-        Stock stock = stocks.findById(id).orElseThrow(() -> new EntityNotFoundException("Stock no encontrado"));
+        Stock stock = stocks.findActivoByIdForUpdate(id)
+                .orElseThrow(() -> new EntityNotFoundException("Stock no encontrado"));
+
         stock.setActivo(false);
     }
 
@@ -159,6 +165,8 @@ public class StockServicio {
                 request.cantidad().toString(),
                 request.fechaVencimiento().toString()
         );
+
+        idempotencyLocks.lock("VENDER_STOCK", request.idempotencyKey());
 
         VentaStock previa = ventas.findByIdempotencyKey(request.idempotencyKey()).orElse(null);
         if (previa != null) {
@@ -229,6 +237,8 @@ public class StockServicio {
         Usuario usuario = rbac.exigirPermiso(principal, PERM_STOCK_ADMIN, "REVERTIR_VENTA_STOCK");
 
         String reversalHash = RequestHash.sha256("REVERTIR_VENTA_STOCK", ventaId.toString(), request.motivo());
+
+        idempotencyLocks.lock("REVERTIR_VENTA_STOCK", request.idempotencyKey());
 
         VentaStock venta = ventas.findByIdForUpdate(ventaId)
                 .orElseThrow(() -> new EntityNotFoundException("Venta no encontrada"));

@@ -10,10 +10,16 @@ import { navigationItems, type NavigationItem } from "../config/navigation";
 
 const findCurrentLabel = (items: NavigationItem[], pathname: string): string | undefined => {
   for (const item of items) {
-    if (item.href && (pathname === item.href || pathname.startsWith(`${item.href}/`))) return item.label;
+    if (item.href && (pathname === item.href || pathname.startsWith(`${item.href}/`))) {
+      return item.label;
+    }
+
     const childLabel = item.items && findCurrentLabel(item.items, pathname);
-    if (childLabel) return childLabel;
+    if (childLabel) {
+      return childLabel;
+    }
   }
+
   return pathname === "/" ? "Inicio" : undefined;
 };
 
@@ -24,8 +30,9 @@ export default function Header() {
   const { user } = useAuth();
   const location = useLocation();
   const [showModal, setShowModal] = useState(false);
+
   const currentLabel = findCurrentLabel(navigationItems, location.pathname) ?? "Panel administrativo";
-  const initial = user?.nombreUsuario.trim().charAt(0).toUpperCase() || "L";
+  const initial = user?.nombreUsuario.trim().charAt(0).toUpperCase() || "G";
 
   const toggleTheme = () => setTheme(resolvedTheme === "dark" ? "light" : "dark");
 
@@ -41,7 +48,7 @@ export default function Header() {
           {
             "md:left-[var(--sidebar-width)]": isExpanded,
             "md:left-[var(--sidebar-width-collapsed)]": !isExpanded,
-          }
+          },
         )}
       >
         <button
@@ -54,8 +61,13 @@ export default function Header() {
 
         <div className="flex min-w-0 flex-1 items-center justify-between gap-4">
           <div className="min-w-0">
-            <p className="truncate text-xs font-bold uppercase tracking-[0.1em] text-primary">LE DANCE</p>
-            <p className="truncate text-sm font-semibold text-foreground sm:text-base">{currentLabel}</p>
+            <p className="truncate text-xs font-bold uppercase tracking-[0.1em] text-primary">
+              Gestudio
+            </p>
+
+            <p className="truncate text-sm font-semibold text-foreground sm:text-base">
+              {currentLabel}
+            </p>
           </div>
 
           <div className="flex items-center gap-1 sm:gap-2">
@@ -77,17 +89,27 @@ export default function Header() {
               aria-label="Notificaciones"
             >
               <Bell className="size-5" />
+
               {unreadCount > 0 && (
-                <span className="absolute top-1 right-1 w-4 h-4 flex items-center justify-center bg-[hsl(var(--destructive))] rounded-full text-xs text-white">
+                <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-[hsl(var(--destructive))] text-xs text-white">
                   {unreadCount > 9 ? "9+" : unreadCount}
                 </span>
               )}
             </button>
+
             <div className="ml-1 hidden items-center gap-2 border-l border-border pl-3 sm:flex">
-              <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">{initial}</span>
+              <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
+                {initial}
+              </span>
+
               <div className="hidden max-w-36 lg:block">
-                <p className="truncate text-sm font-semibold">{user?.nombreUsuario ?? "Usuario"}</p>
-                <p className="truncate text-xs text-muted-foreground">{user?.roles.join(", ") || "Gestión"}</p>
+                <p className="truncate text-sm font-semibold">
+                  {user?.nombreUsuario ?? "Usuario"}
+                </p>
+
+                <p className="truncate text-xs text-muted-foreground">
+                  {user?.roles.join(", ") || "Gestión"}
+                </p>
               </div>
             </div>
           </div>
