@@ -24,12 +24,14 @@ const AlumnosPagina = () => {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState("");
+
   const alumnos = useQuery({
     queryKey: queryKeys.alumnos(page, PAGE_SIZE, search),
     queryFn: () => search.trim()
       ? alumnosApi.buscarPorNombre(search.trim(), page, PAGE_SIZE)
       : alumnosApi.listar(page, PAGE_SIZE),
   });
+
   const baja = useMutation({
     mutationFn: (id: number) => alumnosApi.darBaja(id),
     onSuccess: async () => {
@@ -44,6 +46,7 @@ const AlumnosPagina = () => {
   };
 
   if (alumnos.isLoading) return <LoadingState message="Cargando alumnos..." />;
+
   if (alumnos.isError) {
     return <ErrorState message="No se pudieron cargar alumnos." onRetry={() => void alumnos.refetch()} />;
   }
@@ -61,11 +64,12 @@ const AlumnosPagina = () => {
           </Boton>
         )}
       />
+
       <FilterBar label="Buscar alumnos">
         <SearchInput
           id="buscar-alumno"
           label="Buscar"
-          placeholder="Buscar por nombre o apellido"
+          placeholder="Buscar por nombre, apellido o documento"
           value={search}
           onChange={(event) => {
             setPage(0);
@@ -73,29 +77,60 @@ const AlumnosPagina = () => {
           }}
         />
       </FilterBar>
+
       <div>
         <Tabla
-          headers={["ID", "Nombre", "Apellido", "Estado"]}
+          headers={["Alumno", "Documento", "Contacto", "Estado"]}
           data={alumnos.data?.content ?? []}
           getRowKey={(row) => row.id}
-          customRender={(row) => [
-            row.id,
-            <span className="font-semibold" key="nombre">{row.nombre}</span>,
-            row.apellido,
-            <StatusBadge key="estado" tone={row.activo ? "success" : "neutral"}>{row.activo ? "Activo" : "Baja"}</StatusBadge>,
-          ]}
-          actions={(row) => (
-            <RowActions
-              label={`Acciones de ${row.nombre} ${row.apellido}`}
-              actions={[
-                { label: "Editar", icon: Pencil, onSelect: () => navigate(`/alumnos/formulario?id=${row.id}`) },
-                { label: "Ver pagos", icon: CreditCard, onSelect: () => navigate(`/pagos?alumnoId=${row.id}`) },
-                ...(row.activo ? [{ label: "Dar de baja", icon: Trash2, destructive: true, disabled: baja.isPending, onSelect: () => confirmarBaja(row.id, `${row.nombre} ${row.apellido}`) }] : []),
-              ]}
-            />
-          )}
+          emptyMessage="No hay alumnos para mostrar."
+          customRender={(row) => {
+            const nombreCompleto = `${row.nombre} ${row.apellido}`.trim();
+            const contacto = row.celular1 || row.celular2 || row.email || "Sin contacto";
+
+            return [
+              <div key="alumno" className="min-w-0">
+                <p className="font-semibold">{nombreCompleto}</p>
+                {row.nombrePadres && (
+                  <p className="mt-1 truncate text-xs text-muted-foreground">
+                    Familia/responsable: {row.nombrePadres}
+                  </p>
+                )}
+              </div>,
+              row.documento || "Sin documento",
+              <span key="contacto" className="text-sm">
+                {contacto}
+              </span>,
+              <StatusBadge key="estado" tone={row.activo ? "success" : "neutral"}>
+                {row.activo ? "Activo" : "Baja"}
+              </StatusBadge>,
+            ];
+          }}
+          actions={(row) => {
+            const nombreCompleto = `${row.nombre} ${row.apellido}`.trim();
+
+            return (
+              <RowActions
+                label={`Acciones de ${nombreCompleto}`}
+                actions={[
+                  { label: "Editar", icon: Pencil, onSelect: () => navigate(`/alumnos/formulario?id=${row.id}`) },
+                  { label: "Ver pagos", icon: CreditCard, onSelect: () => navigate(`/pagos?alumnoId=${row.id}`) },
+                  ...(row.activo
+                    ? [{
+                        label: "Dar de baja",
+                        icon: Trash2,
+                        destructive: true,
+                        disabled: baja.isPending,
+                        onSelect: () => confirmarBaja(row.id, nombreCompleto),
+                      }]
+                    : []),
+                ]}
+              />
+            );
+          }}
         />
       </div>
+
       <PaginationControls
         page={page}
         totalPages={alumnos.data?.totalPages ?? 0}

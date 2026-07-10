@@ -1,15 +1,19 @@
-import React, { useState, useEffect } from "react";
-import Tabla from "../../componentes/comunes/Tabla";
-import Boton from "../../componentes/comunes/Boton";
+import React, { useEffect, useState } from "react";
 import { toast } from "react-toastify";
 import observacionProfesorApi from "../../api/observacionProfesorApi";
-import type {
-  ObservacionProfesorResponse,
-  ObservacionProfesorRequest,
-} from "../../types/types";
 import profesoresApi from "../../api/profesoresApi";
+import Boton from "../../componentes/comunes/Boton";
+import EmptyState from "../../componentes/comunes/EmptyState";
+import FilterBar from "../../componentes/comunes/FilterBar";
+import LoadingState from "../../componentes/comunes/LoadingState";
+import PageHeader from "../../componentes/comunes/PageHeader";
+import SectionCard from "../../componentes/comunes/SectionCard";
+import Tabla from "../../componentes/comunes/Tabla";
+import type {
+  ObservacionProfesorRequest,
+  ObservacionProfesorResponse,
+} from "../../types/types";
 
-// Tipo para Profesor (puedes tenerlo definido en otro archivo)
 interface Profesor {
   id: number;
   nombre: string;
@@ -17,32 +21,25 @@ interface Profesor {
 }
 
 const ConsultaObservacionesProfesores: React.FC = () => {
-  // Estados para el filtro
-  const [fechaInicio, setFechaInicio] = useState<string>("");
-  const [fechaFin, setFechaFin] = useState<string>("");
+  const [fechaInicio, setFechaInicio] = useState("");
+  const [fechaFin, setFechaFin] = useState("");
   const [profesorId, setProfesorId] = useState<number | null>(null);
   const [profesores, setProfesores] = useState<Profesor[]>([]);
-
-  // Lista de observaciones filtradas
-  const [observaciones, setObservaciones] = useState<
-    ObservacionProfesorResponse[]
-  >([]);
+  const [observaciones, setObservaciones] = useState<ObservacionProfesorResponse[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Estados para el modal de "Agregar Observación"
   const [showModal, setShowModal] = useState(false);
-  const [nuevaFecha, setNuevaFecha] = useState<string>("");
-  const [nuevaObservacion, setNuevaObservacion] = useState<string>("");
+  const [nuevaFecha, setNuevaFecha] = useState("");
+  const [nuevaObservacion, setNuevaObservacion] = useState("");
 
-  // Inicializar fechas: inicio = primer día del mes actual, fin = hoy
   useEffect(() => {
     const hoy = new Date();
     const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+
     setFechaInicio(inicioMes.toISOString().split("T")[0]);
     setFechaFin(hoy.toISOString().split("T")[0]);
   }, []);
 
-  // Cargar lista de profesores
   useEffect(() => {
     const cargarProfesores = async () => {
       try {
@@ -52,26 +49,24 @@ const ConsultaObservacionesProfesores: React.FC = () => {
         toast.error("Error al cargar profesores.");
       }
     };
-    cargarProfesores();
+
+    void cargarProfesores();
   }, []);
 
-  // Función para filtrar observaciones desde el frontend
+  const profesorSeleccionado = profesores.find((profesor) => profesor.id === profesorId);
+
   const handleFiltrar = async () => {
     if (!profesorId) {
-      toast.error("Debe seleccionar un profesor para filtrar.");
+      toast.error("Seleccioná un profesor para consultar observaciones.");
       return;
     }
+
     try {
       setLoading(true);
-      // Se obtienen TODAS las observaciones del profesor desde el backend.
-      const data = await observacionProfesorApi.listarObservacionesPorProfesor(
-        profesorId
-      );
-      // Luego, se filtran por el rango de fechas seleccionado en el frontend.
-      const filtradas = data.filter((obs) => {
-        // Se asume que obs.fecha es una cadena ISO (ej. "2025-03-27")
-        return obs.fecha >= fechaInicio && obs.fecha <= fechaFin;
-      });
+
+      const data = await observacionProfesorApi.listarObservacionesPorProfesor(profesorId);
+      const filtradas = data.filter((obs) => obs.fecha >= fechaInicio && obs.fecha <= fechaFin);
+
       setObservaciones(filtradas);
     } catch {
       toast.error("Error al cargar observaciones.");
@@ -80,149 +75,172 @@ const ConsultaObservacionesProfesores: React.FC = () => {
     }
   };
 
-  // Abrir modal para agregar observación
   const handleAbrirModal = () => {
     if (!profesorId) {
-      toast.error(
-        "Debe seleccionar un profesor antes de agregar una observación."
-      );
+      toast.error("Seleccioná un profesor antes de agregar una observación.");
       return;
     }
+
     setNuevaFecha(new Date().toISOString().split("T")[0]);
     setNuevaObservacion("");
     setShowModal(true);
   };
 
-  const handleCerrarModal = () => {
-    setShowModal(false);
-  };
-
-  // Guardar nueva observación
   const handleGuardarObservacion = async () => {
-    if (!nuevaFecha || !nuevaObservacion) {
-      toast.error("Debe ingresar fecha y observación.");
+    if (!nuevaFecha || !nuevaObservacion.trim()) {
+      toast.error("Ingresá fecha y observación.");
       return;
     }
+
     const solicitud: ObservacionProfesorRequest = {
       profesorId: profesorId!,
       fecha: nuevaFecha,
-      observacion: nuevaObservacion,
+      observacion: nuevaObservacion.trim(),
     };
+
     try {
       await observacionProfesorApi.crearObservacionProfesor(solicitud);
       toast.success("Observación agregada correctamente.");
       setShowModal(false);
-      // Refrescar la lista de observaciones
-      handleFiltrar();
+      await handleFiltrar();
     } catch {
       toast.error("Error al agregar la observación.");
     }
   };
 
   return (
-    <div className="page-container p-4">
-      <h1 className="text-2xl font-bold mb-4">Consulta de Observaciones</h1>
+    <div className="page-container">
+      <PageHeader
+        eyebrow="Gestión académica"
+        title="Observaciones de profesores"
+        description="Consultá y registrá observaciones docentes por rango de fechas."
+        count={observaciones.length}
+        actions={(
+          <Boton onClick={handleAbrirModal} className="page-button">
+            Agregar observación
+          </Boton>
+        )}
+      />
 
-      {/* Filtros */}
-      <div className="flex gap-4 items-end mb-4">
-        <div>
-          <label className="block font-medium">Fecha Inicio:</label>
+      <FilterBar label="Filtrar observaciones">
+        <label className="field-group" htmlFor="fecha-inicio">
+          Fecha inicio
           <input
+            id="fecha-inicio"
             type="date"
-            className="border p-2"
+            className="form-input"
             value={fechaInicio}
-            onChange={(e) => setFechaInicio(e.target.value)}
+            onChange={(event) => setFechaInicio(event.target.value)}
           />
-        </div>
-        <div>
-          <label className="block font-medium">Fecha Fin:</label>
+        </label>
+
+        <label className="field-group" htmlFor="fecha-fin">
+          Fecha fin
           <input
+            id="fecha-fin"
             type="date"
-            className="border p-2"
+            className="form-input"
             value={fechaFin}
-            onChange={(e) => setFechaFin(e.target.value)}
+            onChange={(event) => setFechaFin(event.target.value)}
           />
-        </div>
-        <div>
-          <label className="block font-medium">Profesor:</label>
+        </label>
+
+        <label className="field-group" htmlFor="profesor">
+          Profesor
           <select
-            className="border p-2"
+            id="profesor"
+            className="form-input"
             value={profesorId ?? ""}
-            onChange={(e) => setProfesorId(Number(e.target.value))}
+            onChange={(event) => setProfesorId(event.target.value ? Number(event.target.value) : null)}
           >
-            <option value="">Seleccione...</option>
-            {profesores.map((prof) => (
-              <option key={prof.id} value={prof.id}>
-                {prof.nombre} {prof.apellido}
+            <option value="">Seleccione un profesor</option>
+            {profesores.map((profesor) => (
+              <option key={profesor.id} value={profesor.id}>
+                {profesor.nombre} {profesor.apellido}
               </option>
             ))}
           </select>
-        </div>
-        <Boton
-          onClick={handleFiltrar}
-          className="bg-green-500 text-white p-2 rounded"
-        >
-          Ver Observaciones
+        </label>
+
+        <Boton onClick={handleFiltrar} disabled={loading}>
+          Ver observaciones
         </Boton>
-      </div>
+      </FilterBar>
 
-      {/* Botón para Agregar Observación */}
-      <div className="mb-4">
-        <Boton
-          onClick={handleAbrirModal}
-          className="bg-blue-500 text-white p-2 rounded"
+      {profesorSeleccionado && (
+        <SectionCard
+          title={`${profesorSeleccionado.nombre} ${profesorSeleccionado.apellido}`}
+          description={`Observaciones entre ${fechaInicio || "inicio"} y ${fechaFin || "fin"}.`}
         >
-          Agregar Observación
-        </Boton>
-      </div>
+          {loading && <LoadingState message="Cargando observaciones..." />}
 
-      {/* Tabla de Observaciones */}
-      <div className="border p-2">
-        {loading ? (
-          <p>Cargando...</p>
-        ) : (
-          <Tabla
-            headers={["ID", "Fecha", "Observación"]}
-            data={observaciones}
-            getRowKey={(row) => row.id}
-            customRender={(obs) => [obs.id, obs.fecha, obs.observacion]}
-            emptyMessage="No hay observaciones para el rango seleccionado."
-          />
-        )}
-      </div>
+          {!loading && observaciones.length === 0 && (
+            <EmptyState message="No hay observaciones para el rango seleccionado." />
+          )}
 
-      {/* Modal para Agregar Observación */}
+          {!loading && observaciones.length > 0 && (
+            <Tabla
+              headers={["Fecha", "Observación"]}
+              data={observaciones}
+              getRowKey={(row) => row.id}
+              customRender={(obs) => [
+                obs.fecha,
+                obs.observacion,
+              ]}
+            />
+          )}
+        </SectionCard>
+      )}
+
+      {!profesorSeleccionado && (
+        <EmptyState title="Seleccioná un profesor" message="Elegí un profesor y un rango de fechas para consultar observaciones." />
+      )}
+
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-30">
-          <div className="bg-white p-4 rounded shadow-md w-[300px]">
-            <h2 className="text-xl font-bold mb-4">Nueva Observación</h2>
-            <div className="mb-2">
-              <label className="block font-medium">Fecha:</label>
-              <input
-                type="date"
-                className="border p-2 w-full"
-                value={nuevaFecha}
-                onChange={(e) => setNuevaFecha(e.target.value)}
-              />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-lg">
+            <h2 className="text-xl font-bold">Nueva observación</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {profesorSeleccionado
+                ? `Profesor: ${profesorSeleccionado.nombre} ${profesorSeleccionado.apellido}`
+                : "Seleccioná un profesor antes de guardar."}
+            </p>
+
+            <div className="mt-4 space-y-4">
+              <label className="field-group" htmlFor="nueva-fecha">
+                Fecha
+                <input
+                  id="nueva-fecha"
+                  type="date"
+                  className="form-input"
+                  value={nuevaFecha}
+                  onChange={(event) => setNuevaFecha(event.target.value)}
+                />
+              </label>
+
+              <label className="field-group" htmlFor="nueva-observacion">
+                Observación
+                <textarea
+                  id="nueva-observacion"
+                  className="form-input min-h-32"
+                  value={nuevaObservacion}
+                  onChange={(event) => setNuevaObservacion(event.target.value)}
+                />
+              </label>
             </div>
-            <div className="mb-2">
-              <label className="block font-medium">Observación:</label>
-              <textarea
-                className="border p-2 w-full"
-                value={nuevaObservacion}
-                onChange={(e) => setNuevaObservacion(e.target.value)}
-              />
-            </div>
-            <div className="flex justify-end gap-2 mt-4">
+
+            <div className="mt-5 flex justify-end gap-2">
               <Boton
-                onClick={handleCerrarModal}
-                className="bg-gray-300 text-black p-2 rounded"
+                type="button"
+                onClick={() => setShowModal(false)}
+                className="page-button-secondary"
               >
                 Cancelar
               </Boton>
               <Boton
+                type="button"
                 onClick={handleGuardarObservacion}
-                className="bg-green-500 text-white p-2 rounded"
+                className="page-button"
               >
                 Guardar
               </Boton>
