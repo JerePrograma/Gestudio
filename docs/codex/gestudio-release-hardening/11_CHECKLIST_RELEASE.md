@@ -24,9 +24,9 @@
 | Branch/HEAD/árbol inicial | `VALIDADO` | `main`, SHA esperado, árbol limpio antes de crear documentación. |
 | Suite frontend RBAC focalizada | `VALIDADO` | 6 archivos, 15/15 tests pasados. |
 | `npm test` completo | `BLOCKED` | 33/36: 1 fallo Alumnos por DOM responsive duplicado y 2 Pagos por formato `$ 100.50` vs `$ 100,50`. |
-| `npm run lint` / `npm run build` actuales | `NO_VERIFICADO` | No ejecutados todavía en esta corrida documental. |
-| Backend `clean verify` | `NO_VERIFICADO` | No existe evidencia registrada todavía en este checklist. |
-| Flyway base limpia/upgrade | `NO_VERIFICADO` | Hay migraciones V1–V5; no fueron ejecutadas aquí. |
+| `npm run lint` / `npm run build` baseline | `VALIDADO` | Ambos terminaron `PASS` dentro de la validación Frontend registrada. |
+| Backend `clean verify` | `VALIDADO` | 115/115 tests, PostgreSQL 15 por Testcontainers y `BUILD SUCCESS`. |
+| Flyway base limpia/upgrade | `VALIDADO` para V1–V5 | `PostgreSqlSchemaValidationTest` cubrió base limpia y V4→V5; una futura V6 sigue `NO_VERIFICADO`. |
 | Smoke sin seed demo | `NO_VERIFICADO` | `scripts/smoke-local.ps1` existe; no fue ejecutado aquí. |
 | Docker limpio | `NO_VERIFICADO` | Docker no se inicia automáticamente. |
 | Demo, backup/restore y rollback | `NO_VERIFICADO` | Sin ejecución registrada. |
@@ -171,17 +171,17 @@
 
 ## Gate: documentación
 
-**Estado:** `PENDING` mientras se completa Etapa 0.
+**Estado:** `VALIDADO` para GATE-0; el informe final de release permanece `PENDING` hasta Etapa 4.
 
-- [ ] Los 12 documentos existen y están enlazados desde [00_INDEX.md](./00_INDEX.md).
-- [ ] Baseline contiene SHA, branch, estado, comandos y fallos clasificados.
-- [ ] Cada hallazgo tiene ID estable, evidencia y tarea asociada.
-- [ ] Matriz RBAC cubre frontend, endpoint, permiso, seed, ownership y tests.
-- [ ] Cada etapa registra objetivo, alcance, dependencias, tareas, riesgos, rollback, aceptación, validación y gate.
-- [ ] [08_PLAN_DE_PRUEBAS.md](./08_PLAN_DE_PRUEBAS.md) contiene comandos PowerShell exactos y todos los niveles requeridos.
-- [ ] [09_BITACORA_IMPLEMENTACION.md](./09_BITACORA_IMPLEMENTACION.md) registra cada tarea, archivos, decisión, pruebas y resultado.
-- [ ] [10_DECISIONES_Y_BLOQUEOS.md](./10_DECISIONES_Y_BLOQUEOS.md) contiene decisiones/autoridad y bloqueos reales.
-- [ ] Este checklist refleja evidencia actual y no conserva casillas verdes obsoletas.
+- [x] Los 12 documentos existen y están enlazados desde [00_INDEX.md](./00_INDEX.md).
+- [x] Baseline contiene SHA, branch, estado, comandos y fallos clasificados.
+- [x] Cada hallazgo tiene ID estable, evidencia y tarea asociada.
+- [x] Matriz RBAC cubre frontend, endpoint, permiso, seed, ownership y tests.
+- [x] Cada etapa registra objetivo, alcance, dependencias, tareas, riesgos, rollback, aceptación, validación y gate.
+- [x] [08_PLAN_DE_PRUEBAS.md](./08_PLAN_DE_PRUEBAS.md) contiene comandos PowerShell exactos y todos los niveles requeridos.
+- [x] [09_BITACORA_IMPLEMENTACION.md](./09_BITACORA_IMPLEMENTACION.md) registra cada tarea, archivos, decisión, pruebas y resultado.
+- [x] [10_DECISIONES_Y_BLOQUEOS.md](./10_DECISIONES_Y_BLOQUEOS.md) contiene decisiones/autoridad y bloqueos reales.
+- [x] Este checklist refleja evidencia actual y no conserva casillas verdes obsoletas.
 - [ ] Informe final enlaza commit, migraciones, resultados, demo, riesgos y rollback.
 
 ## Decisión de salida

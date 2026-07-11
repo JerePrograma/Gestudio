@@ -85,6 +85,16 @@ Zona horaria: America/Argentina/Buenos_Aires (`-03:00`). Las horas de esta prime
 - Resultado: catálogo actual y propuesta trazados; `BLK-001` impide `E1-002`.
 - Deuda/seguimiento: obtener confirmación explícita de `DEC-RBAC-001`.
 
+### 18:49 — `E0-008` completar los documentos faltantes desde `088a0b33`
+
+- Estado: `DONE` como reparación documental; no reabre GATE-0 ni cambia la tarea activa `E1-001`.
+- Archivos creados: `02_MATRIZ_RBAC.md`, `03_ETAPA_1_SEGURIDAD_RBAC.md`, `08_PLAN_DE_PRUEBAS.md`, `10_DECISIONES_Y_BLOQUEOS.md`. Ajuste puntual: `11_CHECKLIST_RELEASE.md` para reconciliar resultados baseline y el estado documental ya cerrado.
+- Decisión: conservar el baseline de código `b833f674`, registrar que `088a0b33` sólo agregó documentación, usar exactamente 15 permisos actuales + 17 propuestos y no inferir ninguna aprobación.
+- Pruebas/comandos: `git status --short --branch`, `git show -s`, `git fetch origin --prune`, verificación automatizada de 12 archivos/enlaces/anchors/IDs/tablas/estados, cruce de 29 familias de controllers, comparación de 15 permisos usados y auditoría del seed demo, `git diff --check` y `git diff --no-index --check` para archivos nuevos.
+- Resultado: 12/12 documentos presentes; enlaces y anchors válidos; 8 decisiones y 3 bloqueos definidos; catálogo actual 15/15; propuesta 17/17; E1 conserva 1 `IN_PROGRESS`, 1 `BLOCKED` y 8 `PENDING`; seed demo conserva 14 códigos y omite `PERM_TARIFAS_HISTORICAS` como estaba documentado.
+- Validación no ejecutada: no se repitieron suites de aplicación porque el cambio es sólo Markdown; siguen vigentes los resultados exactos del baseline y los gates abiertos.
+- Deuda/seguimiento: `BLK-001` continúa; la próxima entrada sigue siendo la respuesta explícita a `DEC-RBAC-001`.
+
 ## Próxima entrada requerida
 
 Registrar la respuesta a `DEC-RBAC-001`. Si se aprueba, cerrar `E1-001`, marcar únicamente `E1-002` como `IN_PROGRESS`, anotar archivos antes de editarlos y registrar cada comando/test. Si se rechaza o corrige, actualizar primero matriz y decisión; no crear V6 hasta entonces.
