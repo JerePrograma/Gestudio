@@ -2,7 +2,9 @@
 
 Estado: `PROPUESTA` / `E1-001 IN_PROGRESS`. Esta matriz describe el código observado y la opción mínima recomendada, pero no autoriza cambios. [DEC-RBAC-001](./10_DECISIONES_Y_BLOQUEOS.md#dec-rbac-001--matriz-base-de-roles-y-permisos) sigue `PENDING` y [BLK-001](./10_DECISIONES_Y_BLOQUEOS.md#blk-001--falta-de-autoridad-para-la-matriz-rbac) impide iniciar `E1-002`.
 
-Baseline de código: `b833f6741cf614c508666e8a121701e8db2fcf9a`. Continuación documental: `088a0b33ab49c01f4f506889ac379fc4737c4119`; ese commit no modifica código productivo. Referencias: [baseline](./01_BASELINE_Y_HALLAZGOS.md), [Etapa 1](./03_ETAPA_1_SEGURIDAD_RBAC.md), [plan de pruebas](./08_PLAN_DE_PRUEBAS.md), [bitácora](./09_BITACORA_IMPLEMENTACION.md) y [checklist de release](./11_CHECKLIST_RELEASE.md).
+Baseline histórico de código: `b833f6741cf614c508666e8a121701e8db2fcf9a`. Baseline del primer bloque de implementación: `407e1cbcc277b4b6c385cddface2862259e87036`, alineado con `origin/main` y con árbol limpio al inicio del 2026-07-11. Referencias: [baseline](./01_BASELINE_Y_HALLAZGOS.md), [Etapa 1](./03_ETAPA_1_SEGURIDAD_RBAC.md), [plan de pruebas](./08_PLAN_DE_PRUEBAS.md), [bitácora](./09_BITACORA_IMPLEMENTACION.md) y [checklist de release](./11_CHECKLIST_RELEASE.md).
+
+Actualización acotada 2026-07-11: la consigna autorizó corregir el bloque Usuarios/Roles usando únicamente el catálogo actual. Se verificó que backend y frontend declaran los mismos 15 códigos; no se creó permiso, rol, seed ni migración. Quedaron alineadas las acciones de Usuarios/Roles, la página autenticada `/unauthorized`, el rechazo del prefijo técnico `ROLE_` en códigos de rol y la cobertura HTTP real de `/api/roles` y `/api/permisos`. La matriz base propuesta, `ADMINISTRADOR`, los roles comerciales y `E1-002` continúan pendientes de `DEC-RBAC-001`.
 
 ## Leyenda y contrato general
 
@@ -15,6 +17,7 @@ Baseline de código: `b833f6741cf614c508666e8a121701e8db2fcf9a`. Continuación d
 - Toda ruta operativa exige además `PERM_APP_ACCESO`; ese permiso abre la aplicación, pero no sustituye lectura, escritura ni ownership.
 - Sin token = 401; token válido sin autoridad = 403; conflicto real de negocio = 409.
 - Menú y guards frontend son presentación. El matcher/controller y, cuando corresponde, el servicio son la autoridad.
+- Los códigos persistidos de rol no pueden comenzar con `ROLE_`: Spring agrega ese prefijo al construir authorities y aceptarlo en la API produciría `ROLE_ROLE_*`.
 
 Clasificación: `VALIDADO` para los 15 códigos, matchers, rutas, servicios y seeds observados; `INFERIDO` para el alcance de Profesor hasta probar ownership; `NO_VERIFICADO` para V6, roles base y matriz HTTP futura; `RIESGOSO` para el fallback actual y el canal STOMP incompleto; `RECOMENDADO` para la distribución mínima siguiente; `PROPUESTA` hasta que el usuario confirme `DEC-RBAC-001`.
 
@@ -25,8 +28,8 @@ V5 crea las tablas RBAC, pero el seed productivo contiene **cero permisos y cero
 | Código actual | Módulo / uso observado | Backend | Frontend | Seed productivo | Seed demo | Estado |
 |---|---|---|---|---|---|---|
 | `PERM_APP_ACCESO` | entrada general a `/api/**` | matcher fallback | rutas/módulos generales | No | Sí | `ACTUAL`, insuficiente solo |
-| `PERM_USUARIOS_ADMIN` | CRUD de usuarios | matcher + servicio | menú/ruta; acción usa código erróneo | No | Sí | `ACTUAL` |
-| `PERM_ROLES_ADMIN` | roles y lectura de permisos | matcher + servicio | menú/ruta; acción usa código erróneo | No | Sí | `ACTUAL` |
+| `PERM_USUARIOS_ADMIN` | CRUD de usuarios | matcher + servicio | menú/ruta/acción alineados | No | Sí | `ACTUAL`, bloque focalizado validado |
+| `PERM_ROLES_ADMIN` | roles y lectura de permisos | matcher + servicio | menú/ruta/acción alineados | No | Sí | `ACTUAL`, bloque focalizado validado |
 | `PERM_AUDITORIA_SEGURIDAD_LEER` | auditoría de seguridad | matcher | constante sin ruta visible auditada | No | Sí | `ACTUAL` |
 | `PERM_MENSUALIDADES_GENERAR_MANUAL` | generación manual | matcher con path incorrecto | constante | No | Sí | `ACTUAL`, matcher roto |
 | `PERM_PAGOS_REGISTRAR` | pago y cargo por concepto | servicio | ruta Cobranza/formulario | No | Sí | `ACTUAL` |
@@ -124,7 +127,7 @@ Las marcas son una recomendación pendiente. Los `?` deben resolverse expresamen
 |---|---|---|---|---|---|---|---|---|
 | Login `/login` | `POST /api/login`, `/refresh`, `/logout` | público con controles de origen/cookie | público | n/a | público / `permitAll` | sesión propia | conservar; access/refresh no intercambiables | inválido 401; refresh/origen; permitido 200 |
 | Perfil autenticado | `GET /api/usuarios/perfil` | autenticado | autenticado | n/a | guard auth / `authenticated` | usuario actual | conservar sin exigir APP | anónimo 401; autenticado 200 |
-| Error de autorización `/unauthorized` | sin endpoint propio | cualquier autenticado; sin permiso funcional | `PERM_APP_ACCESO` en `routePermissions` | n/a | redirige al faltar permiso y vuelve a exigir APP / n/a | sesión actual | retirar sólo este permiso de ruta para evitar loop | autenticado sin APP ve la página una vez |
+| Error de autorización `/unauthorized` | sin endpoint propio | cualquier autenticado; sin permiso funcional | autenticación del `ProtectedRoute` exterior | n/a | sin permiso funcional / n/a | sesión actual | corregido: no está en `routePermissions`, conserva autenticación exterior | test de contrato confirma que no exige APP |
 | Dashboard `/` | endpoints de señales según módulo | permisos de cada señal | `PERM_APP_ACCESO` | A/No | ruta APP / fallback APP | según señal | no crear endpoint que agregue datos no autorizados | cada rol ve sólo señales permitidas |
 | Alumnos `/alumnos`: listar/buscar/ver | `GET /api/alumnos/**` | `PERM_ALUMNOS_LEER` | `PERM_APP_ACCESO` | P/No | ruta APP / fallback APP | global; Profesor `PROPIO` | matcher GET + filtro Profesor | 401/403/200 y dos profesores |
 | Alumnos: alta/editar/baja/reactivar | `POST`, `PUT`, `DELETE /api/alumnos/**` | `PERM_ALUMNOS_ADMIN` | `PERM_APP_ACCESO` | P/No | acciones sin guard / fallback APP | global | matcher por método; reactivación explícita | 401/403/status funcional |
@@ -160,8 +163,8 @@ Las marcas son una recomendación pendiente. Los `?` deben resolverse expresamen
 | Condiciones `/inscripciones/:id/condiciones-economicas` | `GET`, `POST /api/inscripciones/{id}/condiciones-economicas` | `PERM_CONDICIONES_ECONOMICAS_ADMIN` o TARIFAS según contrato actual; histórico requiere `PERM_TARIFAS_HISTORICAS` | APP + servicio ad hoc | A/No | ruta CONDICIONES / fallback + servicio | global | matcher; alinear alternativa aprobada | 401/403/200-201 |
 | Reportes `/reportes`, `/alumnos-por-disciplina`: consultar | `GET /api/reportes/mensualidades`; GET/PDF de disciplinas | `PERM_REPORTES_LEER` | `PERM_APP_ACCESO` | P/No | rutas APP / fallback APP | global; datos internos filtrados | matcher y navegación única | 401/403/200 |
 | Reportes: exportar | `POST /api/reportes/mensualidades/exportar`; PDFs | `PERM_REPORTES_EXPORTAR` | `PERM_APP_ACCESO` | P/No | acciones sin guard / fallback APP | global | matcher + guard; contenido humano | 401/403/200 |
-| Usuarios `/usuarios`: toda administración | `/api/usuarios/**`, salvo perfil | `PERM_USUARIOS_ADMIN` | mismo | A/No | ruta correcta, acciones usan `USUARIOS_WRITE` / matcher + servicio | global | usar constante real; probar positivo/negativo | 401/403/permitido |
-| Roles `/roles` y permisos | `/api/roles/**`, `GET /api/permisos` | `PERM_ROLES_ADMIN` | mismo | A/No | ruta correcta, acciones usan `ROLES_WRITE` / matcher + servicio | delegación | usar constante; anti-escalamiento | 401/403/permitido |
+| Usuarios `/usuarios`: toda administración | `/api/usuarios/**`, salvo perfil | `PERM_USUARIOS_ADMIN` | mismo | A/No | ruta/acciones usan `PERMISSIONS.USUARIOS_ADMIN` / matcher + servicio | global | corregido en el bloque focalizado; conservar pruebas positivas/negativas y reglas de delegación | HTTP 401/403/permitido y UI permitido/denegado |
+| Roles `/roles` y permisos | `/api/roles/**`, `GET /api/permisos` | `PERM_ROLES_ADMIN` | mismo | A/No | ruta/acciones usan `PERMISSIONS.ROLES_ADMIN` / matcher + servicio | delegación | corregido en el bloque focalizado; la API rechaza códigos `ROLE_*` | HTTP real 401/403/200 y UI permitido/denegado |
 | Auditoría de seguridad | matcher `/api/auditoria/seguridad/**`; no se observó controller | `PERM_AUDITORIA_SEGURIDAD_LEER` si se publica | mismo | A/No | sin ruta visible / matcher huérfano | global autorizado | eliminar o documentar/implementar según alcance; no simular cobertura con 404 | controller real: 401/403/200; si no existe, cero matcher huérfano |
 | Configuración `/metodos-pago`, `/conceptos`, `/subconceptos`, `/salones`, `/bonificaciones`, `/recargos`: consultar | `GET /api/metodos-pago/**`, `/api/conceptos/**`, `/api/sub-conceptos/**`, `/api/salones/**`, `/api/bonificaciones/**`, `/api/recargos/**` | `PERM_CONFIG_LEER` | `PERM_APP_ACCESO` | P/No | rutas APP / fallback APP | global | matchers GET sobre cada path real | 401/403/200 |
 | Configuración: altas/ediciones/bajas desde sus formularios | `POST`, `PUT`, `DELETE` sobre `/api/metodos-pago/**`, `/api/conceptos/**`, `/api/sub-conceptos/**`, `/api/salones/**`, `/api/bonificaciones/**`, `/api/recargos/**` | `PERM_CONFIG_ADMIN` | `PERM_APP_ACCESO` | P/No | rutas/acciones APP; Concepto form usa PAGOS_REGISTRAR / fallback APP | global | matcher por método + guards; baja lógica cuando aplique | 401/403/permitido |
@@ -200,7 +203,7 @@ Las marcas son una recomendación pendiente. Los `?` deben resolverse expresamen
 
 Quedan sólo bajo `PERM_APP_ACCESO` las familias de Alumnos, Inscripciones, Disciplinas, Profesores, Asistencias, Mensualidades, Matrículas, Cargos, Caja, Reportes, Notificaciones, Observaciones y catálogos de configuración. Pagos, Egresos, Stock, Crédito y Tarifas/Condiciones conservan defensas parciales de servicio, pero sus matchers HTTP siguen cayendo en el fallback. El matcher de generación manual de mensualidades no coincide con ningún endpoint real.
 
-Usuarios y Roles/Permisos son las únicas familias reales separadas por matcher de módulo. Auditoría tiene un matcher específico, pero no se observó controller; debe retirarse o respaldarse con un endpoint y prueba reales. Aun en Usuarios/Roles faltan las correcciones frontend y las pruebas completas de delegación.
+Usuarios y Roles/Permisos son las únicas familias reales separadas por matcher de módulo. Auditoría tiene un matcher específico, pero no se observó controller; debe retirarse o respaldarse con un endpoint y prueba reales. En Usuarios/Roles quedaron corregidos los guards frontend y la matriz HTTP focalizada; siguen pendientes las pruebas completas de delegación y la matriz persistida.
 
 ## Contrato automatizado requerido
 

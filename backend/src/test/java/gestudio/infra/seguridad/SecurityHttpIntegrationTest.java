@@ -5,6 +5,7 @@ import com.auth0.jwt.algorithms.Algorithm;
 import jakarta.servlet.http.Cookie;
 import gestudio.controladores.AutenticacionControlador;
 import gestudio.controladores.PagoControlador;
+import gestudio.controladores.PermisoControlador;
 import gestudio.controladores.RolControlador;
 import gestudio.controladores.UsuarioControlador;
 import gestudio.dto.usuario.response.UsuarioResponse;
@@ -17,6 +18,7 @@ import gestudio.infra.errores.TratadorDeErrores;
 import gestudio.repositorios.ReciboRepositorio;
 import gestudio.repositorios.UsuarioRepositorio;
 import gestudio.servicios.pago.PagoServicio;
+import gestudio.servicios.permiso.PermisoServicio;
 import gestudio.servicios.rol.RolServicio;
 import gestudio.servicios.usuario.UsuarioServicio;
 import org.junit.jupiter.api.BeforeEach;
@@ -63,6 +65,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         AutenticacionControlador.class,
         UsuarioControlador.class,
         RolControlador.class,
+        PermisoControlador.class,
         PagoControlador.class
 })
 @Import({
@@ -82,6 +85,7 @@ class SecurityHttpIntegrationTest {
     @MockitoBean private AutenticacionService autenticacionService;
     @MockitoBean private UsuarioServicio usuarioServicio;
     @MockitoBean private RolServicio rolServicio;
+    @MockitoBean private PermisoServicio permisoServicio;
     @MockitoBean private PagoServicio pagoServicio;
     @MockitoBean private ReciboRepositorio reciboRepositorio;
 
@@ -103,6 +107,9 @@ class SecurityHttpIntegrationTest {
                 .thenReturn(List.of());
 
         when(rolServicio.listarRoles())
+                .thenReturn(List.of());
+
+        when(permisoServicio.listarPermisos(isNull()))
                 .thenReturn(List.of());
     }
 
@@ -339,6 +346,9 @@ class SecurityHttpIntegrationTest {
         mockMvc.perform(get("/api/roles"))
                 .andExpect(status().isUnauthorized());
 
+        mockMvc.perform(get("/api/permisos"))
+                .andExpect(status().isUnauthorized());
+
         Usuario operator = usuario(2L, "operator", "OPERADOR", true);
 
         when(usuarioRepositorio.findByIdConRolesYPermisos(2L))
@@ -355,6 +365,25 @@ class SecurityHttpIntegrationTest {
         mockMvc.perform(get("/api/roles")
                         .header(HttpHeaders.AUTHORIZATION, bearer(token)))
                 .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/permisos")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isForbidden());
+
+        Usuario superadmin = usuario(3L, "root", "SUPERADMIN", true);
+
+        when(usuarioRepositorio.findByIdConRolesYPermisos(3L))
+                .thenReturn(Optional.of(superadmin));
+
+        String superadminToken = tokenService.generarAccessToken(superadmin);
+
+        mockMvc.perform(get("/api/roles")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(superadminToken)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/permisos")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(superadminToken)))
+                .andExpect(status().isOk());
     }
 
     @Test

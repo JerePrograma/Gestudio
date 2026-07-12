@@ -95,6 +95,44 @@ Zona horaria: America/Argentina/Buenos_Aires (`-03:00`). Las horas de esta prime
 - Validación no ejecutada: no se repitieron suites de aplicación porque el cambio es sólo Markdown; siguen vigentes los resultados exactos del baseline y los gates abiertos.
 - Deuda/seguimiento: `BLK-001` continúa; la próxima entrada sigue siendo la respuesta explícita a `DEC-RBAC-001`.
 
+## 2026-07-11
+
+### 20:57 — baseline del primer bloque real de Etapa 1
+
+- Estado: `DONE` con fallos preexistentes/ambientales clasificados.
+- Git: `main = origin/main = 407e1cbcc277b4b6c385cddface2862259e87036`; árbol inicial limpio. Se ejecutaron `git status`, `git log --oneline -5`, listado de `docs/codex/gestudio-release-hardening`, protocolo Git del megaprompt y lectura completa de las instrucciones/documentos obligatorios.
+- Frontend antes de cambios: `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\validate.ps1 -Scope Frontend` terminó lint `PASS`, tests 33/36 y build `PASS`. Fallaron los mismos casos ya documentados: uno de Alumnos por dos representaciones responsive de `Ana Prueba` y dos de Pagos por `$ 100.50` frente a `$ 100,50`.
+- Backend antes de cambios: `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\validate.ps1 -Scope Backend` compiló y ejecutó 90 tests: 0 fallos y 16 errores de Testcontainers por `Could not find a valid Docker environment`; `BUILD FAILURE`. Las suites Java no dependientes de contenedor, incluidas Seguridad HTTP 17/17, Roles 5/5 y Usuarios 6/6, pasaron.
+- Clasificación: los tres fallos frontend son preexistentes; el backend está bloqueado por Docker no disponible. Ninguno fue causado por este bloque y no se instaló ni arrancó infraestructura para ocultarlos.
+
+### 21:00 — diagnóstico y alcance exacto Usuarios/Roles
+
+- Estado: `DONE`.
+- Inventario: backend y frontend declaran los mismos 15 códigos `PERM_*`; Flyway siembra cero y el seed demo conserva 14. Usuarios/Roles ya tenían matchers y defensas de servicio con `PERM_USUARIOS_ADMIN` / `PERM_ROLES_ADMIN`, pero las acciones frontend consultaban `USUARIOS_WRITE` / `ROLES_WRITE`.
+- Hallazgos incluidos: `/unauthorized` volvía a exigir `PERM_APP_ACCESO`; `RolServicio` aceptaba códigos persistidos `ROLE_*`, que luego se convertían en `ROLE_ROLE_*`; `SecurityHttpIntegrationTest` no montaba el controller real de permisos.
+- Decisión: corregir únicamente esas inconsistencias usando el catálogo actual y conservar `ADMINISTRADOR`. No tocar `SecurityConfigurations`, migraciones, seeds, asignaciones, ownership Profesor, WebSocket, Pagos/Caja ni módulos académicos.
+- Fuera de alcance confirmado: semántica 403 de `RbacService`, matriz comercial, V6, permisos nuevos y las acciones sensibles de los demás módulos.
+
+### 21:03 — regresiones rojas y cambio mínimo
+
+- Estado: `DONE`.
+- Frontend rojo primero: `npm test -- src/funcionalidades/usuarios/UsuariosPagina.test.tsx src/funcionalidades/roles/RolesPagina.test.tsx src/rutas/ProtectedRoute.test.tsx` terminó 5/8, con los tres fallos esperados por los strings incorrectos y el permiso funcional de `/unauthorized`.
+- Backend rojo primero: `.\mvnw.cmd -B -ntp "-Dtest=RolServicioTest" test` terminó 5/6 y demostró que `ROLE_OPERADOR` no era rechazado.
+- Código productivo: `UsuariosPagina.tsx`, `RolesPagina.tsx`, `routes.ts` y `RolServicio.java`.
+- Tests: `UsuariosPagina.test.tsx`, `RolesPagina.test.tsx`, `ProtectedRoute.test.tsx`, `RolServicioTest.java` y `SecurityHttpIntegrationTest.java`.
+- Cambio: las acciones consumen constantes reales; `/unauthorized` queda fuera de `routePermissions` pero continúa bajo autenticación exterior; el normalizador rechaza el prefijo técnico; el test HTTP monta `PermisoControlador` y prueba 401/403/200 contra endpoints reales.
+- Integridad: no se creó permiso, dependencia, migración ni abstracción; no se cambió autoridad persistida.
+
+### 21:06 — validación focalizada y amplia post-cambio
+
+- Estado del bloque Usuarios/Roles: `DONE` y sin regresiones nuevas conocidas.
+- Frontend focalizado: el mismo comando de tres archivos terminó 8/8, exit 0. Tras la revisión final se reforzó el caso de `/unauthorized` para montar la composición de guards, probar anónimo → login y autenticado sin APP → página de autorización sin consultar un permiso funcional; la repetición terminó nuevamente 8/8.
+- Backend focalizado: `.\mvnw.cmd -B -ntp "-Dtest=SecurityHttpIntegrationTest,UsuarioServicioTest,RolServicioTest" test` terminó 29/29, 0 fallos/errores, `BUILD SUCCESS`.
+- Frontend amplio: `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\validate.ps1 -Scope Frontend` terminó lint `PASS`, tests 36/39 y build `PASS`, también después de reforzar el test de ruta. Persisten exactamente los tres fallos preexistentes; las tres pruebas RBAC agregadas pasan.
+- Backend amplio: `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\validate.ps1 -Scope Backend` compiló y ejecutó 91 tests: 0 fallos, 16 errores y `BUILD FAILURE`, todos por el mismo bloqueo ambiental `Could not find a valid Docker environment`. Seguridad HTTP terminó 17/17, Roles 6/6 y Usuarios 6/6.
+- Documentación actualizada: `02_MATRIZ_RBAC.md`, `03_ETAPA_1_SEGURIDAD_RBAC.md`, `06_ETAPA_3_COMPONENTES_Y_CONTRATOS.md` por una única referencia que había quedado obsoleta, esta bitácora, `10_DECISIONES_Y_BLOQUEOS.md` y `11_CHECKLIST_RELEASE.md`.
+- Estado de etapa: `E1-001` permanece como única tarea `IN_PROGRESS`; `E1-002` y la matriz comercial continúan bloqueadas por `DEC-RBAC-001`. El cierre de este subconjunto no cierra GATE-1.
+
 ## Próxima entrada requerida
 
-Registrar la respuesta a `DEC-RBAC-001`. Si se aprueba, cerrar `E1-001`, marcar únicamente `E1-002` como `IN_PROGRESS`, anotar archivos antes de editarlos y registrar cada comando/test. Si se rechaza o corrige, actualizar primero matriz y decisión; no crear V6 hasta entonces.
+Registrar la respuesta a `DEC-RBAC-001`. Si se aprueba, cerrar `E1-001`, marcar únicamente `E1-002` como `IN_PROGRESS`, anotar archivos antes de editarlos y registrar cada comando/test. Si se rechaza o corrige, actualizar primero matriz y decisión; no crear V6 hasta entonces. En cualquier caso, repetir el backend amplio con Docker disponible antes de declarar el gate verde.

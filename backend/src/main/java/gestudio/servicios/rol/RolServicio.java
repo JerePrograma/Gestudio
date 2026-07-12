@@ -246,6 +246,10 @@ public class RolServicio {
             throw new IllegalArgumentException("Código de rol inválido: " + codigo);
         }
 
+        if (normalizado.startsWith("ROLE_")) {
+            throw new IllegalArgumentException("El código de rol no puede usar el prefijo ROLE_");
+        }
+
         return normalizado;
     }
 

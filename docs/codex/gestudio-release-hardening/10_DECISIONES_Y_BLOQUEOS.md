@@ -1,8 +1,8 @@
 # Decisiones y bloqueos
 
-Última revisión: 2026-07-10 (America/Argentina/Buenos_Aires).
+Última revisión: 2026-07-11 (America/Argentina/Buenos_Aires).
 
-`VALIDADO`: el `HEAD` actual es `088a0b33ab49c01f4f506889ac379fc4737c4119`, alineado con `origin/main`; su delta respecto del baseline de código `b833f6741cf614c508666e8a121701e8db2fcf9a` contiene sólo el megaprompt y documentación. Por eso la evidencia de código registrada sobre `b833f674` sigue aplicando. La única tarea `IN_PROGRESS` es `E1-001`; este documento no autoriza otra tarea ni una mutación externa.
+`VALIDADO`: el baseline de este work es `407e1cbcc277b4b6c385cddface2862259e87036`, alineado con `origin/main` y con árbol limpio al inicio. La consigna del 2026-07-11 autorizó únicamente el primer bloque real sobre el contrato actual de Usuarios/Roles; no aprobó la matriz propuesta, una migración ni una mutación externa. La única tarea `IN_PROGRESS` sigue siendo `E1-001`.
 
 Una recomendación o un fallback seguro no equivale a aprobación. `PENDING` significa que no existe decisión confirmada; `TOMADA` sólo se usa cuando la consigna, el repositorio y la evidencia ya fijan el contrato.
 
@@ -10,7 +10,7 @@ Una recomendación o un fallback seguro no equivale a aprobación. `PENDING` sig
 
 | ID | Estado | Confirmación | Efecto inmediato |
 |---|---|---|---|
-| `DEC-RBAC-001` | `PENDING` | Sí | `BLK-001` bloquea `E1-002`; `E1-001` sigue siendo la única tarea activa. |
+| `DEC-RBAC-001` | `PENDING`; subconjunto actual validado | Sí | Usuarios/Roles pueden usar los permisos actuales ya definidos; `BLK-001` sigue bloqueando `E1-002` y la matriz comercial. |
 | `DEC-DB-001` | `TOMADA` / `VALIDADO` | No, salvo excepción | V1-V5 no se reescriben; el próximo cambio aprobado es forward-only. |
 | `DEC-OWNERSHIP-001` | `PENDING` / `NO_VERIFICADO` | Sí | `PROFESOR` permanece inhabilitado; no bloquea el resto de Etapa 1. |
 | `DEC-WS-001` | `PENDING` | Sí | Debe resolverse antes de `E1-009`/GATE-1; no bloquea `E1-002`. |
@@ -30,9 +30,9 @@ Una recomendación o un fallback seguro no equivale a aprobación. `PENDING` sig
   2. persistir mediante la siguiente migración forward-only el catálogo real más los 17 permisos mínimos propuestos y una matriz determinística para `SUPERADMIN`, `DIRECCION`, `SECRETARIA`, `CAJA` y `PROFESOR`;
   3. otorgar permisos amplios a todos los roles para evitar denegaciones.
 - **Recomendación:** opción 2. Mantener los 15 códigos actuales, sumar sólo los 17 permisos funcionales documentados, conservar `ADMINISTRADOR` como compatibilidad sin renombrarlo ni borrarlo automáticamente, y aplicar estas restricciones: `DIRECCION` con usuarios y auditoría pero sin administración de roles por defecto; `CAJA` sin egresos por defecto; venta de stock de Caja/Secretaría sólo si se confirma; `PROFESOR` sólo con alcance propio después de `DEC-OWNERSHIP-001`; Observaciones sin permiso inventado y fuera de alcance según `DEC-OBS-001`.
-- **Decisión tomada / estado:** `PENDING`. No hay aprobación de la matriz, de la transición de `ADMINISTRADOR`, del alcance de seguridad de `DIRECCION`, de egresos/venta de stock para `CAJA`/`SECRETARIA` ni de la habilitación de `PROFESOR`. `E1-001` permanece `IN_PROGRESS` y [BLK-001](#blk-001--falta-de-autoridad-para-la-matriz-rbac) impide iniciar `E1-002`.
-- **Consecuencias:** no crear V6 ni modificar constantes, matchers, bootstrap o guards hasta confirmar o corregir la matriz. Una aprobación habilita cerrar `E1-001`, marcar sólo `E1-002` como `IN_PROGRESS`, sembrar/reconciliar de forma determinística y probar base limpia + upgrade desde V5. Un cambio parcial exige actualizar primero la matriz y sus tests previstos.
-- **Fecha:** 2026-07-10.
+- **Decisión tomada / estado:** `PENDING` para la matriz base. La consigna del 2026-07-11 sí autorizó el subconjunto que conserva los códigos actuales `PERM_USUARIOS_ADMIN` y `PERM_ROLES_ADMIN`, mantiene `ADMINISTRADOR` sin mutación y no agrega roles ni asignaciones. No hay aprobación de la transición de `ADMINISTRADOR`, del alcance de seguridad de `DIRECCION`, de egresos/venta de stock para `CAJA`/`SECRETARIA` ni de la habilitación de `PROFESOR`. `E1-001` permanece `IN_PROGRESS` y [BLK-001](#blk-001--falta-de-autoridad-para-la-matriz-rbac) impide iniciar `E1-002`.
+- **Consecuencias:** se permiten correcciones y pruebas que alineen frontend/backend con los 15 códigos ya existentes sin cambiar autoridad persistida. No crear V6, permisos, roles, asignaciones, bootstrap o matchers de la matriz propuesta hasta confirmar o corregirla. Una aprobación habilita cerrar `E1-001`, marcar sólo `E1-002` como `IN_PROGRESS`, sembrar/reconciliar de forma determinística y probar base limpia + upgrade desde V5.
+- **Fecha:** 2026-07-11 (alcance parcial); propuesta general pendiente desde 2026-07-10.
 - **Requiere confirmación:** **Sí**, explícita del usuario; silencio o aprobación de este documento no cuentan.
 
 ### DEC-DB-001 — Cadena Flyway activa y dirección V6
@@ -132,7 +132,7 @@ Una recomendación o un fallback seguro no equivale a aprobación. `PENDING` sig
 - **ID:** `BLK-001`.
 - **Síntoma:** `E1-001` no puede cerrarse y `E1-002` no puede comenzar; una base limpia continúa sin catálogo operativo determinístico.
 - **Causa:** `DEC-RBAC-001` define una propuesta que cambia autoridad persistida, pero el usuario aún no confirmó la matriz ni sus puntos sensibles.
-- **Intentos seguros / evidencia:** se inventariaron permisos usados/sembrados, matchers, rutas, guards, roles y huecos; V5, schema tests, bootstrap y seed demo fueron leídos; la suite frontend RBAC focalizada registró 15/15 `PASS`. No se creó migración ni se cambió código productivo.
+- **Intentos seguros / evidencia:** se inventariaron permisos usados/sembrados, matchers, rutas, guards, roles y huecos; V5, schema tests, bootstrap y seed demo fueron leídos. El subconjunto autorizado corrigió Usuarios/Roles, `/unauthorized` y el prefijo reservado `ROLE_`; sus suites focalizadas terminaron frontend 8/8 y backend 29/29. No se creó migración, permiso, rol ni asignación.
 - **Autoridad o dato necesario:** respuesta explícita que apruebe o corrija `DEC-RBAC-001`, incluyendo `ADMINISTRADOR`, seguridad de `DIRECCION`, egresos/venta de stock y la condición de habilitación de `PROFESOR`.
 - **Tarea afectada:** bloquea `E1-002`; mantiene `E1-001` como única tarea `IN_PROGRESS`.
 - **Condición de cierre:** registrar la respuesta en esta decisión y en la bitácora, actualizar primero [02_MATRIZ_RBAC.md](./02_MATRIZ_RBAC.md) si hubo correcciones, cerrar `E1-001` y recién entonces marcar sólo `E1-002` como `IN_PROGRESS`.
@@ -140,8 +140,8 @@ Una recomendación o un fallback seguro no equivale a aprobación. `PENDING` sig
 ### BLK-002 — Suite frontend completa roja
 
 - **ID:** `BLK-002`.
-- **Síntoma:** `npm test` termina 33/36; GATE-2 y la salida de release no pueden considerarse verdes.
-- **Causa:** una expectativa singular de Alumnos no contempla las representaciones desktop/mobile simultáneas del DOM y dos expectativas de Pagos usan `$ 100.50` en vez del formatter real `$ 100,50`. Son fallos preexistentes clasificados, no introducidos por esta documentación.
+- **Síntoma:** `npm test` terminó 33/36 en el baseline y 36/39 después de agregar tres pruebas RBAC verdes; GATE-2 y la salida de release no pueden considerarse verdes.
+- **Causa:** una expectativa singular de Alumnos no contempla las representaciones desktop/mobile simultáneas del DOM y dos expectativas de Pagos usan `$ 100.50` en vez del formatter real `$ 100,50`. Son fallos preexistentes clasificados, no introducidos por este bloque RBAC.
 - **Intentos seguros / evidencia:** se ejecutó la validación Frontend; lint y build pasaron, se aislaron los tres casos y no se debilitaron las pruebas.
 - **Autoridad o dato necesario:** no falta información para reproducirlos; su corrección pertenece a `E2-010` y requiere respetar la secuencia/autorización de Etapa 2.
 - **Tarea afectada:** `E2-010`, GATE-2, demo y release; no bloquea la tarea actual `E1-001`.
@@ -159,4 +159,4 @@ Una recomendación o un fallback seguro no equivale a aprobación. `PENDING` sig
 
 ## Próxima acción única
 
-Solicitar confirmación o corrección de `DEC-RBAC-001`. No iniciar `E1-002`, Etapa 1B ni ninguna decisión diferida hasta registrar esa respuesta; al cambiar un estado, mantener exactamente una tarea `IN_PROGRESS` y sincronizar índice, matriz, bitácora y checklist.
+Solicitar confirmación o corrección de `DEC-RBAC-001`. El bloque actual Usuarios/Roles queda cerrado sin ampliar autoridad, pero no habilita `E1-002`, Etapa 1B ni ninguna decisión diferida. Al cambiar un estado, mantener exactamente una tarea `IN_PROGRESS` y sincronizar índice, matriz, bitácora y checklist.

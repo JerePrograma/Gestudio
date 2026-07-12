@@ -1,8 +1,11 @@
 # Checklist de release
 
-> Decisión actual: `NO-GO`  
-> Baseline: `main` en `b833f6741cf614c508666e8a121701e8db2fcf9a`  
-> Última revisión documental: 2026-07-10  
+> Decisión actual: `NO-GO`
+>
+> Baseline del primer bloque real: `main` en `407e1cbcc277b4b6c385cddface2862259e87036`
+>
+> Última revisión documental: 2026-07-11
+>
 > Regla: una casilla sólo se marca con comando/recorrido, fecha y resultado enlazados.
 
 [Índice](./00_INDEX.md) · [Baseline](./01_BASELINE_Y_HALLAZGOS.md) · [Matriz RBAC](./02_MATRIZ_RBAC.md) · [Etapa 1](./03_ETAPA_1_SEGURIDAD_RBAC.md) · [Etapa 1B](./04_ETAPA_1B_LIQUIDACION_FINANCIERA.md) · [Etapa 2](./05_ETAPA_2_UX_OPERATIVA.md) · [Etapa 3](./06_ETAPA_3_COMPONENTES_Y_CONTRATOS.md) · [Etapa 4](./07_ETAPA_4_DEMO_Y_PUBLICACION.md) · [Plan de pruebas](./08_PLAN_DE_PRUEBAS.md) · [Bitácora](./09_BITACORA_IMPLEMENTACION.md) · [Decisiones](./10_DECISIONES_Y_BLOQUEOS.md)
@@ -21,11 +24,12 @@
 
 | Evidencia | Estado | Resultado actual |
 |---|---|---|
-| Branch/HEAD/árbol inicial | `VALIDADO` | `main`, SHA esperado, árbol limpio antes de crear documentación. |
-| Suite frontend RBAC focalizada | `VALIDADO` | 6 archivos, 15/15 tests pasados. |
-| `npm test` completo | `BLOCKED` | 33/36: 1 fallo Alumnos por DOM responsive duplicado y 2 Pagos por formato `$ 100.50` vs `$ 100,50`. |
-| `npm run lint` / `npm run build` baseline | `VALIDADO` | Ambos terminaron `PASS` dentro de la validación Frontend registrada. |
-| Backend `clean verify` | `VALIDADO` | 115/115 tests, PostgreSQL 15 por Testcontainers y `BUILD SUCCESS`. |
+| Branch/HEAD/árbol inicial | `VALIDADO` | `main = origin/main = 407e1cbc`; árbol limpio antes del bloque del 2026-07-11. |
+| Suite frontend RBAC focalizada | `VALIDADO` | Evidencia histórica 15/15; suite modificada del bloque Usuarios/Roles 8/8 `PASS`. |
+| `npm test` completo | `BLOCKED`, sin regresión nueva | Baseline 33/36; post-cambio 36/39. Persisten sólo 1 fallo Alumnos por DOM responsive duplicado y 2 Pagos por formato `$ 100.50` vs `$ 100,50`. |
+| `npm run lint` / `npm run build` | `VALIDADO` | Ambos terminaron `PASS` antes y después del bloque. |
+| Backend `clean verify` | `BLOCKED` por ambiente al 2026-07-11 | Evidencia histórica: 115/115 con Docker. Ejecución actual: 91 tests, 0 fallos, 16 errores por `Could not find a valid Docker environment`; `BUILD FAILURE`. |
+| Backend Usuarios/Roles focalizado | `VALIDADO` | `SecurityHttpIntegrationTest,UsuarioServicioTest,RolServicioTest`: 29/29, `BUILD SUCCESS`; cubre 401/403/200 en `/api/roles` y `/api/permisos`. |
 | Flyway base limpia/upgrade | `VALIDADO` para V1–V5 | `PostgreSqlSchemaValidationTest` cubrió base limpia y V4→V5; una futura V6 sigue `NO_VERIFICADO`. |
 | Smoke sin seed demo | `NO_VERIFICADO` | `scripts/smoke-local.ps1` existe; no fue ejecutado aquí. |
 | Docker limpio | `NO_VERIFICADO` | Docker no se inicia automáticamente. |
@@ -104,7 +108,8 @@
 - [ ] Delegación no permite escalamiento ni desactivar el último SUPERADMIN.
 - [ ] Profesor tiene ownership probado o el rol permanece deshabilitado.
 - [ ] Menú, rutas y acciones frontend usan la misma matriz; `/unauthorized` no entra en loop.
-- [ ] Usuarios/Roles usan `PERM_USUARIOS_ADMIN` / `PERM_ROLES_ADMIN`, no strings `*_WRITE`.
+- [x] Usuarios/Roles usan `PERM_USUARIOS_ADMIN` / `PERM_ROLES_ADMIN`, no strings `*_WRITE` — 2026-07-11, UI permitido/denegado y HTTP focalizado verdes.
+- [x] `/unauthorized` no exige un permiso funcional y conserva autenticación; códigos de rol `ROLE_*` son rechazados — 2026-07-11, pruebas focalizadas verdes.
 - [ ] Refresh se mantiene serializado sólo para 401; 403 conserva sesión.
 - [ ] WebSocket está autenticado/autorizado/aislado o deshabilitado por completo.
 - [ ] Matriz HTTP, contrato frontend y smoke de seguridad están verdes.

@@ -106,6 +106,31 @@ class RolServicioTest {
     }
 
     @Test
+    void rechazaPrefijoRoleReservadoParaAuthorities() {
+        Usuario actor = usuario(1L, rol(1L, "SUPERADMIN", "PERM_ROLES_ADMIN"));
+
+        when(usuarios.findByIdConRolesYPermisos(actor.getId()))
+                .thenReturn(Optional.of(actor));
+
+        when(roles.saveAndFlush(any(Rol.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        assertThatThrownBy(() -> service.crearRol(
+                new RolRegistroRequest(
+                        "ROLE_OPERADOR",
+                        "Operador",
+                        null,
+                        Set.of()
+                ),
+                actor
+        ))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("prefijo ROLE_");
+
+        verify(roles, never()).saveAndFlush(any());
+    }
+
+    @Test
     void rechazaAgregarPermisoQueElActorNoPosee() {
         Rol editable = rol(10L, "OPERADOR", "PERM_ALUMNOS_LEER");
         Usuario actor = usuario(20L, rol(20L, "GESTOR_ROLES", "PERM_ROLES_ADMIN"));

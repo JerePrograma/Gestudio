@@ -5,6 +5,7 @@ import { toast } from "react-toastify";
 import rolesApi from "../../api/rolesApi";
 import Boton from "../../componentes/comunes/Boton";
 import Tabla from "../../componentes/comunes/Tabla";
+import { PERMISSIONS } from "../../config/permissions";
 import type { RolResponse } from "../../types/types";
 import { useAuth } from "../../hooks/context/useAuth";
 
@@ -13,7 +14,7 @@ const RolesPagina = () => {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const { hasPermission } = useAuth();
-  const puedeEscribir = hasPermission("ROLES_WRITE");
+  const puedeEscribir = hasPermission(PERMISSIONS.ROLES_ADMIN);
 
   const cargar = useCallback(() => {
     setLoading(true);

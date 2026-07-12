@@ -99,7 +99,6 @@ export const otherProtectedRoutes = [
 export const routePermissions: Record<string, string> = {
   "/": PERMISSIONS.APP_ACCESS,
   "/reportes": PERMISSIONS.APP_ACCESS,
-  "/unauthorized": PERMISSIONS.APP_ACCESS,
 
   "/usuarios": PERMISSIONS.USUARIOS_ADMIN,
   "/usuarios/formulario": PERMISSIONS.USUARIOS_ADMIN,

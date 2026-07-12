@@ -13,6 +13,7 @@ const auth = vi.hoisted(() => ({
 vi.mock("../hooks/context/useAuth", () => ({ useAuth: () => auth }));
 
 import ProtectedRoute from "./ProtectedRoute";
+import { routePermissions } from "./routes";
 
 const renderRoute = (requiredRole?: string, requiredPermission?: string) => render(
   <MemoryRouter initialEntries={["/private"]}>
@@ -26,7 +27,43 @@ const renderRoute = (requiredRole?: string, requiredPermission?: string) => rend
   </MemoryRouter>,
 );
 
+const renderUnauthorizedRoute = () => render(
+  <MemoryRouter initialEntries={["/unauthorized"]}>
+    <Routes>
+      <Route element={<ProtectedRoute />}>
+        <Route
+          path="/unauthorized"
+          element={(
+            <ProtectedRoute requiredPermission={routePermissions["/unauthorized"]}>
+              <p>Sin permiso</p>
+            </ProtectedRoute>
+          )}
+        />
+      </Route>
+      <Route path="/login" element={<p>Login</p>} />
+    </Routes>
+  </MemoryRouter>,
+);
+
 describe("ProtectedRoute", () => {
+  it("mantiene unauthorized autenticada y sin permiso funcional", () => {
+    auth.isAuth = false;
+    auth.loading = false;
+    auth.user = null;
+    const anonymous = renderUnauthorizedRoute();
+    expect(screen.getByText("Login")).toBeVisible();
+    anonymous.unmount();
+
+    auth.isAuth = true;
+    auth.user = { roles: [], permisos: [] };
+    auth.hasPermission.mockClear();
+    auth.hasPermission.mockReturnValue(false);
+    renderUnauthorizedRoute();
+
+    expect(screen.getByText("Sin permiso")).toBeVisible();
+    expect(auth.hasPermission).not.toHaveBeenCalled();
+  });
+
   it("redirige una sesión anónima sin montar el contenido", () => {
     auth.isAuth = false;
     auth.loading = false;

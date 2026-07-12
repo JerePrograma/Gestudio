@@ -9,6 +9,7 @@ import type { UsuarioResponse } from "../../types/types";
 import usuariosApi from "../../api/usuariosApi";
 import { toast } from "react-toastify";
 import ListaConCargaManual from "../../componentes/comunes/ListaConCargaManual";
+import { PERMISSIONS } from "../../config/permissions";
 import { useAuth } from "../../hooks/context/useAuth";
 
 const itemsPerPage = 25;
@@ -21,7 +22,7 @@ const UsuariosPagina = () => {
   const [visibleCount, setVisibleCount] = useState(itemsPerPage);
   const navigate = useNavigate();
   const { hasPermission } = useAuth();
-  const puedeEscribir = hasPermission("USUARIOS_WRITE");
+  const puedeEscribir = hasPermission(PERMISSIONS.USUARIOS_ADMIN);
 
   const fetchUsuarios = useCallback(async () => {
     try {

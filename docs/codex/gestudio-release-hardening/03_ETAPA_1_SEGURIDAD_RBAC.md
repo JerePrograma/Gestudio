@@ -4,12 +4,14 @@
 > - Única tarea activa: **E1-001**
 > - Tarea siguiente: **E1-002 — BLOCKED** por **BLK-001 / DEC-RBAC-001**
 > - Gate de salida: **GATE-1 — ABIERTO**
-> - Baseline de código: **b833f6741cf614c508666e8a121701e8db2fcf9a**
-> - Continuación documental: **088a0b33ab49c01f4f506889ac379fc4737c4119**
+> - Baseline histórico de código: **b833f6741cf614c508666e8a121701e8db2fcf9a**
+> - Baseline del primer bloque real: **407e1cbcc277b4b6c385cddface2862259e87036**
 
 [Índice](./00_INDEX.md) · [Baseline y hallazgos](./01_BASELINE_Y_HALLAZGOS.md) · [Matriz RBAC](./02_MATRIZ_RBAC.md) · [Etapa 1B](./04_ETAPA_1B_LIQUIDACION_FINANCIERA.md) · [Plan de pruebas](./08_PLAN_DE_PRUEBAS.md) · [Bitácora](./09_BITACORA_IMPLEMENTACION.md) · [Decisiones y bloqueos](./10_DECISIONES_Y_BLOQUEOS.md) · [Checklist release](./11_CHECKLIST_RELEASE.md)
 
-El commit 088a0b33 agrega únicamente documentación sobre el baseline b833f674. La inspección inicial de esta continuación confirmó main alineada con origin/main y árbol limpio; el código productivo de los hallazgos de seguridad no cambió entre ambos commits.
+Los commits hasta `407e1cbc` completaron la documentación sobre el baseline histórico. La inspección del 2026-07-11 confirmó `main` alineada con `origin/main` y árbol limpio antes de iniciar el primer cambio productivo.
+
+La consigna de este work autorizó un avance parcial y explícito sobre el contrato **ya existente** de Usuarios/Roles: corregir strings frontend, evitar el loop de `/unauthorized`, reforzar la normalización de códigos de rol y probar los endpoints reales con los permisos actuales. No aprobó roles comerciales, permisos nuevos, seeds ni migraciones. Por eso `E1-001` continúa como única tarea `IN_PROGRESS`, `E1-002` sigue bloqueada y `E1-007` permanece pendiente en su alcance general aunque este subconjunto esté validado.
 
 ## Objetivo
 
@@ -45,11 +47,12 @@ Dejar un RBAC determinístico desde una base limpia, con catálogo y roles base 
 | VALIDADO | SuperadminBootstrapService asigna el rol SUPERADMIN, pero no verifica su matriz. | Login puede funcionar mientras la API queda inutilizable. |
 | VALIDADO | SecurityConfigurations deja la mayoría de /api bajo PERM_APP_ACCESO y contiene un matcher que no coincide con POST /api/mensualidades/generar-mensualidades. | Los writes no tienen autorización granular completa. |
 | VALIDADO | RbacService usa OperacionNoPermitidaException y TratadorDeErrores la convierte en 409; AccessDeniedException ya tiene handler 403. | La defensa de servicio clasifica mal una denegación. |
-| VALIDADO | UsuariosPagina y RolesPagina consultan USUARIOS_WRITE y ROLES_WRITE, códigos inexistentes. | Acciones legítimas pueden ocultarse aunque el usuario tenga el permiso real. |
-| VALIDADO | /unauthorized exige PERM_APP_ACCESO en routePermissions. | Un autenticado sin ese permiso puede entrar en redirección circular. |
+| CORREGIDO 2026-07-11 | UsuariosPagina y RolesPagina usan `PERMISSIONS.USUARIOS_ADMIN` y `PERMISSIONS.ROLES_ADMIN`; hay pruebas positivas y negativas. | El bloque Usuarios/Roles ya no depende de strings inexistentes. |
+| CORREGIDO 2026-07-11 | `/unauthorized` no tiene permiso funcional en `routePermissions` y conserva autenticación mediante el guard exterior. | Se elimina la condición de redirección circular sin volver pública la página. |
+| CORREGIDO 2026-07-11 | La API de roles rechaza códigos persistidos que comiencen con `ROLE_`; Spring conserva la responsabilidad de agregar el prefijo de authority. | Se evita crear authorities `ROLE_ROLE_*` mediante una llamada directa. |
 | VALIDADO | Profesor referencia Usuario, pero los servicios aceptan IDs de profesor/disciplina/asistencia sin ownership del principal. | Profesor no puede habilitarse todavía. |
 | VALIDADO | /ws acepta origen *, STOMP no tiene autenticación/autorización y el hook usa ws://localhost:8080/ws; no se observaron consumidores del hook. | DEC-WS-001 sigue pendiente. |
-| VALIDADO | La bitácora registra 15/15 tests RBAC frontend focalizados; no hubo cambio productivo. | E1-001 sigue siendo documental hasta recibir autoridad. |
+| VALIDADO 2026-07-11 | La evidencia histórica registra 15/15 tests RBAC frontend; el bloque real agrega frontend 8/8 y backend 29/29 focalizados con cuatro archivos productivos acotados. | E1-001 sigue `IN_PROGRESS` porque la matriz general permanece pendiente, no porque el trabajo continúe sólo documental. |
 | NO_VERIFICADO | No existen V6, smoke sin seed demo ni matriz HTTP completa. | GATE-1 permanece abierto. |
 
 ## Orden obligatorio
@@ -67,7 +70,7 @@ Dejar un RBAC determinístico desde una base limpia, con catálogo y roles base 
 | E1-009 | **PENDING** | DEC-WS-001 y E1-005 | P0-SEC-015 |
 | E1-010 | **PENDING** | E1-001 a E1-009 | gate completo |
 
-No se adelanta código de una tarea posterior para evitar que una matriz no aprobada quede codificada por partes.
+No se adelanta la matriz propuesta ni una tarea posterior completa. El avance parcial del 2026-07-11 fue autorizado expresamente y se limitó a corregir inconsistencias del contrato actual, sin permisos, roles o datos nuevos.
 
 ## E1-001 — Congelar contrato y constantes
 
@@ -77,7 +80,7 @@ No se adelanta código de una tarea posterior para evitar que una matriz no apro
 - **Cambio esperado:** confirmar los 15 permisos actuales, los 17 códigos mínimos propuestos, la matriz SUPERADMIN/DIRECCION/SECRETARIA/CAJA/PROFESOR, la compatibilidad de ADMINISTRADOR y las reglas de delegación. Registrar aprobación o corrección exacta antes de tocar código.
 - **Riesgo y rollback lógico:** tratar PROPUESTA como decisión puede otorgar privilegios. Antes de V6, el rollback es corregir documentos y constantes; no hay datos que revertir.
 - **Aceptación:** respuesta explícita del usuario registrada; matriz sin ambigüedades; ningún permiso fuera de la decisión; constantes backend/frontend coincidentes y tests de contrato definidos.
-- **Validación y evidencia:** inventario con rg, revisión cruzada 02/03/10 y suite RBAC frontend focalizada. La evidencia actual 15/15 no aprueba la matriz.
+- **Validación y evidencia:** inventario con rg, revisión cruzada 02/03/10, evidencia histórica frontend 15/15 y bloque actual frontend 8/8 + backend 29/29. Estas pruebas no aprueban la matriz general.
 
 ## E1-002 — Migración productiva RBAC
 
@@ -131,13 +134,14 @@ No se adelanta código de una tarea posterior para evitar que una matriz no apro
 
 ## E1-007 — Contrato frontend
 
-- **Estado:** PENDING.
+- **Estado:** PENDING en alcance general; avance parcial Usuarios/Roles validado el 2026-07-11.
 - **Dependencias:** E1-005.
 - **Archivos esperados:** frontend/src/config/permissions.ts, config/navigation.ts, rutas/routes.ts, rutas/AppRouter.tsx, rutas/ProtectedRoute.tsx, hooks/context/auth-context.ts, hooks/context/authContext.tsx, UsuariosPagina.tsx, RolesPagina.tsx y sus tests. Crear PermissionGate mínimo sólo en la ubicación común elegida al implementarlo.
 - **Cambio esperado:** completar PERMISSIONS con el catálogo aprobado, tipar consumers con PermissionCode, reemplazar USUARIOS_WRITE/ROLES_WRITE, dejar /unauthorized accesible a todo autenticado y alinear menú/ruta/acción. No crear un router o framework nuevo.
 - **Riesgo y rollback lógico:** una metadata divergente produce loops u oculta funciones. Migrar rutas en una tabla pequeña y conservar backend como autoridad; rollback de presentación no cambia permisos reales.
 - **Aceptación:** toda ruta protegida tiene política explícita salvo la excepción autenticada /unauthorized; no quedan strings ad hoc; menú y acceso directo coinciden.
 - **Validación y evidencia:** auth-context.test.ts, navigation.test.ts, ProtectedRoute.test.tsx, UsuariosPagina.test.tsx, RolesPagina.test.tsx y RolesFormulario.test.tsx verdes.
+- **Avance parcial validado:** `UsuariosPagina` y `RolesPagina` consumen las constantes reales; `/unauthorized` queda fuera de `routePermissions`; la suite focalizada modificada terminó 8/8. No se declara completado el contrato de las demás rutas o acciones.
 
 ## E1-008 — Acciones sensibles frontend
 
@@ -234,7 +238,7 @@ El smoke debe crear su stack aislado, migrar desde vacío, ejecutar bootstrap y 
 - [ ] Delegación no escala privilegios y no puede perderse el último SUPERADMIN.
 - [ ] Profesor tiene ownership probado con dos profesores o permanece inactivo.
 - [ ] Menú, ruta y acción usan la misma matriz; /unauthorized no entra en loop.
-- [ ] Usuarios/Roles usan PERM_USUARIOS_ADMIN y PERM_ROLES_ADMIN.
+- [x] Usuarios/Roles usan PERM_USUARIOS_ADMIN y PERM_ROLES_ADMIN — 2026-07-11, pruebas UI y HTTP focalizadas verdes.
 - [ ] Acceso directo a URL/API no evita controles.
 - [ ] WebSocket está autenticado/autorizado/aislado o completamente deshabilitado.
 - [ ] Matriz HTTP, contrato frontend y smoke sin seed demo están verdes.
