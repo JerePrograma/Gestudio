@@ -12,7 +12,9 @@ import ListaConCargaManual from "../../componentes/comunes/ListaConCargaManual";
 import ErrorState from "../../componentes/comunes/ErrorState";
 import LoadingState from "../../componentes/comunes/LoadingState";
 import PageHeader from "../../componentes/comunes/PageHeader";
+import PermissionGate from "../../componentes/comunes/PermissionGate";
 import RowActions from "../../componentes/comunes/RowActions";
+import { PERMISSIONS } from "../../config/permissions";
 
 const itemsPerPage = 25;
 
@@ -78,13 +80,15 @@ const MetodosPagoPagina = () => {
   return (
     <div className="page-container">
       <PageHeader eyebrow="Administración" title="Métodos de pago" description="Medios habilitados y recargos configurados." count={metodos.length}
-        actions={<Boton
-          onClick={() => navigate("/metodos-pago/formulario")}
-          className="page-button"
-          aria-label="Registrar nuevo método de pago"
-        >
-          <PlusCircle className="size-4" /> Nuevo método
-        </Boton>} />
+        actions={<PermissionGate permission={PERMISSIONS.CONFIG_ADMIN}>
+          <Boton
+            onClick={() => navigate("/metodos-pago/formulario")}
+            className="page-button"
+            aria-label="Registrar nuevo método de pago"
+          >
+            <PlusCircle className="size-4" /> Nuevo método
+          </Boton>
+        </PermissionGate>} />
       <div>
         <Tabla
           headers={["ID", "Descripción", "Recargo"]}
@@ -92,8 +96,8 @@ const MetodosPagoPagina = () => {
           getRowKey={(row) => row.id}
           actions={(fila: MetodoPagoResponse) => (
             <RowActions label={`Acciones de ${fila.descripcion}`} actions={[
-              { label: "Editar", icon: Pencil, onSelect: () => navigate(`/metodos-pago/formulario?id=${fila.id}`) },
-              { label: "Eliminar", icon: Trash2, destructive: true, onSelect: () => void handleEliminarMetodo(fila.id) },
+              { label: "Editar", icon: Pencil, requiredPermission: PERMISSIONS.CONFIG_ADMIN, onSelect: () => navigate(`/metodos-pago/formulario?id=${fila.id}`) },
+              { label: "Eliminar", icon: Trash2, requiredPermission: PERMISSIONS.CONFIG_ADMIN, destructive: true, onSelect: () => void handleEliminarMetodo(fila.id) },
             ]} />
           )}
           customRender={(fila: MetodoPagoResponse) => [

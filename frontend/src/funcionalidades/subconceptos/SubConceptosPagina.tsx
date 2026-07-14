@@ -9,6 +9,8 @@ import { PlusCircle, Pencil, Trash2 } from "lucide-react";
 import type { SubConceptoResponse } from "../../types/types";
 import { toast } from "react-toastify";
 import ListaConCargaManual from "../../componentes/comunes/ListaConCargaManual";
+import PermissionGate from "../../componentes/comunes/PermissionGate";
+import { PERMISSIONS } from "../../config/permissions";
 
 const ITEMS_PER_LOAD = 5;
 
@@ -75,14 +77,16 @@ const SubConceptos = () => {
     <div className="page-container">
       <h1 className="page-title">Subconceptos</h1>
       <div className="page-button-group flex justify-end mb-4">
-        <Boton
-          onClick={() => navigate("/subconceptos/formulario")}
-          className="page-button"
-          aria-label="Registrar nuevo subconcepto"
-        >
-          <PlusCircle className="w-5 h-5 mr-2" />
-          Registrar Nuevo Subconcepto
-        </Boton>
+        <PermissionGate permission={PERMISSIONS.CONFIG_ADMIN}>
+          <Boton
+            onClick={() => navigate("/subconceptos/formulario")}
+            className="page-button"
+            aria-label="Registrar nuevo subconcepto"
+          >
+            <PlusCircle className="w-5 h-5 mr-2" />
+            Registrar Nuevo Subconcepto
+          </Boton>
+        </PermissionGate>
       </div>
       <div className="page-card">
         <Tabla
@@ -94,26 +98,28 @@ const SubConceptos = () => {
             fila.descripcion,
           ]}
           actions={(fila: SubConceptoResponse) => (
-            <div className="flex gap-2">
-              <Boton
-                onClick={() =>
-                  navigate(`/subconceptos/formulario?id=${fila.id}`)
-                }
-                className="page-button-secondary"
-                aria-label={`Editar subconcepto ${fila.descripcion}`}
-              >
-                <Pencil className="w-4 h-4 mr-2" />
-                Editar
-              </Boton>
-              <Boton
-                onClick={() => handleEliminarSubConcepto(fila.id)}
-                className="page-button-danger"
-                aria-label={`Eliminar subconcepto ${fila.descripcion}`}
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Eliminar
-              </Boton>
-            </div>
+            <PermissionGate permission={PERMISSIONS.CONFIG_ADMIN}>
+              <div className="flex gap-2">
+                <Boton
+                  onClick={() =>
+                    navigate(`/subconceptos/formulario?id=${fila.id}`)
+                  }
+                  className="page-button-secondary"
+                  aria-label={`Editar subconcepto ${fila.descripcion}`}
+                >
+                  <Pencil className="w-4 h-4 mr-2" />
+                  Editar
+                </Boton>
+                <Boton
+                  onClick={() => handleEliminarSubConcepto(fila.id)}
+                  className="page-button-danger"
+                  aria-label={`Eliminar subconcepto ${fila.descripcion}`}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Eliminar
+                </Boton>
+              </div>
+            </PermissionGate>
           )}
         />
       </div>

@@ -11,11 +11,13 @@ import FilterBar from "../../componentes/comunes/FilterBar";
 import ListaConCargaManual from "../../componentes/comunes/ListaConCargaManual";
 import LoadingState from "../../componentes/comunes/LoadingState";
 import PageHeader from "../../componentes/comunes/PageHeader";
+import PermissionGate from "../../componentes/comunes/PermissionGate";
 import RowActions from "../../componentes/comunes/RowActions";
 import SearchInput from "../../componentes/comunes/SearchInput";
 import StatusBadge from "../../componentes/comunes/StatusBadge";
 import Tabla from "../../componentes/comunes/Tabla";
 import { queryKeys } from "../../hooks/queryKeys";
+import { PERMISSIONS } from "../../config/permissions";
 
 const PAGE_SIZE = 25;
 
@@ -67,9 +69,11 @@ const DisciplinasPagina = () => {
         description="Cursos, horarios y estado de cursada disponibles."
         count={filtered.length}
         actions={(
-          <Boton onClick={() => navigate("/disciplinas/formulario")} className="page-button">
-            <PlusCircle className="size-4" /> Nueva disciplina
-          </Boton>
+          <PermissionGate permission={PERMISSIONS.DISCIPLINAS_ADMIN}>
+            <Boton onClick={() => navigate("/disciplinas/formulario")} className="page-button">
+              <PlusCircle className="size-4" /> Nueva disciplina
+            </Boton>
+          </PermissionGate>
         )}
       />
 
@@ -118,17 +122,20 @@ const DisciplinasPagina = () => {
                 {
                   label: "Tarifas",
                   icon: BadgeDollarSign,
+                  requiredPermission: PERMISSIONS.TARIFAS_ADMIN,
                   onSelect: () => navigate(`/disciplinas/${row.id}/tarifas`),
                 },
                 {
                   label: "Editar",
                   icon: Pencil,
+                  requiredPermission: PERMISSIONS.DISCIPLINAS_ADMIN,
                   onSelect: () => navigate(`/disciplinas/formulario?id=${row.id}`),
                 },
                 ...(row.activo
                   ? [{
                       label: "Dar de baja",
                       icon: Trash2,
+                      requiredPermission: PERMISSIONS.DISCIPLINAS_ADMIN,
                       destructive: true,
                       disabled: baja.isPending,
                       onSelect: () => window.confirm(`¿Dar de baja ${row.nombre}?`) && baja.mutate(row.id),

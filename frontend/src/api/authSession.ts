@@ -1,6 +1,7 @@
 import axios from "axios";
 import { API_BASE_URL } from "../config/environment";
 import type { UsuarioResponse } from "../types/types";
+import { sanitizeUserProfile } from "../hooks/context/auth-context";
 
 export interface AuthSession {
   accessToken: string | null;
@@ -58,7 +59,7 @@ export function refreshSession(): Promise<ActiveAuthSession> {
     .then(({ data }) => {
       const activeSession: ActiveAuthSession = {
         accessToken: data.accessToken,
-        user: data.usuario,
+        user: sanitizeUserProfile(data.usuario),
       };
 
       setAuthSession(activeSession.accessToken, activeSession.user);

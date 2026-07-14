@@ -1,4 +1,7 @@
 import { createContext } from "react";
+import { PERMISSIONS, type PermissionCode } from "../../config/permissions";
+
+const PERMISSION_CODES = new Set<string>(Object.values(PERMISSIONS));
 
 export interface UserProfile {
   id: number;
@@ -17,74 +20,48 @@ export interface AuthContextProps {
   accessToken: string | null;
   user: UserProfile | null;
 
-  /**
-   * Compatibilidad transicional.
-   * La autorización funcional debe preferir permisos.
-   */
-  hasRole: (role: string) => boolean;
-  hasAnyRole: (roles: string[]) => boolean;
-
-  hasPermission: (permission: string) => boolean;
-  hasAllPermissions: (permissions: string[]) => boolean;
-  hasAnyPermission: (permissions: string[]) => boolean;
+  hasPermission: (permission: PermissionCode) => boolean;
+  hasAllPermissions: (permissions: readonly PermissionCode[]) => boolean;
+  hasAnyPermission: (permissions: readonly PermissionCode[]) => boolean;
 }
-
-const normalizeAuthority = (value: string, prefix: string): string => {
-  const normalized = value.trim().toUpperCase();
-  return normalized.startsWith(prefix)
-    ? normalized.substring(prefix.length)
-    : normalized;
-};
-
-const hasAuthority = (
-  values: string[] | undefined,
-  expected: string,
-  prefix: string,
-): boolean => {
-  const normalizedExpected = normalizeAuthority(expected, prefix);
-
-  return (
-    values?.some(
-      (value) => normalizeAuthority(value, prefix) === normalizedExpected,
-    ) ?? false
-  );
-};
-
-export const profileHasRole = (
-  user: UserProfile | null,
-  role: string,
-): boolean => hasAuthority(user?.roles, role, "ROLE_");
-
-export const profileHasAnyRole = (
-  user: UserProfile | null,
-  roles: string[],
-): boolean => roles.some((role) => profileHasRole(user, role));
 
 export const profileHasPermission = (
   user: UserProfile | null,
-  permission: string,
-): boolean => hasAuthority(user?.permisos, permission, "PERM_");
+  permission: PermissionCode,
+): boolean => user?.permisos.includes(permission) ?? false;
 
 export const profileHasAllPermissions = (
   user: UserProfile | null,
-  permissions: string[],
+  permissions: readonly PermissionCode[],
 ): boolean =>
   permissions.every((permission) => profileHasPermission(user, permission));
 
 export const profileHasAnyPermission = (
   user: UserProfile | null,
-  permissions: string[],
+  permissions: readonly PermissionCode[],
 ): boolean =>
   permissions.some((permission) => profileHasPermission(user, permission));
 
+export const isAuthenticatedSession = (
+  accessToken: string | null,
+  user: UserProfile | null,
+): boolean => accessToken !== null && user?.activo === true;
+
 export const sanitizeUserProfile = (value: unknown): UserProfile => {
-  const raw = value as Partial<UserProfile>;
+  if (!value || typeof value !== "object") {
+    throw new Error("Perfil de usuario inválido");
+  }
+
+  const raw = value as Record<string, unknown>;
 
   if (
-    !raw ||
     typeof raw.id !== "number" ||
     typeof raw.nombreUsuario !== "string" ||
-    typeof raw.activo !== "boolean"
+    typeof raw.activo !== "boolean" ||
+    !Array.isArray(raw.roles) ||
+    !raw.roles.every((role) => typeof role === "string" && /^[A-Z][A-Z0-9_]{2,95}$/.test(role)) ||
+    !Array.isArray(raw.permisos) ||
+    !raw.permisos.every((permission) => typeof permission === "string")
   ) {
     throw new Error("Perfil de usuario inválido");
   }
@@ -92,9 +69,11 @@ export const sanitizeUserProfile = (value: unknown): UserProfile => {
   return {
     id: raw.id,
     nombreUsuario: raw.nombreUsuario,
-    email: raw.email,
-    roles: Array.isArray(raw.roles) ? raw.roles : [],
-    permisos: Array.isArray(raw.permisos) ? raw.permisos : [],
+    email: typeof raw.email === "string" ? raw.email : undefined,
+    roles: [...new Set(raw.roles.filter((role): role is string => typeof role === "string"))],
+    permisos: [...new Set(raw.permisos.filter(
+      (permission): permission is string => typeof permission === "string" && PERMISSION_CODES.has(permission),
+    ))],
     activo: raw.activo,
   };
 };

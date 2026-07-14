@@ -6,6 +6,7 @@ import axios, {
 } from "axios";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import api from "./axiosConfig";
+import { PERMISSIONS } from "../config/permissions";
 import {
   getAccessToken,
   refreshSession,
@@ -37,7 +38,7 @@ describe("interceptor de autenticación", () => {
       id: 1,
       nombreUsuario: "admin",
       roles: ["ADMINISTRADOR"],
-      permisos: ["PAGOS_READ"],
+      permisos: [PERMISSIONS.PAGOS_LEER],
       activo: true,
     });
     localStorage.setItem("accessToken", "legacy-access");
@@ -59,7 +60,7 @@ describe("interceptor de autenticación", () => {
         200,
         {
           accessToken: "new-access",
-          usuario: { id: 1, nombreUsuario: "admin", roles: ["ADMINISTRADOR"], permisos: ["PAGOS_READ"], activo: true },
+          usuario: { id: 1, nombreUsuario: "admin", roles: ["ADMINISTRADOR"], permisos: [PERMISSIONS.PAGOS_LEER], activo: true },
         },
       ));
     });
@@ -101,7 +102,7 @@ describe("interceptor de autenticación", () => {
     const refresh = vi.spyOn(axios, "post").mockResolvedValue({
       data: {
         accessToken: "new-access",
-        usuario: { id: 1, nombreUsuario: "admin", roles: ["ADMINISTRADOR"], permisos: ["PAGOS_READ"], activo: true },
+        usuario: { id: 1, nombreUsuario: "admin", roles: ["ADMINISTRADOR"], permisos: [PERMISSIONS.PAGOS_LEER], activo: true },
       },
     });
     const adapter = async (config: InternalAxiosRequestConfig) => {

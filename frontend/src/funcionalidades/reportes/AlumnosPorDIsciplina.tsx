@@ -26,6 +26,8 @@ import {
 } from "../../componentes/ui/table";
 import { Input } from "../../componentes/ui/input";
 import api from "../../api/axiosConfig";
+import PermissionGate from "../../componentes/comunes/PermissionGate";
+import { PERMISSIONS } from "../../config/permissions";
 
 interface Disciplina {
   id: number;
@@ -253,9 +255,13 @@ const AlumnosPorDisciplina: React.FC = () => {
               <Button onClick={() => setSortAsc((prev) => !prev)}>
                 {sortAsc ? "Ordenar Descendente" : "Ordenar Ascendente"}
               </Button>
-              <Button variant="outline" size="sm" onClick={descargarAlumnosPDF}>
-                Exportar PDF
-              </Button>
+              <PermissionGate permission={PERMISSIONS.REPORTES_EXPORTAR}>
+                <PermissionGate permission={PERMISSIONS.DISCIPLINAS_LEER}>
+                  <Button variant="outline" size="sm" onClick={descargarAlumnosPDF}>
+                    Exportar PDF
+                  </Button>
+                </PermissionGate>
+              </PermissionGate>
             </div>
           )}
 

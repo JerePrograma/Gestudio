@@ -10,7 +10,9 @@ import EmptyState from "../componentes/comunes/EmptyState";
 import FilterBar from "../componentes/comunes/FilterBar";
 import LoadingState from "../componentes/comunes/LoadingState";
 import PageHeader from "../componentes/comunes/PageHeader";
+import PermissionGate from "../componentes/comunes/PermissionGate";
 import Tabla from "../componentes/comunes/Tabla";
+import { PERMISSIONS } from "../config/permissions";
 import type { DisciplinaListadoResponse, ProfesorListadoResponse } from "../types/types";
 import { compareMoney, formatMoney, isMoney, normalizeMoneyInput } from "../utils/money";
 
@@ -194,7 +196,9 @@ const Reportes = () => {
 
         <div className="flex gap-2">
           <Boton onClick={buscar} disabled={loading}>Consultar</Boton>
-          <Boton onClick={exportar} disabled={loading} className="page-button-secondary">Exportar PDF</Boton>
+          <PermissionGate permission={PERMISSIONS.REPORTES_EXPORTAR}>
+            <Boton onClick={exportar} disabled={loading} className="page-button-secondary">Exportar PDF</Boton>
+          </PermissionGate>
         </div>
       </FilterBar>
 

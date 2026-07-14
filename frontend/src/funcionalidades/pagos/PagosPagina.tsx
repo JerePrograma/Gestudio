@@ -18,6 +18,7 @@ import PageHeader from "../../componentes/comunes/PageHeader";
 import RowActions from "../../componentes/comunes/RowActions";
 import StatusBadge from "../../componentes/comunes/StatusBadge";
 import { Ban, Download } from "lucide-react";
+import { PERMISSIONS } from "../../config/permissions";
 
 const PAGE_SIZE = 50;
 const ALUMNOS_SEARCH_SIZE = 8;
@@ -265,7 +266,7 @@ export default function PagosPagina() {
                           actions={[
                             { label: "Descargar recibo", icon: Download, onSelect: () => void descargar(pago.id) },
                             ...(pago.estado === "REGISTRADO"
-                              ? [{ label: "Anular pago", icon: Ban, destructive: true, disabled: anulacion.isPending, onSelect: () => anular(pago) }]
+                              ? [{ label: "Anular pago", icon: Ban, requiredPermission: PERMISSIONS.PAGOS_ANULAR, destructive: true, disabled: anulacion.isPending, onSelect: () => anular(pago) }]
                               : []),
                           ]}
                         />

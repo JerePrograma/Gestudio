@@ -1,5 +1,5 @@
 import { lazy } from "react";
-import { PERMISSIONS } from "../config/permissions";
+import { PERMISSIONS, type PermissionCode } from "../config/permissions";
 
 export const prefetch = { dashboard: () => import("../paginas/Dashboard") };
 
@@ -10,13 +10,13 @@ const Reportes = lazy(() => import("../paginas/Reportes"));
 
 export const publicRoutes = [
   { path: "/login", Component: Login },
-];
+] as const;
 
 export const protectedRoutes = [
   { path: "/", Component: Dashboard },
   { path: "/reportes", Component: Reportes },
   { path: "/unauthorized", Component: Unauthorized },
-];
+] as const;
 
 const UsuariosPagina = lazy(() => import("../funcionalidades/usuarios/UsuariosPagina"));
 const UsuariosFormulario = lazy(() => import("../funcionalidades/usuarios/UsuariosFormulario"));
@@ -28,7 +28,7 @@ export const adminRoutes = [
   { path: "/usuarios/formulario", Component: UsuariosFormulario },
   { path: "/roles", Component: RolesPagina },
   { path: "/roles/formulario", Component: RolesFormulario },
-];
+] as const;
 
 const ProfesoresPagina = lazy(() => import("../funcionalidades/profesores/ProfesoresPagina"));
 const ProfesoresFormulario = lazy(() => import("../funcionalidades/profesores/ProfesoresFormulario"));
@@ -94,47 +94,57 @@ export const otherProtectedRoutes = [
   { path: "/alumnos-por-disciplina", Component: AlumnosPorDisciplina },
   { path: "/subconceptos", Component: SubConceptosPagina },
   { path: "/subconceptos/formulario", Component: SubConceptosFormulario },
-];
+] as const;
 
-export const routePermissions: Record<string, string> = {
-  "/": PERMISSIONS.APP_ACCESS,
-  "/reportes": PERMISSIONS.APP_ACCESS,
+export type ProtectedRoutePath =
+  | (typeof protectedRoutes)[number]["path"]
+  | (typeof adminRoutes)[number]["path"]
+  | (typeof otherProtectedRoutes)[number]["path"];
 
-  "/usuarios": PERMISSIONS.USUARIOS_ADMIN,
-  "/usuarios/formulario": PERMISSIONS.USUARIOS_ADMIN,
-  "/roles": PERMISSIONS.ROLES_ADMIN,
-  "/roles/formulario": PERMISSIONS.ROLES_ADMIN,
+type PermissionedRoutePath = Exclude<ProtectedRoutePath, "/unauthorized">;
 
-  "/profesores": PERMISSIONS.APP_ACCESS,
-  "/profesores/formulario": PERMISSIONS.APP_ACCESS,
-  "/disciplinas": PERMISSIONS.APP_ACCESS,
-  "/disciplinas/formulario": PERMISSIONS.APP_ACCESS,
-  "/disciplinas/:id/tarifas": PERMISSIONS.TARIFAS_ADMIN,
-  "/alumnos": PERMISSIONS.APP_ACCESS,
-  "/alumnos/formulario": PERMISSIONS.APP_ACCESS,
-  "/salones": PERMISSIONS.APP_ACCESS,
-  "/salones/formulario": PERMISSIONS.APP_ACCESS,
-  "/bonificaciones": PERMISSIONS.APP_ACCESS,
-  "/bonificaciones/formulario": PERMISSIONS.APP_ACCESS,
-  "/inscripciones": PERMISSIONS.APP_ACCESS,
-  "/inscripciones/formulario": PERMISSIONS.APP_ACCESS,
-  "/inscripciones/:id/condiciones-economicas": PERMISSIONS.CONDICIONES_ECONOMICAS_ADMIN,
-  "/asistencias/alumnos": PERMISSIONS.APP_ACCESS,
-  "/asistencias-mensuales": PERMISSIONS.APP_ACCESS,
+export const routePermissions = {
+  "/": [PERMISSIONS.APP_ACCESS],
+  "/reportes": [PERMISSIONS.APP_ACCESS, PERMISSIONS.REPORTES_LEER],
 
-  "/pagos": PERMISSIONS.APP_ACCESS,
-  "/pagos/formulario": PERMISSIONS.PAGOS_REGISTRAR,
-  "/caja": PERMISSIONS.APP_ACCESS,
-  "/egresos": PERMISSIONS.EGRESOS_ADMIN,
-  "/stocks": PERMISSIONS.APP_ACCESS,
-  "/stocks/formulario": PERMISSIONS.STOCK_ADMIN,
-  "/conceptos": PERMISSIONS.APP_ACCESS,
-  "/conceptos/formulario-concepto": PERMISSIONS.PAGOS_REGISTRAR,
-  "/metodos-pago": PERMISSIONS.APP_ACCESS,
-  "/metodos-pago/formulario": PERMISSIONS.APP_ACCESS,
-  "/recargos": PERMISSIONS.APP_ACCESS,
-  "/recargos/formulario": PERMISSIONS.APP_ACCESS,
-  "/alumnos-por-disciplina": PERMISSIONS.APP_ACCESS,
-  "/subconceptos": PERMISSIONS.APP_ACCESS,
-  "/subconceptos/formulario": PERMISSIONS.APP_ACCESS,
-};
+  "/usuarios": [PERMISSIONS.APP_ACCESS, PERMISSIONS.USUARIOS_ADMIN],
+  "/usuarios/formulario": [PERMISSIONS.APP_ACCESS, PERMISSIONS.USUARIOS_ADMIN],
+  "/roles": [PERMISSIONS.APP_ACCESS, PERMISSIONS.ROLES_ADMIN],
+  "/roles/formulario": [PERMISSIONS.APP_ACCESS, PERMISSIONS.ROLES_ADMIN],
+
+  "/profesores": [PERMISSIONS.APP_ACCESS, PERMISSIONS.PROFESORES_LEER],
+  "/profesores/formulario": [PERMISSIONS.APP_ACCESS, PERMISSIONS.PROFESORES_ADMIN],
+  "/disciplinas": [PERMISSIONS.APP_ACCESS, PERMISSIONS.DISCIPLINAS_LEER],
+  "/disciplinas/formulario": [PERMISSIONS.APP_ACCESS, PERMISSIONS.DISCIPLINAS_ADMIN],
+  "/disciplinas/:id/tarifas": [PERMISSIONS.APP_ACCESS, PERMISSIONS.TARIFAS_ADMIN],
+  "/alumnos": [PERMISSIONS.APP_ACCESS, PERMISSIONS.ALUMNOS_LEER],
+  "/alumnos/formulario": [PERMISSIONS.APP_ACCESS, PERMISSIONS.ALUMNOS_ADMIN],
+  "/salones": [PERMISSIONS.APP_ACCESS, PERMISSIONS.CONFIG_LEER],
+  "/salones/formulario": [PERMISSIONS.APP_ACCESS, PERMISSIONS.CONFIG_ADMIN],
+  "/bonificaciones": [PERMISSIONS.APP_ACCESS, PERMISSIONS.CONFIG_LEER],
+  "/bonificaciones/formulario": [PERMISSIONS.APP_ACCESS, PERMISSIONS.CONFIG_ADMIN],
+  "/inscripciones": [PERMISSIONS.APP_ACCESS, PERMISSIONS.INSCRIPCIONES_LEER],
+  "/inscripciones/formulario": [PERMISSIONS.APP_ACCESS, PERMISSIONS.INSCRIPCIONES_ADMIN],
+  "/inscripciones/:id/condiciones-economicas": [PERMISSIONS.APP_ACCESS, PERMISSIONS.CONDICIONES_ECONOMICAS_ADMIN],
+  "/asistencias/alumnos": [PERMISSIONS.APP_ACCESS, PERMISSIONS.ASISTENCIAS_LEER],
+  "/asistencias-mensuales": [PERMISSIONS.APP_ACCESS, PERMISSIONS.ASISTENCIAS_LEER],
+
+  "/pagos": [PERMISSIONS.APP_ACCESS, PERMISSIONS.PAGOS_LEER],
+  "/pagos/formulario": [PERMISSIONS.APP_ACCESS, PERMISSIONS.PAGOS_REGISTRAR],
+  "/caja": [PERMISSIONS.APP_ACCESS, PERMISSIONS.CAJA_LEER],
+  "/egresos": [PERMISSIONS.APP_ACCESS, PERMISSIONS.EGRESOS_ADMIN],
+  "/stocks": [PERMISSIONS.APP_ACCESS, PERMISSIONS.STOCK_LEER],
+  "/stocks/formulario": [PERMISSIONS.APP_ACCESS, PERMISSIONS.STOCK_ADMIN],
+  "/conceptos": [PERMISSIONS.APP_ACCESS, PERMISSIONS.CONFIG_LEER],
+  "/conceptos/formulario-concepto": [PERMISSIONS.APP_ACCESS, PERMISSIONS.CONFIG_ADMIN],
+  "/metodos-pago": [PERMISSIONS.APP_ACCESS, PERMISSIONS.CONFIG_LEER],
+  "/metodos-pago/formulario": [PERMISSIONS.APP_ACCESS, PERMISSIONS.CONFIG_ADMIN],
+  "/recargos": [PERMISSIONS.APP_ACCESS, PERMISSIONS.CONFIG_LEER],
+  "/recargos/formulario": [PERMISSIONS.APP_ACCESS, PERMISSIONS.CONFIG_ADMIN],
+  "/alumnos-por-disciplina": [PERMISSIONS.APP_ACCESS, PERMISSIONS.REPORTES_LEER, PERMISSIONS.DISCIPLINAS_LEER],
+  "/subconceptos": [PERMISSIONS.APP_ACCESS, PERMISSIONS.CONFIG_LEER],
+  "/subconceptos/formulario": [PERMISSIONS.APP_ACCESS, PERMISSIONS.CONFIG_ADMIN],
+} satisfies Record<PermissionedRoutePath, readonly PermissionCode[]>;
+
+export const permissionsForRoute = (path: ProtectedRoutePath): readonly PermissionCode[] | undefined =>
+  path === "/unauthorized" ? undefined : routePermissions[path];

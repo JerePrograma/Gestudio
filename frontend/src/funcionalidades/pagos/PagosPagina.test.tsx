@@ -16,6 +16,7 @@ const anularPago = vi.hoisted(() => vi.fn());
 const descargarRecibo = vi.hoisted(() => vi.fn());
 const toastSuccess = vi.hoisted(() => vi.fn());
 const toastError = vi.hoisted(() => vi.fn());
+const hasPermission = vi.hoisted(() => vi.fn(() => true));
 
 vi.mock("../../api/alumnosApi", () => ({
   default: { buscarPorNombre, obtenerPorId },
@@ -30,6 +31,9 @@ vi.mock("react-toastify", () => ({
     success: toastSuccess,
     error: toastError,
   },
+}));
+vi.mock("../../hooks/context/useAuth", () => ({
+  useAuth: () => ({ hasPermission }),
 }));
 
 import PagosPagina from "./PagosPagina";

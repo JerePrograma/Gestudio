@@ -8,7 +8,7 @@ import {
   otherProtectedRoutes,
   protectedRoutes,
   publicRoutes,
-  routePermissions,
+  permissionsForRoute,
 } from "./routes";
 
 const AppRouter = () => (
@@ -26,7 +26,7 @@ const AppRouter = () => (
                 key={path}
                 path={path}
                 element={
-                  <ProtectedRoute requiredPermission={routePermissions[path]}>
+                  <ProtectedRoute requiredPermissions={permissionsForRoute(path)}>
                     <Component />
                   </ProtectedRoute>
                 }

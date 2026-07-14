@@ -1,9 +1,15 @@
 import api from "./axiosConfig";
 import type {
+  RolAsignableResponse,
   UsuarioRegistroRequest,
   UsuarioModificacionRequest,
   UsuarioResponse,
 } from "../types/types";
+
+const listarRolesAsignables = async (): Promise<RolAsignableResponse[]> => {
+  const { data } = await api.get<RolAsignableResponse[]>("/usuarios/roles-asignables");
+  return data;
+};
 
 const registrarUsuario = async (
   usuario: UsuarioRegistroRequest
@@ -35,6 +41,7 @@ const eliminarUsuario = async (id: number): Promise<void> => {
 };
 
 const usuariosApi = {
+  listarRolesAsignables,
   registrarUsuario,
   obtenerUsuarioPorId,
   listarUsuarios,

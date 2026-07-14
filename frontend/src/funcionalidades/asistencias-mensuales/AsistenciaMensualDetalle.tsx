@@ -32,6 +32,8 @@ import {
   DisciplinaListadoResponse,
 } from "../../types/types";
 import useDebounce from "../../hooks/useDebounce";
+import { PERMISSIONS } from "../../config/permissions";
+import { useAuth } from "../../hooks/context/useAuth";
 
 // Función para obtener el nombre del alumno (ya que el backend lo mapea correctamente)
 const getAlumnoDisplayName = (
@@ -43,6 +45,9 @@ const getAlumnoDisplayName = (
 
 const AsistenciaMensualDetalle: React.FC = () => {
   const navigate = useNavigate();
+  const { hasPermission } = useAuth();
+  const canRegister = hasPermission(PERMISSIONS.APP_ACCESS)
+    && hasPermission(PERMISSIONS.ASISTENCIAS_REGISTRAR);
 
   // Estados de filtros y datos
   const [disciplinas, setDisciplinas] = useState<DisciplinaListadoResponse[]>(
@@ -234,6 +239,7 @@ const AsistenciaMensualDetalle: React.FC = () => {
   // Actualiza la observación de un alumno con debounce
   const debouncedActualizarObservacion = useCallback(
     (alumnoId: number, obs: string) => {
+      if (!canRegister || !asistenciaMensual) return;
       const asistenciasAlumnoMensualArray = Object.entries({
         ...observaciones,
         [alumnoId]: obs,
@@ -242,21 +248,22 @@ const AsistenciaMensualDetalle: React.FC = () => {
         observacion,
         asistenciasDiarias: [], // Se envía vacío si no se actualizan
       }));
-      asistenciasApi.actualizarAsistenciaMensual(asistenciaMensual!.id, {
+      asistenciasApi.actualizarAsistenciaMensual(asistenciaMensual.id, {
         asistenciasAlumnoMensual: asistenciasAlumnoMensualArray,
       });
     },
-    [asistenciaMensual, observaciones]
+    [asistenciaMensual, canRegister, observaciones]
   );
 
   const handleObservacionChange = (alumnoId: number, obs: string) => {
+    if (!canRegister) return;
     setObservaciones((prev) => ({ ...prev, [alumnoId]: obs }));
     debouncedActualizarObservacion(alumnoId, obs);
   };
 
   // Permite alternar la asistencia diaria de un alumno (presente/ausente)
   const toggleAsistencia = async (alumnoId: number, fecha: string) => {
-    if (!asistenciaMensual) return;
+    if (!canRegister || !asistenciaMensual) return;
     const alumnoRegistro = uniqueAlumnos.find((al) => al.id === alumnoId);
     if (!alumnoRegistro) {
       return;
@@ -476,23 +483,29 @@ const AsistenciaMensualDetalle: React.FC = () => {
                       );
                       return (
                         <TableCell key={fecha} className="text-center">
-                          <Button
-                            size="sm"
-                            variant={
-                              registro?.estado === EstadoAsistencia.PRESENTE
-                                ? "default"
-                                : "outline"
-                            }
-                            onClick={() =>
-                              registro && toggleAsistencia(alumno.id, fecha)
-                            }
-                          >
-                            {registro?.estado === EstadoAsistencia.PRESENTE ? (
-                              <Check className="h-4 w-4" />
-                            ) : (
-                              <X className="h-4 w-4" />
-                            )}
-                          </Button>
+                          {canRegister ? (
+                            <Button
+                              size="sm"
+                              variant={
+                                registro?.estado === EstadoAsistencia.PRESENTE
+                                  ? "default"
+                                  : "outline"
+                              }
+                              onClick={() =>
+                                registro && toggleAsistencia(alumno.id, fecha)
+                              }
+                            >
+                              {registro?.estado === EstadoAsistencia.PRESENTE ? (
+                                <Check className="h-4 w-4" />
+                              ) : (
+                                <X className="h-4 w-4" />
+                              )}
+                            </Button>
+                          ) : (
+                            <span aria-label={registro?.estado === EstadoAsistencia.PRESENTE ? "Presente" : "Ausente"}>
+                              {registro?.estado === EstadoAsistencia.PRESENTE ? <Check className="mx-auto h-4 w-4" /> : <X className="mx-auto h-4 w-4" />}
+                            </span>
+                          )}
                         </TableCell>
                       );
                     })}
@@ -500,9 +513,10 @@ const AsistenciaMensualDetalle: React.FC = () => {
                       <Input
                         placeholder="Observaciones..."
                         value={observaciones[alumno.id] || ""}
-                        onChange={(e) =>
-                          handleObservacionChange(alumno.id, e.target.value)
-                        }
+                          onChange={(e) =>
+                            handleObservacionChange(alumno.id, e.target.value)
+                          }
+                          readOnly={!canRegister}
                       />
                     </TableCell>
                   </TableRow>

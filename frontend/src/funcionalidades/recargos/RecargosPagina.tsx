@@ -5,6 +5,8 @@ import Boton from "../../componentes/comunes/Boton";
 import recargosApi from "../../api/recargosApi";
 import { PlusCircle, Pencil, Trash2 } from "lucide-react";
 import { toast } from "react-toastify";
+import PermissionGate from "../../componentes/comunes/PermissionGate";
+import { PERMISSIONS } from "../../config/permissions";
 
 interface Recargo {
     id: number;
@@ -38,10 +40,12 @@ const Recargos = () => {
         <div className="page-container">
             <h1 className="page-title">Recargos</h1>
             <div className="page-button-group flex justify-end mb-4">
-                <Boton onClick={() => navigate("/recargos/formulario")} className="page-button">
-                    <PlusCircle className="w-5 h-5 mr-2" />
-                    Nuevo Recargo
-                </Boton>
+                <PermissionGate permission={PERMISSIONS.CONFIG_ADMIN}>
+                    <Boton onClick={() => navigate("/recargos/formulario")} className="page-button">
+                        <PlusCircle className="w-5 h-5 mr-2" />
+                        Nuevo Recargo
+                    </Boton>
+                </PermissionGate>
             </div>
             <div className="page-card">
                 <Tabla
@@ -49,19 +53,21 @@ const Recargos = () => {
                     data={recargos}
                     getRowKey={(row) => row.id}
                     actions={(fila) => (
-                        <div className="flex gap-2">
-                            <Boton
-                                onClick={() => navigate(`/recargos/formulario?id=${fila.id}`)}
-                                className="page-button-secondary"
-                            >
-                                <Pencil className="w-4 h-4 mr-2" />
-                                Editar
-                            </Boton>
-                            <Boton className="page-button-danger">
-                                <Trash2 className="w-4 h-4 mr-2" />
-                                Eliminar
-                            </Boton>
-                        </div>
+                        <PermissionGate permission={PERMISSIONS.CONFIG_ADMIN}>
+                            <div className="flex gap-2">
+                                <Boton
+                                    onClick={() => navigate(`/recargos/formulario?id=${fila.id}`)}
+                                    className="page-button-secondary"
+                                >
+                                    <Pencil className="w-4 h-4 mr-2" />
+                                    Editar
+                                </Boton>
+                                <Boton className="page-button-danger">
+                                    <Trash2 className="w-4 h-4 mr-2" />
+                                    Eliminar
+                                </Boton>
+                            </div>
+                        </PermissionGate>
                     )}
                     customRender={(fila) => [fila.id, fila.descripcion]}
                 />

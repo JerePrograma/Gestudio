@@ -9,6 +9,8 @@ import { PlusCircle, Pencil, Trash2 } from "lucide-react";
 import type { BonificacionResponse } from "../../types/types";
 import { toast } from "react-toastify";
 import ListaConCargaManual from "../../componentes/comunes/ListaConCargaManual";
+import PermissionGate from "../../componentes/comunes/PermissionGate";
+import { PERMISSIONS } from "../../config/permissions";
 
 const Bonificaciones = () => {
   const [bonificaciones, setBonificaciones] = useState<BonificacionResponse[]>(
@@ -66,14 +68,16 @@ const Bonificaciones = () => {
     <div className="page-container">
       <h1 className="page-title">Bonificaciones</h1>
       <div className="page-button-group flex justify-end mb-4">
-        <Boton
-          onClick={() => navigate("/bonificaciones/formulario")}
-          className="page-button"
-          aria-label="Registrar nueva bonificacion"
-        >
-          <PlusCircle className="w-5 h-5 mr-2" />
-          Registrar Nueva Bonificacion
-        </Boton>
+        <PermissionGate permission={PERMISSIONS.CONFIG_ADMIN}>
+          <Boton
+            onClick={() => navigate("/bonificaciones/formulario")}
+            className="page-button"
+            aria-label="Registrar nueva bonificacion"
+          >
+            <PlusCircle className="w-5 h-5 mr-2" />
+            Registrar Nueva Bonificacion
+          </Boton>
+        </PermissionGate>
       </div>
       <div className="page-card">
         <Tabla
@@ -95,25 +99,27 @@ const Bonificaciones = () => {
             fila.activo ? "Si" : "No",
           ]}
           actions={(fila) => (
-            <div className="flex gap-2">
-              <Boton
-                onClick={() =>
-                  navigate(`/bonificaciones/formulario?id=${fila.id}`)
-                }
-                className="page-button-secondary"
-                aria-label={`Editar bonificacion ${fila.descripcion}`}
-              >
-                <Pencil className="w-4 h-4 mr-2" />
-                Editar
-              </Boton>
-              <Boton
-                className="page-button-danger"
-                aria-label={`Eliminar bonificacion ${fila.descripcion}`}
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Eliminar
-              </Boton>
-            </div>
+            <PermissionGate permission={PERMISSIONS.CONFIG_ADMIN}>
+              <div className="flex gap-2">
+                <Boton
+                  onClick={() =>
+                    navigate(`/bonificaciones/formulario?id=${fila.id}`)
+                  }
+                  className="page-button-secondary"
+                  aria-label={`Editar bonificacion ${fila.descripcion}`}
+                >
+                  <Pencil className="w-4 h-4 mr-2" />
+                  Editar
+                </Boton>
+                <Boton
+                  className="page-button-danger"
+                  aria-label={`Eliminar bonificacion ${fila.descripcion}`}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Eliminar
+                </Boton>
+              </div>
+            </PermissionGate>
           )}
         />
       </div>

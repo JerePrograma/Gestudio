@@ -10,11 +10,13 @@ import ErrorState from "../../componentes/comunes/ErrorState";
 import LoadingState from "../../componentes/comunes/LoadingState";
 import PageHeader from "../../componentes/comunes/PageHeader";
 import PaginationControls from "../../componentes/comunes/PaginationControls";
+import PermissionGate from "../../componentes/comunes/PermissionGate";
 import RowActions from "../../componentes/comunes/RowActions";
 import StatusBadge from "../../componentes/comunes/StatusBadge";
 import Tabla from "../../componentes/comunes/Tabla";
 import { queryKeys } from "../../hooks/queryKeys";
 import { formatMoney } from "../../utils/money";
+import { PERMISSIONS } from "../../config/permissions";
 
 const PAGE_SIZE = 50;
 
@@ -56,9 +58,11 @@ const StocksPagina = () => {
         description="Productos, precios y disponibilidad actual."
         count={stocks.data?.totalElements ?? 0}
         actions={(
-          <Boton onClick={() => navigate("/stocks/formulario")} className="page-button">
-            <PlusCircle className="size-4" /> Nuevo producto
-          </Boton>
+          <PermissionGate permission={PERMISSIONS.STOCK_ADMIN}>
+            <Boton onClick={() => navigate("/stocks/formulario")} className="page-button">
+              <PlusCircle className="size-4" /> Nuevo producto
+            </Boton>
+          </PermissionGate>
         )}
       />
 
@@ -82,12 +86,14 @@ const StocksPagina = () => {
                 {
                   label: "Editar",
                   icon: Pencil,
+                  requiredPermission: PERMISSIONS.STOCK_ADMIN,
                   onSelect: () => navigate(`/stocks/formulario?id=${row.id}`),
                 },
                 ...(row.activo
                   ? [{
                       label: "Dar de baja",
                       icon: Trash2,
+                      requiredPermission: PERMISSIONS.STOCK_ADMIN,
                       destructive: true,
                       disabled: baja.isPending,
                       onSelect: () => {

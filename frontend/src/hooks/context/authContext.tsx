@@ -11,12 +11,12 @@ import {
   AuthContext,
   profileHasAllPermissions,
   profileHasAnyPermission,
-  profileHasAnyRole,
   profileHasPermission,
-  profileHasRole,
+  isAuthenticatedSession,
   sanitizeUserProfile,
   type UserProfile,
 } from "./auth-context";
+import type { PermissionCode } from "../../config/permissions";
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({
   children,
@@ -25,7 +25,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
   const [session, setSession] = useState(getAuthSession);
   const navigate = useNavigate();
 
-  const isAuth = session.accessToken !== null && session.user !== null;
+  const isAuth = isAuthenticatedSession(session.accessToken, session.user);
   const user: UserProfile | null = session.user;
 
   useEffect(() => subscribeAuthSession(setSession), []);
@@ -60,18 +60,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
     }
   };
 
-  const hasRole = (role: string): boolean => profileHasRole(user, role);
-
-  const hasAnyRole = (roles: string[]): boolean =>
-    profileHasAnyRole(user, roles);
-
-  const hasPermission = (permission: string): boolean =>
+  const hasPermission = (permission: PermissionCode): boolean =>
     profileHasPermission(user, permission);
 
-  const hasAllPermissions = (permissions: string[]): boolean =>
+  const hasAllPermissions = (permissions: readonly PermissionCode[]): boolean =>
     profileHasAllPermissions(user, permissions);
 
-  const hasAnyPermission = (permissions: string[]): boolean =>
+  const hasAnyPermission = (permissions: readonly PermissionCode[]): boolean =>
     profileHasAnyPermission(user, permissions);
 
   return (
@@ -83,8 +78,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
         logout,
         accessToken: session.accessToken,
         user,
-        hasRole,
-        hasAnyRole,
         hasPermission,
         hasAllPermissions,
         hasAnyPermission,

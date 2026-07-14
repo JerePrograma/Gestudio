@@ -7,9 +7,13 @@ import type { AlumnoResponse, Page } from "../../types/types";
 const listar = vi.hoisted(() => vi.fn());
 const buscarPorNombre = vi.hoisted(() => vi.fn());
 const darBaja = vi.hoisted(() => vi.fn());
+const hasPermission = vi.hoisted(() => vi.fn(() => true));
 
 vi.mock("../../api/alumnosApi", () => ({
   default: { listar, buscarPorNombre, darBaja },
+}));
+vi.mock("../../hooks/context/useAuth", () => ({
+  useAuth: () => ({ hasPermission }),
 }));
 
 import AlumnosPagina from "./AlumnosPagina";

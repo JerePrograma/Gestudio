@@ -2,21 +2,15 @@ import { Navigate, Outlet } from "react-router-dom";
 import LoadingState from "../componentes/comunes/LoadingState";
 import { useAuth } from "../hooks/context/useAuth";
 import type { ReactNode } from "react";
+import type { PermissionCode } from "../config/permissions";
 
 interface ProtectedRouteProps {
   redirectPath?: string;
   unauthorizedPath?: string;
 
-  /**
-   * Compatibilidad transicional.
-   * Preferir requiredPermission / requiredPermissions / requiredAnyPermission.
-   */
-  requiredRole?: string;
-  requiredAnyRole?: string[];
-
-  requiredPermission?: string;
-  requiredPermissions?: string[];
-  requiredAnyPermission?: string[];
+  requiredPermission?: PermissionCode;
+  requiredPermissions?: readonly PermissionCode[];
+  requiredAnyPermission?: readonly PermissionCode[];
 
   children?: ReactNode;
 }
@@ -24,8 +18,6 @@ interface ProtectedRouteProps {
 const ProtectedRoute = ({
   redirectPath = "/login",
   unauthorizedPath = "/unauthorized",
-  requiredRole,
-  requiredAnyRole,
   requiredPermission,
   requiredPermissions,
   requiredAnyPermission,
@@ -35,8 +27,6 @@ const ProtectedRoute = ({
     isAuth,
     loading,
     user,
-    hasRole,
-    hasAnyRole,
     hasPermission,
     hasAllPermissions,
     hasAnyPermission,
@@ -59,14 +49,6 @@ const ProtectedRoute = ({
   }
 
   if (requiredAnyPermission && requiredAnyPermission.length > 0 && !hasAnyPermission(requiredAnyPermission)) {
-    return <Navigate to={unauthorizedPath} replace />;
-  }
-
-  if (requiredRole && !hasRole(requiredRole)) {
-    return <Navigate to={unauthorizedPath} replace />;
-  }
-
-  if (requiredAnyRole && requiredAnyRole.length > 0 && !hasAnyRole(requiredAnyRole)) {
     return <Navigate to={unauthorizedPath} replace />;
   }
 

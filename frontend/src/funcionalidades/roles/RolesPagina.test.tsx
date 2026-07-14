@@ -44,12 +44,13 @@ describe("RolesPagina", () => {
 
   it("ofrece mutaciones con el permiso real de administración", async () => {
     mocks.hasPermission.mockImplementation(
-      (permission) => permission === PERMISSIONS.ROLES_ADMIN,
+      (permission) => [PERMISSIONS.APP_ACCESS, PERMISSIONS.ROLES_ADMIN].includes(permission),
     );
 
     render(<MemoryRouter><RolesPagina /></MemoryRouter>);
 
     expect(await screen.findByRole("button", { name: /nuevo rol/i })).toBeVisible();
+    expect(mocks.hasPermission).toHaveBeenCalledWith(PERMISSIONS.APP_ACCESS);
     expect(mocks.hasPermission).toHaveBeenCalledWith(PERMISSIONS.ROLES_ADMIN);
   });
 });

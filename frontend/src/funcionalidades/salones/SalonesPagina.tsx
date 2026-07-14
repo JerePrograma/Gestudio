@@ -8,6 +8,8 @@ import Boton from "../../componentes/comunes/Boton"
 import { PlusCircle, Pencil } from "lucide-react"
 import type { SalonResponse, Page } from "../../types/types"
 import { toast } from "react-toastify"
+import PermissionGate from "../../componentes/comunes/PermissionGate"
+import { PERMISSIONS } from "../../config/permissions"
 
 const Salones = () => {
   const [salones, setSalones] = useState<Page<SalonResponse>>({
@@ -51,14 +53,16 @@ const Salones = () => {
       <h1 className="page-title">Salones</h1>
 
       <div className="page-button-group flex justify-end mb-4">
-        <Boton
-          onClick={() => navigate("/salones/formulario")}
-          className="page-button"
-          aria-label="Ficha de Salones"
-        >
-          <PlusCircle className="w-5 h-5 mr-2" />
-          Ficha de Salones
-        </Boton>
+        <PermissionGate permission={PERMISSIONS.CONFIG_ADMIN}>
+          <Boton
+            onClick={() => navigate("/salones/formulario")}
+            className="page-button"
+            aria-label="Ficha de Salones"
+          >
+            <PlusCircle className="w-5 h-5 mr-2" />
+            Ficha de Salones
+          </Boton>
+        </PermissionGate>
       </div>
 
       <div className="page-card">
@@ -67,14 +71,16 @@ const Salones = () => {
           data={salones.content}
           getRowKey={(row) => row.id}
           actions={(fila) => (
-            <Boton
-              onClick={() => navigate(`/salones/formulario?id=${fila.id}`)}
-              className="page-button-secondary"
-              aria-label={`Editar salón ${fila.nombre}`}
-            >
-              <Pencil className="w-4 h-4 mr-2" />
-              Editar
-            </Boton>
+            <PermissionGate permission={PERMISSIONS.CONFIG_ADMIN}>
+              <Boton
+                onClick={() => navigate(`/salones/formulario?id=${fila.id}`)}
+                className="page-button-secondary"
+                aria-label={`Editar salón ${fila.nombre}`}
+              >
+                <Pencil className="w-4 h-4 mr-2" />
+                Editar
+              </Boton>
+            </PermissionGate>
           )}
           customRender={(fila) => [fila.id, fila.nombre, fila.descripcion || "-"]}
         />

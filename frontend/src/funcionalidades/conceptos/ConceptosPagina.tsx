@@ -12,8 +12,10 @@ import ListaConCargaManual from "../../componentes/comunes/ListaConCargaManual";
 import ErrorState from "../../componentes/comunes/ErrorState";
 import LoadingState from "../../componentes/comunes/LoadingState";
 import PageHeader from "../../componentes/comunes/PageHeader";
+import PermissionGate from "../../componentes/comunes/PermissionGate";
 import RowActions from "../../componentes/comunes/RowActions";
 import { formatMoney } from "../../utils/money";
+import { PERMISSIONS } from "../../config/permissions";
 
 const itemsPerPage = 25;
 
@@ -80,13 +82,15 @@ const ConceptosPagina = () => {
   return (
     <div className="page-container">
       <PageHeader eyebrow="Administración" title="Conceptos" description="Conceptos facturables y valores vigentes." count={conceptos.length}
-        actions={<Boton
-          onClick={() => navigate("/conceptos/formulario-concepto")}
-          className="page-button"
-          aria-label="Registrar nuevo concepto"
-        >
-          <PlusCircle className="size-4" /> Nuevo concepto
-        </Boton>} />
+        actions={<PermissionGate permission={PERMISSIONS.CONFIG_ADMIN}>
+          <Boton
+            onClick={() => navigate("/conceptos/formulario-concepto")}
+            className="page-button"
+            aria-label="Registrar nuevo concepto"
+          >
+            <PlusCircle className="size-4" /> Nuevo concepto
+          </Boton>
+        </PermissionGate>} />
       <div>
         <Tabla
           headers={["ID", "Descripción", "Precio", "Subconcepto"]}
@@ -94,8 +98,8 @@ const ConceptosPagina = () => {
           getRowKey={(row) => row.id}
           actions={(fila: ConceptoResponse) => (
             <RowActions label={`Acciones de ${fila.descripcion}`} actions={[
-              { label: "Editar", icon: Pencil, onSelect: () => navigate(`/conceptos/formulario-concepto?id=${fila.id}`) },
-              { label: "Eliminar", icon: Trash2, destructive: true, onSelect: () => void handleEliminarConcepto(fila.id) },
+              { label: "Editar", icon: Pencil, requiredPermission: PERMISSIONS.CONFIG_ADMIN, onSelect: () => navigate(`/conceptos/formulario-concepto?id=${fila.id}`) },
+              { label: "Eliminar", icon: Trash2, requiredPermission: PERMISSIONS.CONFIG_ADMIN, destructive: true, onSelect: () => void handleEliminarConcepto(fila.id) },
             ]} />
           )}
           customRender={(fila: ConceptoResponse) => [

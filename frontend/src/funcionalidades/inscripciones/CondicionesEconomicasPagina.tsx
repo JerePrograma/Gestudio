@@ -9,11 +9,19 @@ import LoadingState from "../../componentes/comunes/LoadingState";
 import PageHeader from "../../componentes/comunes/PageHeader";
 import SectionCard from "../../componentes/comunes/SectionCard";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../componentes/ui/table";
+import { APP_TIME_ZONE } from "../../config/environment";
+import { PERMISSIONS } from "../../config/permissions";
+import { useAuth } from "../../hooks/context/useAuth";
 import type { BonificacionResponse } from "../../types/types";
+import { canUseTariffEffectiveDate, currentDateInTimeZone } from "../disciplinas/tariffEffectiveDate";
 
 const CondicionesEconomicasPagina = () => {
   const inscripcionId = Number(useParams().id);
   const navigate = useNavigate();
+  const { hasPermission } = useAuth();
+  const canCreateHistorical = hasPermission(PERMISSIONS.APP_ACCESS)
+    && hasPermission(PERMISSIONS.TARIFAS_HISTORICAS);
+  const today = currentDateInTimeZone(APP_TIME_ZONE);
 
   const [condiciones, setCondiciones] = useState<CondicionEconomica[]>([]);
   const [bonificaciones, setBonificaciones] = useState<BonificacionResponse[]>([]);
@@ -46,6 +54,10 @@ const CondicionesEconomicasPagina = () => {
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (!canUseTariffEffectiveDate(vigenteDesde, today, canCreateHistorical)) {
+      toast.error("Se requiere permiso para cargar una condición con vigencia histórica.");
+      return;
+    }
     setSaving(true);
 
     try {
@@ -94,6 +106,7 @@ const CondicionesEconomicasPagina = () => {
               <input
                 className="form-input"
                 type="date"
+                min={canCreateHistorical ? undefined : today}
                 required
                 value={vigenteDesde}
                 onChange={(event) => setVigenteDesde(event.target.value)}

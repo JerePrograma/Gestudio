@@ -11,11 +11,13 @@ import FilterBar from "../../componentes/comunes/FilterBar";
 import LoadingState from "../../componentes/comunes/LoadingState";
 import PageHeader from "../../componentes/comunes/PageHeader";
 import PaginationControls from "../../componentes/comunes/PaginationControls";
+import PermissionGate from "../../componentes/comunes/PermissionGate";
 import RowActions from "../../componentes/comunes/RowActions";
 import SearchInput from "../../componentes/comunes/SearchInput";
 import StatusBadge from "../../componentes/comunes/StatusBadge";
 import Tabla from "../../componentes/comunes/Tabla";
 import { queryKeys } from "../../hooks/queryKeys";
+import { PERMISSIONS } from "../../config/permissions";
 
 const PAGE_SIZE = 50;
 
@@ -59,9 +61,11 @@ const AlumnosPagina = () => {
         description="Consultá perfiles, estado y accesos rápidos de cada alumno."
         count={alumnos.data?.totalElements ?? 0}
         actions={(
-          <Boton onClick={() => navigate("/alumnos/formulario")} className="page-button">
-            <PlusCircle className="size-4" /> Nuevo alumno
-          </Boton>
+          <PermissionGate permission={PERMISSIONS.ALUMNOS_ADMIN}>
+            <Boton onClick={() => navigate("/alumnos/formulario")} className="page-button">
+              <PlusCircle className="size-4" /> Nuevo alumno
+            </Boton>
+          </PermissionGate>
         )}
       />
 
@@ -113,12 +117,13 @@ const AlumnosPagina = () => {
               <RowActions
                 label={`Acciones de ${nombreCompleto}`}
                 actions={[
-                  { label: "Editar", icon: Pencil, onSelect: () => navigate(`/alumnos/formulario?id=${row.id}`) },
-                  { label: "Ver pagos", icon: CreditCard, onSelect: () => navigate(`/pagos?alumnoId=${row.id}`) },
+                  { label: "Editar", icon: Pencil, requiredPermission: PERMISSIONS.ALUMNOS_ADMIN, onSelect: () => navigate(`/alumnos/formulario?id=${row.id}`) },
+                  { label: "Ver pagos", icon: CreditCard, requiredPermission: PERMISSIONS.PAGOS_LEER, onSelect: () => navigate(`/pagos?alumnoId=${row.id}`) },
                   ...(row.activo
                     ? [{
                         label: "Dar de baja",
                         icon: Trash2,
+                        requiredPermission: PERMISSIONS.ALUMNOS_ADMIN,
                         destructive: true,
                         disabled: baja.isPending,
                         onSelect: () => confirmarBaja(row.id, nombreCompleto),

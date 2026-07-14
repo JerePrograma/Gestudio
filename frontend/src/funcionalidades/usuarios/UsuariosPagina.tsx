@@ -22,7 +22,8 @@ const UsuariosPagina = () => {
   const [visibleCount, setVisibleCount] = useState(itemsPerPage);
   const navigate = useNavigate();
   const { hasPermission } = useAuth();
-  const puedeEscribir = hasPermission(PERMISSIONS.USUARIOS_ADMIN);
+  const puedeEscribir = hasPermission(PERMISSIONS.APP_ACCESS)
+    && hasPermission(PERMISSIONS.USUARIOS_ADMIN);
 
   const fetchUsuarios = useCallback(async () => {
     try {

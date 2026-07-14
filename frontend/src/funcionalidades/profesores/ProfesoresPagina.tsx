@@ -13,9 +13,11 @@ import ErrorState from "../../componentes/comunes/ErrorState";
 import FilterBar from "../../componentes/comunes/FilterBar";
 import LoadingState from "../../componentes/comunes/LoadingState";
 import PageHeader from "../../componentes/comunes/PageHeader";
+import PermissionGate from "../../componentes/comunes/PermissionGate";
 import RowActions from "../../componentes/comunes/RowActions";
 import SearchInput from "../../componentes/comunes/SearchInput";
 import StatusBadge from "../../componentes/comunes/StatusBadge";
+import { PERMISSIONS } from "../../config/permissions";
 
 const itemsPerPage = 25;
 
@@ -114,13 +116,15 @@ const Profesores = () => {
         description="Equipo docente, estado y datos de contacto."
         count={profesoresFiltradosYOrdenados.length}
         actions={(
-          <Boton
-            onClick={() => navigate("/profesores/formulario")}
-            className="page-button"
-            aria-label="Registrar nuevo profesor"
-          >
-            <PlusCircle className="size-4" /> Nuevo profesor
-          </Boton>
+          <PermissionGate permission={PERMISSIONS.PROFESORES_ADMIN}>
+            <Boton
+              onClick={() => navigate("/profesores/formulario")}
+              className="page-button"
+              aria-label="Registrar nuevo profesor"
+            >
+              <PlusCircle className="size-4" /> Nuevo profesor
+            </Boton>
+          </PermissionGate>
         )}
       />
 
@@ -178,11 +182,13 @@ const Profesores = () => {
                   {
                     label: "Editar",
                     icon: Pencil,
+                    requiredPermission: PERMISSIONS.PROFESORES_ADMIN,
                     onSelect: () => navigate(`/profesores/formulario?id=${fila.id}`),
                   },
                   {
                     label: "Eliminar",
                     icon: Trash2,
+                    requiredPermission: PERMISSIONS.PROFESORES_ADMIN,
                     destructive: true,
                     onSelect: () => void handleEliminarProfesor(fila.id, nombreCompleto),
                   },

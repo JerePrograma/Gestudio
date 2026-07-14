@@ -415,6 +415,11 @@ export interface RolResponse {
   cantidadPermisos: number;
 }
 
+export interface RolAsignableResponse {
+  codigo: string;
+  nombre: string;
+}
+
 export interface PermisoResponse {
   id: number;
   codigo: string;
@@ -618,16 +623,3 @@ export interface ResumenCajaResponse {
   saldo: string;
   movimientos: Page<MovimientoCajaResponse>;
 }
-
-export type ObservacionProfesorResponse = {
-  id: number;
-  profesorId: number;
-  fecha: string; // ISO date string
-  observacion: string;
-};
-
-export type ObservacionProfesorRequest = {
-  profesorId: number;
-  fecha: string; // ISO date string
-  observacion: string;
-};

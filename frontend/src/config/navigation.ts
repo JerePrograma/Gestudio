@@ -19,7 +19,7 @@ import {
   Wallet,
   type LucideIcon,
 } from "lucide-react";
-import { PERMISSIONS } from "./permissions";
+import { PERMISSIONS, type PermissionCode } from "./permissions";
 
 export interface NavigationItem {
   id: string;
@@ -27,15 +27,15 @@ export interface NavigationItem {
   label: string;
   href?: string;
   description?: string;
-  requiredPermission?: string;
+  requiredPermissions?: readonly PermissionCode[];
   items?: NavigationItem[];
 }
 
 export const filterNavigationItems = (
   items: NavigationItem[],
-  hasPermission: (permission: string) => boolean,
+  hasPermission: (permission: PermissionCode) => boolean,
 ): NavigationItem[] => items
-  .filter((item) => !item.requiredPermission || hasPermission(item.requiredPermission))
+  .filter((item) => !item.requiredPermissions || item.requiredPermissions.every(hasPermission))
   .map((item) => ({
     ...item,
     items: item.items ? filterNavigationItems(item.items, hasPermission) : undefined,
@@ -48,28 +48,28 @@ export const navigationItems: NavigationItem[] = [
     icon: User,
     label: "Alumnos",
     href: "/alumnos",
-    requiredPermission: PERMISSIONS.APP_ACCESS,
+    requiredPermissions: [PERMISSIONS.APP_ACCESS, PERMISSIONS.ALUMNOS_LEER],
   },
   {
     id: "cobranza",
     icon: DollarSign,
     label: "Cobranza",
     href: "/pagos/formulario",
-    requiredPermission: PERMISSIONS.PAGOS_REGISTRAR,
+    requiredPermissions: [PERMISSIONS.APP_ACCESS, PERMISSIONS.PAGOS_REGISTRAR],
   },
   {
     id: "pagos",
     icon: Receipt,
     label: "Pagos",
     href: "/pagos",
-    requiredPermission: PERMISSIONS.APP_ACCESS,
+    requiredPermissions: [PERMISSIONS.APP_ACCESS, PERMISSIONS.PAGOS_LEER],
   },
   {
     id: "caja",
     icon: PiggyBank,
     label: "Caja",
     href: "/caja",
-    requiredPermission: PERMISSIONS.APP_ACCESS,
+    requiredPermissions: [PERMISSIONS.APP_ACCESS, PERMISSIONS.CAJA_LEER],
   },
   {
     id: "administracion",
@@ -81,28 +81,28 @@ export const navigationItems: NavigationItem[] = [
         label: "Egresos",
         href: "/egresos",
         icon: Wallet,
-        requiredPermission: PERMISSIONS.EGRESOS_ADMIN,
+        requiredPermissions: [PERMISSIONS.APP_ACCESS, PERMISSIONS.EGRESOS_ADMIN],
       },
       {
         id: "metodos-pago",
         label: "Métodos de pago",
         href: "/metodos-pago",
         icon: CreditCard,
-        requiredPermission: PERMISSIONS.APP_ACCESS,
+        requiredPermissions: [PERMISSIONS.APP_ACCESS, PERMISSIONS.CONFIG_LEER],
       },
       {
         id: "conceptos",
         label: "Conceptos",
         href: "/conceptos",
         icon: Tags,
-        requiredPermission: PERMISSIONS.APP_ACCESS,
+        requiredPermissions: [PERMISSIONS.APP_ACCESS, PERMISSIONS.CONFIG_LEER],
       },
       {
         id: "stocks",
         label: "Stock",
         href: "/stocks",
         icon: Package,
-        requiredPermission: PERMISSIONS.APP_ACCESS,
+        requiredPermissions: [PERMISSIONS.APP_ACCESS, PERMISSIONS.STOCK_LEER],
       },
     ],
   },
@@ -116,49 +116,49 @@ export const navigationItems: NavigationItem[] = [
         label: "Inscripciones",
         href: "/inscripciones",
         icon: CalendarCheck,
-        requiredPermission: PERMISSIONS.APP_ACCESS,
+        requiredPermissions: [PERMISSIONS.APP_ACCESS, PERMISSIONS.INSCRIPCIONES_LEER],
       },
       {
         id: "asistencias",
         label: "Asistencias",
         href: "/asistencias/alumnos",
         icon: CalendarCheck,
-        requiredPermission: PERMISSIONS.APP_ACCESS,
+        requiredPermissions: [PERMISSIONS.APP_ACCESS, PERMISSIONS.ASISTENCIAS_LEER],
       },
       {
         id: "profesores",
         label: "Profesores",
         href: "/profesores",
         icon: UserCheck,
-        requiredPermission: PERMISSIONS.APP_ACCESS,
+        requiredPermissions: [PERMISSIONS.APP_ACCESS, PERMISSIONS.PROFESORES_LEER],
       },
       {
         id: "disciplinas",
         label: "Disciplinas",
         href: "/disciplinas",
         icon: Mic2,
-        requiredPermission: PERMISSIONS.APP_ACCESS,
+        requiredPermissions: [PERMISSIONS.APP_ACCESS, PERMISSIONS.DISCIPLINAS_LEER],
       },
       {
         id: "salones",
         label: "Salones",
         href: "/salones",
         icon: DoorOpen,
-        requiredPermission: PERMISSIONS.APP_ACCESS,
+        requiredPermissions: [PERMISSIONS.APP_ACCESS, PERMISSIONS.CONFIG_LEER],
       },
       {
         id: "bonificaciones",
         label: "Bonificaciones",
         href: "/bonificaciones",
         icon: Percent,
-        requiredPermission: PERMISSIONS.APP_ACCESS,
+        requiredPermissions: [PERMISSIONS.APP_ACCESS, PERMISSIONS.CONFIG_LEER],
       },
       {
         id: "recargos",
         label: "Recargos",
         href: "/recargos",
         icon: TrendingUp,
-        requiredPermission: PERMISSIONS.APP_ACCESS,
+        requiredPermissions: [PERMISSIONS.APP_ACCESS, PERMISSIONS.CONFIG_LEER],
       },
     ],
   },
@@ -167,7 +167,7 @@ export const navigationItems: NavigationItem[] = [
     label: "Alumnos por disciplina",
     href: "/alumnos-por-disciplina",
     icon: BarChart3,
-    requiredPermission: PERMISSIONS.APP_ACCESS,
+    requiredPermissions: [PERMISSIONS.APP_ACCESS, PERMISSIONS.REPORTES_LEER, PERMISSIONS.DISCIPLINAS_LEER],
   },
   {
     id: "seguridad",
@@ -179,14 +179,14 @@ export const navigationItems: NavigationItem[] = [
         label: "Usuarios",
         href: "/usuarios",
         icon: UserCog,
-        requiredPermission: PERMISSIONS.USUARIOS_ADMIN,
+        requiredPermissions: [PERMISSIONS.APP_ACCESS, PERMISSIONS.USUARIOS_ADMIN],
       },
       {
         id: "roles",
         label: "Roles",
         href: "/roles",
         icon: Shield,
-        requiredPermission: PERMISSIONS.ROLES_ADMIN,
+        requiredPermissions: [PERMISSIONS.APP_ACCESS, PERMISSIONS.ROLES_ADMIN],
       },
     ],
   },

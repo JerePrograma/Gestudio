@@ -9,12 +9,14 @@ import FilterBar from "../../componentes/comunes/FilterBar";
 import LoadingState from "../../componentes/comunes/LoadingState";
 import PageHeader from "../../componentes/comunes/PageHeader";
 import PaginationControls from "../../componentes/comunes/PaginationControls";
+import PermissionGate from "../../componentes/comunes/PermissionGate";
 import RowActions from "../../componentes/comunes/RowActions";
 import SearchInput from "../../componentes/comunes/SearchInput";
 import StatusBadge from "../../componentes/comunes/StatusBadge";
 import Tabla from "../../componentes/comunes/Tabla";
 import { queryKeys } from "../../hooks/queryKeys";
 import { formatMoney } from "../../utils/money";
+import { PERMISSIONS } from "../../config/permissions";
 
 const PAGE_SIZE = 50;
 
@@ -47,9 +49,11 @@ const InscripcionesPagina = () => {
         description="Seguimiento de altas, condiciones y estado de cursada."
         count={inscripciones.data?.totalElements ?? 0}
         actions={(
-          <Boton onClick={() => navigate("/inscripciones/formulario")} className="page-button">
-            <PlusCircle className="size-4" /> Nueva inscripción
-          </Boton>
+          <PermissionGate permission={PERMISSIONS.INSCRIPCIONES_ADMIN}>
+            <Boton onClick={() => navigate("/inscripciones/formulario")} className="page-button">
+              <PlusCircle className="size-4" /> Nueva inscripción
+            </Boton>
+          </PermissionGate>
         )}
       />
 
@@ -89,11 +93,13 @@ const InscripcionesPagina = () => {
                 {
                   label: "Condiciones",
                   icon: BadgePercent,
+                  requiredPermission: PERMISSIONS.CONDICIONES_ECONOMICAS_ADMIN,
                   onSelect: () => navigate(`/inscripciones/${row.id}/condiciones-economicas`),
                 },
                 {
                   label: "Editar",
                   icon: Pencil,
+                  requiredPermission: PERMISSIONS.INSCRIPCIONES_ADMIN,
                   onSelect: () => navigate(`/inscripciones/formulario?id=${row.id}`),
                 },
               ]}

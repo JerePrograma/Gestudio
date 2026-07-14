@@ -14,7 +14,8 @@ const RolesPagina = () => {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const { hasPermission } = useAuth();
-  const puedeEscribir = hasPermission(PERMISSIONS.ROLES_ADMIN);
+  const puedeEscribir = hasPermission(PERMISSIONS.APP_ACCESS)
+    && hasPermission(PERMISSIONS.ROLES_ADMIN);
 
   const cargar = useCallback(() => {
     setLoading(true);

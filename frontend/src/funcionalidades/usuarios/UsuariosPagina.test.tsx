@@ -42,12 +42,13 @@ describe("UsuariosPagina", () => {
 
   it("ofrece mutaciones con el permiso real de administración", async () => {
     mocks.hasPermission.mockImplementation(
-      (permission) => permission === PERMISSIONS.USUARIOS_ADMIN,
+      (permission) => [PERMISSIONS.APP_ACCESS, PERMISSIONS.USUARIOS_ADMIN].includes(permission),
     );
 
     render(<MemoryRouter><UsuariosPagina /></MemoryRouter>);
 
     expect(await screen.findByRole("button", { name: /registrar nuevo usuario/i })).toBeVisible();
+    expect(mocks.hasPermission).toHaveBeenCalledWith(PERMISSIONS.APP_ACCESS);
     expect(mocks.hasPermission).toHaveBeenCalledWith(PERMISSIONS.USUARIOS_ADMIN);
   });
 });

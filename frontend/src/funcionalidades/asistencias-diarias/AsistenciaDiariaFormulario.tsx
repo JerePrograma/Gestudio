@@ -36,6 +36,8 @@ import ErrorState from "../../componentes/comunes/ErrorState";
 import LoadingState from "../../componentes/comunes/LoadingState";
 import PageHeader from "../../componentes/comunes/PageHeader";
 import SectionCard from "../../componentes/comunes/SectionCard";
+import { PERMISSIONS } from "../../config/permissions";
+import { useAuth } from "../../hooks/context/useAuth";
 
 interface Disciplina {
   id: number;
@@ -45,6 +47,9 @@ interface Disciplina {
 
 const AsistenciaDiariaFormAdaptado: React.FC = () => {
   const navigate = useNavigate();
+  const { hasPermission } = useAuth();
+  const canRegister = hasPermission(PERMISSIONS.APP_ACCESS)
+    && hasPermission(PERMISSIONS.ASISTENCIAS_REGISTRAR);
 
   // Estados para filtros y datos
   const [disciplinas, setDisciplinas] = useState<Disciplina[]>([]);
@@ -252,7 +257,7 @@ const AsistenciaDiariaFormAdaptado: React.FC = () => {
     alumnoId: number,
     currentRecord: AsistenciaDiariaResponse | undefined
   ) => {
-    if (!selectedDate || !monthlyDetail) return;
+    if (!canRegister || !selectedDate || !monthlyDetail) return;
     const fechaFormateada = selectedDate.toISOString().split("T")[0];
     if (!currentRecord) {
       const alumnoRegistro = uniqueAlumnos.find((a) => a.id === alumnoId);
@@ -314,7 +319,7 @@ const AsistenciaDiariaFormAdaptado: React.FC = () => {
 
   const debouncedActualizarObservacion = useMemo(
     () => debounce(async (alumnoId: number, obs: string) => {
-      if (!monthlyDetail) return;
+      if (!canRegister || !monthlyDetail) return;
       const alumno = monthlyDetail.alumnos.find((a) => a.id === alumnoId);
       if (!alumno) return;
       const payload = {
@@ -331,7 +336,7 @@ const AsistenciaDiariaFormAdaptado: React.FC = () => {
         toast.error("No se pudo guardar la observación");
       }
     }, 500),
-    [monthlyDetail]
+    [canRegister, monthlyDetail]
   );
 
   const handleObservacionChange = (alumnoId: number, newObs: string) => {
@@ -440,14 +445,20 @@ const AsistenciaDiariaFormAdaptado: React.FC = () => {
                   <TableRow key={record.alumnoId}>
                     <TableCell className="font-semibold">{`${record.alumnoApellido}, ${record.alumnoNombre}`}</TableCell>
                     <TableCell className="text-center">
-                      <Button
-                        size="sm"
-                        variant={record.asistenciaDiaria?.estado === EstadoAsistencia.PRESENTE ? "default" : "outline"}
-                        onClick={() => toggleAsistencia(record.alumnoId, record.asistenciaDiaria)}
-                        aria-label={`${record.asistenciaDiaria?.estado === EstadoAsistencia.PRESENTE ? "Marcar ausente" : "Marcar presente"} a ${record.alumnoNombre} ${record.alumnoApellido}`}
-                      >
-                        {record.asistenciaDiaria?.estado === EstadoAsistencia.PRESENTE ? <Check className="size-4" /> : <X className="size-4" />}
-                      </Button>
+                      {canRegister ? (
+                        <Button
+                          size="sm"
+                          variant={record.asistenciaDiaria?.estado === EstadoAsistencia.PRESENTE ? "default" : "outline"}
+                          onClick={() => toggleAsistencia(record.alumnoId, record.asistenciaDiaria)}
+                          aria-label={`${record.asistenciaDiaria?.estado === EstadoAsistencia.PRESENTE ? "Marcar ausente" : "Marcar presente"} a ${record.alumnoNombre} ${record.alumnoApellido}`}
+                        >
+                          {record.asistenciaDiaria?.estado === EstadoAsistencia.PRESENTE ? <Check className="size-4" /> : <X className="size-4" />}
+                        </Button>
+                      ) : (
+                        <span aria-label={record.asistenciaDiaria?.estado === EstadoAsistencia.PRESENTE ? "Presente" : "Ausente"}>
+                          {record.asistenciaDiaria?.estado === EstadoAsistencia.PRESENTE ? <Check className="mx-auto size-4" /> : <X className="mx-auto size-4" />}
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Input
@@ -455,6 +466,7 @@ const AsistenciaDiariaFormAdaptado: React.FC = () => {
                         placeholder="Agregar observación"
                         value={monthlyDetail.alumnos.find((a) => a.id === record.alumnoId)?.observacion || ""}
                         onChange={(e) => handleObservacionChange(record.alumnoId, e.target.value)}
+                        readOnly={!canRegister}
                       />
                     </TableCell>
                   </TableRow>

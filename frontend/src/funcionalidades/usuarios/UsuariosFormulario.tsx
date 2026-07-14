@@ -4,9 +4,8 @@ import { ErrorMessage, Field, Form, Formik } from "formik";
 import * as Yup from "yup";
 import { toast } from "react-toastify";
 import usuariosApi from "../../api/usuariosApi";
-import rolesApi from "../../api/rolesApi";
 import Boton from "../../componentes/comunes/Boton";
-import type { RolResponse } from "../../types/types";
+import type { RolAsignableResponse } from "../../types/types";
 import { usuarioEsquema } from "../../validaciones/usuarioEsquema";
 
 interface UsuarioFormValues {
@@ -24,7 +23,9 @@ const initialValues: UsuarioFormValues = {
 };
 
 const UsuariosFormulario = () => {
-  const [roles, setRoles] = useState<RolResponse[]>([]);
+  const [roles, setRoles] = useState<RolAsignableResponse[]>([]);
+  const [rolesConservados, setRolesConservados] = useState<string[]>([]);
+  const [edicionBloqueada, setEdicionBloqueada] = useState(false);
   const [values, setValues] = useState(initialValues);
   const [loading, setLoading] = useState(true);
   const [searchParams] = useSearchParams();
@@ -34,17 +35,24 @@ const UsuariosFormulario = () => {
 
   useEffect(() => {
     Promise.all([
-      rolesApi.listar(),
+      usuariosApi.listarRolesAsignables(),
       userId ? usuariosApi.obtenerUsuarioPorId(Number(userId)) : Promise.resolve(null),
     ])
       .then(([rolesDisponibles, usuario]) => {
-        setRoles(rolesDisponibles.filter((rol) => rol.activo));
-        if (usuario) setValues({
-          nombreUsuario: usuario.nombreUsuario,
-          contrasena: "",
-          roles: usuario.roles,
-          activo: usuario.activo,
-        });
+        setRoles(rolesDisponibles);
+        if (usuario) {
+          const codigosAsignables = new Set(rolesDisponibles.map((rol) => rol.codigo));
+          const noAsignables = usuario.roles.filter((codigo) => !codigosAsignables.has(codigo));
+
+          setRolesConservados(noAsignables);
+          setEdicionBloqueada(noAsignables.some((codigo) => codigo !== "PROFESOR"));
+          setValues({
+            nombreUsuario: usuario.nombreUsuario,
+            contrasena: "",
+            roles: usuario.roles,
+            activo: usuario.activo,
+          });
+        }
       })
       .catch(() => toast.error("No se pudieron cargar los datos del usuario."))
       .finally(() => setLoading(false));
@@ -66,6 +74,18 @@ const UsuariosFormulario = () => {
   };
 
   if (loading) return <div className="text-center py-4">Cargando datos...</div>;
+
+  if (edicionBloqueada) return (
+    <div className="page-container">
+      <h1 className="page-title">Editar usuario</h1>
+      <div role="alert" className="page-card p-4">
+        No tenés autorización para modificar los roles actuales de este usuario.
+      </div>
+      <Boton type="button" onClick={() => navigate("/usuarios")} className="page-button-secondary">
+        Volver
+      </Boton>
+    </div>
+  );
 
   return (
     <div className="page-container">
@@ -90,9 +110,15 @@ const UsuariosFormulario = () => {
                 <legend className="font-semibold">Roles</legend>
                 <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3">
                   {roles.map((rol) => (
-                    <label key={rol.id} className="flex items-center gap-2">
+                    <label key={rol.codigo} className="flex items-center gap-2">
                       <Field type="checkbox" name="roles" value={rol.codigo} />
                       <span>{rol.nombre} <small>({rol.codigo})</small></span>
+                    </label>
+                  ))}
+                  {rolesConservados.map((codigo) => (
+                    <label key={codigo} className="flex items-center gap-2 text-slate-500">
+                      <input type="checkbox" checked disabled readOnly />
+                      <span>{codigo} <small>(conservado, no asignable)</small></span>
                     </label>
                   ))}
                 </div>
