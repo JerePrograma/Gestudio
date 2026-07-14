@@ -3,8 +3,9 @@
 ## Seguridad
 
 - Sólo login, refresh y preflight son públicos.
-- Perfil propio requiere autenticación; todo otro `/api/**` requiere
-  `ROLE_ADMINISTRADOR`.
+- Perfil propio requiere autenticación; toda ruta operativa requiere
+  `PERM_APP_ACCESO` más su permiso funcional explícito y cualquier `/api/**`
+  desconocida queda en `denyAll`.
 - Access y refresh no son intercambiables; usuario/rol inactivo invalida el JWT.
 - 401, 403, validación, conflicto, 404 y 500 comparten el contrato `ApiErrorResponse`.
 

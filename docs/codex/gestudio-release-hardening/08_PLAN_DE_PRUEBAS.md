@@ -1,6 +1,6 @@
 # Plan de pruebas
 
-Estado documental: `VALIDADO` para herramientas, suites y resultados del baseline; `NO_VERIFICADO` para los casos futuros que todavía no fueron implementados o ejecutados. La única tarea global `IN_PROGRESS` sigue siendo `E1-001`.
+Estado documental: `GATE-1 LOCAL VALIDADO / INTEGRACIÓN REMOTA PENDIENTE`. Las pruebas de Partes B, C y D permanecen `NO_VERIFICADO` y no se ejecutan antes de sus merges precedentes.
 
 Referencias: [tablero](./00_INDEX.md), [baseline](./01_BASELINE_Y_HALLAZGOS.md), [matriz RBAC](./02_MATRIZ_RBAC.md), [Etapa 1](./03_ETAPA_1_SEGURIDAD_RBAC.md), [Etapa 1B](./04_ETAPA_1B_LIQUIDACION_FINANCIERA.md), [Etapa 2](./05_ETAPA_2_UX_OPERATIVA.md), [bitácora](./09_BITACORA_IMPLEMENTACION.md), [decisiones](./10_DECISIONES_Y_BLOQUEOS.md) y [checklist de release](./11_CHECKLIST_RELEASE.md).
 
@@ -17,7 +17,7 @@ Este plan convierte cada gate en pruebas reproducibles. No sustituye los criteri
 - Los datos destructivos se prueban sólo en contenedores o bases descartables; nunca en `localhost:5432` ni sobre datos reales.
 - No se corrige una prueba para esconder un defecto. Toda falla se clasifica antes de avanzar.
 
-## Baseline ejecutado
+## Baseline histórico ejecutado
 
 | Alcance | Comando | Resultado registrado | Estado |
 |---|---|---|---|
@@ -27,7 +27,20 @@ Este plan convierte cada gate en pruebas reproducibles. No sustituye los criteri
 | Validación `All` | frontend + backend + `docker compose config --quiet` | no ejecutada en el baseline documentado | `NO_VERIFICADO` |
 | Smoke aislado | `scripts/smoke-local.ps1` | no ejecutado en esta etapa | `NO_VERIFICADO` |
 
-Los tres fallos frontend están detallados en [01_BASELINE_Y_HALLAZGOS.md](./01_BASELINE_Y_HALLAZGOS.md#validación-inicial) y pertenecen a `E2-010`: uno por DOM responsive desktop/mobile y dos por formato monetario `$ 100.50` frente a `$ 100,50`.
+Los tres fallos frontend históricos están detallados en [01_BASELINE_Y_HALLAZGOS.md](./01_BASELINE_Y_HALLAZGOS.md#validación-inicial). Ya no se reproducen en la suite actual 140/140.
+
+## Resultados GATE-1 — 2026-07-14
+
+| Alcance | Comando | Resultado | Estado |
+|---|---|---|---|
+| Focalizado RBAC/PostgreSQL | `mvnw.cmd -Dtest=... test` | 51/51 | `PASS` |
+| Backend | `validate.ps1 -Scope Backend` | 129/129; 0 fallos/errores/skips | `PASS` |
+| Frontend | `validate.ps1 -Scope Frontend` | lint; 21 archivos/140 tests; build 2337 módulos | `PASS` |
+| Integrado | `validate.ps1 -Scope All` | backend, frontend y Compose | `PASS` |
+| Smoke canónico | `scripts/smoke-local.ps1` | 20/20; base limpia V1–V6; imágenes reconstruidas; limpieza completa; 00:03:20 | `PASS` |
+| Compose aislado | `docker compose config --quiet` | exit 0 | `PASS` |
+
+La primera corrida completa del smoke terminó `FAIL` en registro de usuario porque `AuditService` clasificó el valor legítimo `SECRETARIA` como secreto. Se agregó una regresión PostgreSQL, se ajustó la detección por delimitadores y se repitieron backend, All y smoke hasta obtener exit 0. El fallo no se reclasificó como aceptable.
 
 ## Trazabilidad mínima por riesgo
 
@@ -186,11 +199,11 @@ Docker Engine debe estar disponible. Un fallo `Could not find a valid Docker env
 
 ### Etapa 1
 
-- Mantener V1–V5 sin cambios.
-- Aplicar toda la cadena, incluida la migración RBAC siguiente aprobada, sobre una base vacía.
-- Crear otra base, migrar con `target("5")`, insertar casos representativos permitidos por V5 y migrar a latest.
-- Verificar checksum/orden, catálogo completo, roles únicos, asignaciones determinísticas, preservación de usuarios/roles existentes y cero dependencia del seed demo.
-- Actualizar los asserts que hoy esperan cero permisos; no debilitar los asserts estructurales de V5.
+- V1–V5 se mantuvieron sin cambios.
+- Una base limpia migró a V6 y JPA validó el esquema.
+- Otra base migró con `target("5")`, recibió casos representativos permitidos por V5 y actualizó a V6.
+- Se verificaron checksum/orden, catálogo completo, matrices determinísticas, IDs, usuarios, roles personalizados, `usuario_roles`, datos de negocio y actualización selectiva de `auth_version`.
+- Los asserts de catálogo/matriz se actualizaron sin debilitar los contratos estructurales de V5 ni depender del seed demo.
 
 ### Etapa 1B y posteriores
 
@@ -238,13 +251,13 @@ No hay un E2E de navegador por rol validado en el baseline. En Etapa 4 se reutil
 | DIRECCION | configuración, negocio y reportes según matriz aprobada | acción de seguridad no delegada, si corresponde |
 | SECRETARIA | alumno → inscripción → cargo → pago → recibo → caja; asistencia operativa | anular pago o administrar seguridad por defecto |
 | CAJA | buscar alumno, registrar pago y consultar caja | editar configuración o anular pago por defecto |
-| PROFESOR | disciplinas/alumnos/asistencias propias | finanzas y recurso de otro profesor |
+| PROFESOR | rol inactivo, cero permisos, no asignable y sin rutas | cualquier acceso operativo |
 
-Profesor sólo entra al E2E si `E1-006` prueba ownership; de lo contrario se prueba que el rol no está habilitado.
+Profesor no entra a un recorrido permitido en esta release: se prueba que el rol permanece deshabilitado. Un E2E de ownership con dos profesores es condición de una release futura.
 
 ## Smoke local aislado
 
-`scripts/smoke-local.ps1` crea proyecto Compose, puertos y secretos efímeros, migra, hace bootstrap, prueba HTTP/SQL y elimina contenedores, volúmenes y redes. En el baseline todavía espera V1–V5 y debe actualizarse en `E1-010` después de la migración aprobada; mientras conserve esos asserts no prueba el catálogo nuevo.
+`scripts/smoke-local.ps1` crea proyecto Compose, puertos y secretos efímeros, migra V1–V6, hace bootstrap, prueba HTTP/SQL y elimina contenedores, volúmenes y redes. Valida 32 permisos, matrices exactas, actores negativos y ausencia de dependencia del seed demo.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke-local.ps1
@@ -256,7 +269,7 @@ Diagnóstico consciente, sólo si hace falta conservar el stack efímero:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke-local.ps1 -KeepStack -VerboseHttp
 ```
 
-El smoke de GATE-1 debe demostrar: migración limpia, SUPERADMIN/catálogo operativo, login, perfil, primer GET, 401/403/409, integridad básica y cero seed demo. El smoke de release agrega el recorrido financiero/operativo y persistencia tras reinicio.
+El smoke de GATE-1 demostró migración limpia, SUPERADMIN/catálogo operativo, login, perfil, primer GET, 401/403/409, integridad básica, persistencia tras reinicio y cero seed demo. El smoke de release deberá ampliarse nuevamente al integrar Partes B, C y D.
 
 ## Checklist responsive y accesibilidad
 
@@ -308,4 +321,4 @@ Por cada tarea terminada registrar:
 6. decisión o bloqueo asociado;
 7. riesgo residual y próxima única tarea.
 
-Un gate queda abierto si falta cualquiera de sus pruebas obligatorias, aunque los tests focalizados estén verdes.
+GATE-1 está cerrado localmente porque todas sus pruebas obligatorias terminaron en exit 0. Permanece abierto para integración hasta que el PR tenga checks remotos verdes y el merge a `main` esté confirmado.

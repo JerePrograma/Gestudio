@@ -42,8 +42,8 @@ No hay componente Python requerido.
 La configuración común vive en `backend/src/main/resources/application.yml`. No existe un perfil predeterminado: fuera de Compose, el script local o el IDE deben declarar `SPRING_PROFILES_ACTIVE=dev`. Los perfiles no contienen secretos reales.
 
 Flyway aplica V1 como baseline canónica y luego las migraciones forward-only
-V2–V5. V5 crea el catálogo RBAC y backfillea `usuario_roles` desde
-`usuarios.rol_id`. El historial retirado V1-V060 no forma parte del runtime ni
+V2–V6. V5 crea las estructuras RBAC y backfillea `usuario_roles` desde
+`usuarios.rol_id`; V6 incorpora el catálogo y las matrices productivas. El historial retirado V1-V060 no forma parte del runtime ni
 constituye una ruta de upgrade soportada.
 
 Los scripts no importan `.env`. Para ejecutar Maven/Vite con puertos distintos, exportá las variables en la misma terminal; las rutas con espacios se asignan como strings normales de PowerShell:
@@ -131,8 +131,8 @@ perfil `dev`; no convierte el bootstrap en reconciliador.
 
 ## Contrato RBAC
 
-- Login, refresh y perfil devuelven `roles[]` y `permisos[]` sin prefijos.
-- Spring genera `ROLE_` y `PERM_` sólo al construir authorities.
+- Login, refresh y perfil devuelven `roles[]` sin `ROLE_` y `permisos[]` con sus códigos persistidos `PERM_*`.
+- Spring agrega `ROLE_` sólo a las authorities de rol; las authorities de permiso conservan el código persistido sin modificación.
 - Roles y permisos inactivos no autorizan.
 - Los JWT no copian authorities; contienen identidad y `auth_version`.
 - El refresh token no aparece en JSON: se rota en una cookie HttpOnly.

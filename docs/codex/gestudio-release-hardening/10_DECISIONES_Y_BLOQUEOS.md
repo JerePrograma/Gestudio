@@ -1,8 +1,8 @@
 # Decisiones y bloqueos
 
-Última revisión: 2026-07-11 (America/Argentina/Buenos_Aires).
+Última revisión: 2026-07-14 (America/Argentina/Buenos_Aires).
 
-`VALIDADO`: el baseline de este work es `407e1cbcc277b4b6c385cddface2862259e87036`, alineado con `origin/main` y con árbol limpio al inicio. La consigna del 2026-07-11 autorizó únicamente el primer bloque real sobre el contrato actual de Usuarios/Roles; no aprobó la matriz propuesta, una migración ni una mutación externa. La única tarea `IN_PROGRESS` sigue siendo `E1-001`.
+`VALIDADO`: este work partió de `feat/rbac-production-hardening` en `f6493a3b1b7988a626c0742fe88ce75c2f1c4ee5`, derivada de `fix/ci-frontend-baseline`, con árbol limpio y `origin/main` en `644e044b26438516ea093513ca5651ce72fb3fb3`. La consigna del 2026-07-14 resolvió RBAC, ownership, WebSocket, Observaciones y liquidación. GATE-1 está cerrado localmente; commits, PR/checks y merge remotos siguen pendientes. Las etapas siguientes continúan condicionadas al merge verde de cada PR anterior.
 
 Una recomendación o un fallback seguro no equivale a aprobación. `PENDING` significa que no existe decisión confirmada; `TOMADA` sólo se usa cuando la consigna, el repositorio y la evidencia ya fijan el contrato.
 
@@ -10,12 +10,12 @@ Una recomendación o un fallback seguro no equivale a aprobación. `PENDING` sig
 
 | ID | Estado | Confirmación | Efecto inmediato |
 |---|---|---|---|
-| `DEC-RBAC-001` | `PENDING`; subconjunto actual validado | Sí | Usuarios/Roles pueden usar los permisos actuales ya definidos; `BLK-001` sigue bloqueando `E1-002` y la matriz comercial. |
-| `DEC-DB-001` | `TOMADA` / `VALIDADO` | No, salvo excepción | V1-V5 no se reescriben; el próximo cambio aprobado es forward-only. |
-| `DEC-OWNERSHIP-001` | `PENDING` / `NO_VERIFICADO` | Sí | `PROFESOR` permanece inhabilitado; no bloquea el resto de Etapa 1. |
-| `DEC-WS-001` | `PENDING` | Sí | Debe resolverse antes de `E1-009`/GATE-1; no bloquea `E1-002`. |
-| `DEC-PRICING-001` | `PENDING` / etapa no autorizada | Sí, después de GATE-1 | No se modifica cálculo financiero ni se inicia Etapa 1B. |
-| `DEC-OBS-001` | `PENDING` / `DEFERRED` | Sí para incluir la función | Observaciones queda fuera de la release mientras no exista permiso y ownership aprobados. |
+| `DEC-RBAC-001` | `TOMADA` | No | Catálogo cerrado de 32 permisos y matrices base exactas; `BLK-001` queda cerrado. |
+| `DEC-DB-001` | `TOMADA` / `VALIDADO` | No, salvo excepción | V1–V5 permanecen inmutables; V6 RBAC es forward-only y una corrección futura exige otra migración. |
+| `DEC-OWNERSHIP-001` | `TOMADA` / `DEFERRED` | No | `PROFESOR` queda inactivo, sin permisos, sin UI y no asignable hasta demostrar ownership cruzado. |
+| `DEC-WS-001` | `TOMADA` | No | STOMP se deshabilita; la primera release usa REST/email. |
+| `DEC-PRICING-001` | `TOMADA`; ejecución condicionada | No | Contrato financiero cerrado; Etapa 1B sólo comienza desde `main` después del merge RBAC verde. |
+| `DEC-OBS-001` | `TOMADA` / `DEFERRED` | No para excluir | Observaciones queda sin superficie activa y sus datos históricos se conservan. |
 | `DEC-ENV-001` | local `TOMADA`; externo `PENDING` | Sí para staging/producción | Setup sin Docker automático; staging y producción siguen sin autorización. |
 | `DEC-RELEASE-001` | `TOMADA`: `NO-GO` | Sí para cambiar a `GO` | No se publica ni se muta un ambiente externo. |
 
@@ -30,10 +30,10 @@ Una recomendación o un fallback seguro no equivale a aprobación. `PENDING` sig
   2. persistir mediante la siguiente migración forward-only el catálogo real más los 17 permisos mínimos propuestos y una matriz determinística para `SUPERADMIN`, `DIRECCION`, `SECRETARIA`, `CAJA` y `PROFESOR`;
   3. otorgar permisos amplios a todos los roles para evitar denegaciones.
 - **Recomendación:** opción 2. Mantener los 15 códigos actuales, sumar sólo los 17 permisos funcionales documentados, conservar `ADMINISTRADOR` como compatibilidad sin renombrarlo ni borrarlo automáticamente, y aplicar estas restricciones: `DIRECCION` con usuarios y auditoría pero sin administración de roles por defecto; `CAJA` sin egresos por defecto; venta de stock de Caja/Secretaría sólo si se confirma; `PROFESOR` sólo con alcance propio después de `DEC-OWNERSHIP-001`; Observaciones sin permiso inventado y fuera de alcance según `DEC-OBS-001`.
-- **Decisión tomada / estado:** `PENDING` para la matriz base. La consigna del 2026-07-11 sí autorizó el subconjunto que conserva los códigos actuales `PERM_USUARIOS_ADMIN` y `PERM_ROLES_ADMIN`, mantiene `ADMINISTRADOR` sin mutación y no agrega roles ni asignaciones. No hay aprobación de la transición de `ADMINISTRADOR`, del alcance de seguridad de `DIRECCION`, de egresos/venta de stock para `CAJA`/`SECRETARIA` ni de la habilitación de `PROFESOR`. `E1-001` permanece `IN_PROGRESS` y [BLK-001](#blk-001--falta-de-autoridad-para-la-matriz-rbac) impide iniciar `E1-002`.
-- **Consecuencias:** se permiten correcciones y pruebas que alineen frontend/backend con los 15 códigos ya existentes sin cambiar autoridad persistida. No crear V6, permisos, roles, asignaciones, bootstrap o matchers de la matriz propuesta hasta confirmar o corregirla. Una aprobación habilita cerrar `E1-001`, marcar sólo `E1-002` como `IN_PROGRESS`, sembrar/reconciliar de forma determinística y probar base limpia + upgrade desde V5.
-- **Fecha:** 2026-07-11 (alcance parcial); propuesta general pendiente desde 2026-07-10.
-- **Requiere confirmación:** **Sí**, explícita del usuario; silencio o aprobación de este documento no cuentan.
+- **Decisión tomada / estado:** `TOMADA`. Se conservan los 15 códigos actuales y se agregan exactamente los 17 aprobados, para un total de 32. `SUPERADMIN` recibe 32; `DIRECCION` y el legacy `ADMINISTRADOR` reciben los mismos 31, todos salvo `PERM_ROLES_ADMIN`; `SECRETARIA` recibe exactamente 17; `CAJA`, exactamente 8; `PROFESOR` queda inactivo y sin permisos. No hay bypass por rol, transformación automática de usuarios ni permisos fuera del catálogo.
+- **Consecuencias:** V6 puede reconciliar exclusivamente roles base y permisos canónicos por código, preservando IDs, usuarios, roles personalizados y asignaciones no canónicas. Backend y frontend deben exigir `PERM_APP_ACCESO` junto con el permiso funcional y negar cualquier `/api/**` no inventariada.
+- **Fecha:** 2026-07-14.
+- **Requiere confirmación:** **No**; contrato aprobado por la consigna del 2026-07-14.
 
 ### DEC-DB-001 — Cadena Flyway activa y dirección V6
 
@@ -52,10 +52,10 @@ Una recomendación o un fallback seguro no equivale a aprobación. `PENDING` sig
 - **Contexto:** V1 y `Profesor.java` modelan una relación uno-a-uno opcional `profesores.usuario_id -> usuarios.id`, y las disciplinas referencian profesor. Sin embargo, los controladores y servicios de profesores, disciplinas, alumnos y asistencias aceptan IDs del request y no derivan el profesor desde el principal autenticado. No hay prueba de dos profesores con acceso cruzado denegado.
 - **Opciones:** acceso global para `PROFESOR`; ownership backend derivado de `principal.id -> profesores.usuario_id -> disciplinas -> inscripciones/asistencias`; o mantener el rol sin habilitar.
 - **Recomendación:** si el rol se ofrece, usar la relación persistida como raíz de ownership, filtrar consultas en repositorio/servicio y negar IDs ajenos; Dirección/Secretaría conservan el alcance global que apruebe `DEC-RBAC-001`. Si alguna relación o regla de alumnos compartidos no puede expresarse y probarse, mantener `PROFESOR` inactivo.
-- **Decisión tomada / estado:** `PENDING` / `NO_VERIFICADO`. El fallback seguro vigente es no habilitar el rol. Esto bloquea únicamente su habilitación, no `E1-002` ni el resto de Etapa 1.
-- **Consecuencias:** `E1-006` debe caracterizar usuario-profesor, disciplinas, alumnos y asistencia; agregar pruebas con dos profesores y acceso directo/API cruzado. No se concede acceso global para evitar implementar ownership.
-- **Fecha:** 2026-07-10.
-- **Requiere confirmación:** **Sí**, sobre el alcance funcional; la implementación además debe quedar demostrada por tests antes de habilitar el rol.
+- **Decisión tomada / estado:** `TOMADA` / `DEFERRED`. Primera release: rol presente, `activo=false`, sin permisos operativos, no asignable desde UI y sin rutas visibles.
+- **Consecuencias:** no se concede acceso global. Sólo podrá habilitarse después de probar `principal -> usuario -> profesor -> disciplinas -> alumnos/asistencias` con dos profesores y acceso cruzado denegado.
+- **Fecha:** 2026-07-14.
+- **Requiere confirmación:** **No** para mantenerlo deshabilitado; habilitarlo exige nueva evidencia y decisión.
 
 ### DEC-WS-001 — WebSocket y notificaciones de la primera release
 
@@ -63,10 +63,10 @@ Una recomendación o un fallback seguro no equivale a aprobación. `PENDING` sig
 - **Contexto:** `WebSocketConfig` habilita STOMP/SockJS con origen `*`; el backend publica a `/topic/notificaciones`, el controller de marcar leída es un placeholder y no hay autenticación/autorización por handshake, destino o usuario. El hook frontend fija `ws://localhost:8080/ws` y no tiene consumidores productivos observados. La UI activa obtiene cumpleaños por REST, por lo que no depende de ese hook.
 - **Opciones:** deshabilitar/ocultar completamente el canal STOMP para la primera release; o conservarlo con URL por entorno/protocolo, origins explícitos, handshake autenticado, autorización por destino y aislamiento por usuario.
 - **Recomendación:** deshabilitar STOMP para la primera release y conservar el flujo REST existente. Sólo elegir la segunda opción si existe una necesidad comercial confirmada y se implementa el contrato completo.
-- **Decisión tomada / estado:** `PENDING`; no hay aprobación para retirar ni para terminar tiempo real. El estado actual no es publicable y no se acepta como opción intermedia.
-- **Consecuencias:** `E1-009` y GATE-1 no cierran hasta elegir, implementar y probar una opción. La decisión no bloquea `E1-002` y no autoriza agregar infraestructura.
-- **Fecha:** 2026-07-10.
-- **Requiere confirmación:** **Sí**, antes de ejecutar `E1-009`.
+- **Decisión tomada / estado:** `TOMADA`: STOMP queda deshabilitado en la primera release; notificaciones se limitan a REST/email.
+- **Consecuencias:** se retiran el endpoint productivo, handshake anónimo/origin `*`, publicación STOMP y caller frontend sin uso. No se agrega infraestructura alternativa.
+- **Fecha:** 2026-07-14.
+- **Requiere confirmación:** **No** para deshabilitarlo; reintroducir tiempo real requiere un contrato de seguridad nuevo.
 
 ### DEC-PRICING-001 — Contrato de liquidación por vigencia
 
@@ -87,10 +87,10 @@ Una recomendación o un fallback seguro no equivale a aprobación. `PENDING` sig
   | Varias disciplinas en matrícula | máximo / suma / una por disciplina / política institucional | requiere definición institucional; el máximo actual no prueba intención |
 
 - **Recomendación:** aprobar o corregir el conjunto completo como un solo contrato antes de código; no aceptar fallbacks parciales.
-- **Decisión tomada / estado:** `PENDING`. Etapa 1B y `E1B-001` no están autorizadas; no se tomó ninguna decisión de importe, prioridad, fecha ni matrícula multidisciplina.
-- **Consecuencias:** no cambiar `MensualidadServicio`, `MatriculaServicio`, campos legacy ni snapshots. Después de GATE-1 se requiere primero autorización de Etapa 1B, caracterización ejecutable y confirmación de esta decisión; recién entonces puede existir una única ruta transaccional de cálculo.
-- **Fecha:** 2026-07-10.
-- **Requiere confirmación:** **Sí**, explícita y posterior a GATE-1.
+- **Decisión tomada / estado:** `TOMADA`. Fecha efectiva de mensualidad: primer día del `YearMonth`; matrícula: 1 de enero; sin tarifa: rechazo; prioridad: costo particular efectivo no nulo y, si no, tarifa efectiva; bonificación: snapshots de condición efectiva; historia: última fila `vigenteDesde <= fecha`; legacy: sólo compatibilidad física; `formula_version=1`; matrícula multidisciplina: máximo importe efectivo entre disciplinas activas.
+- **Consecuencias:** la implementación se difiere hasta que RBAC esté integrado y `feat/financial-integrity-v1` nazca del `main` actualizado. Debe comenzar con caracterización y mantener cargo más `cargo_liquidaciones` atómicos, idempotentes y probados en PostgreSQL.
+- **Fecha:** 2026-07-14.
+- **Requiere confirmación:** **No** para el contrato; el gate de rama/merge sigue siendo obligatorio.
 
 ### DEC-OBS-001 — Alcance de Observaciones de profesores
 
@@ -98,10 +98,10 @@ Una recomendación o un fallback seguro no equivale a aprobación. `PENDING` sig
 - **Contexto:** existen tabla, entidad, controller, servicio, API y componente frontend, pero no hay ruta productiva ni permiso/ownership dedicado. El controller permite altas, bajas y lecturas globales bajo el fallback general; la API frontend ofrece un `PUT` que el controller no publica. Integrar sólo la pantalla expondría notas potencialmente privadas con un contrato incompleto.
 - **Opciones:** completar ruta, permiso, ownership, contratos y tests; excluir/deshabilitar la función en la primera release; o eliminar datos/código.
 - **Recomendación:** excluirla de la primera release y negar/ocultar su superficie hasta que exista necesidad comercial. No inventar un permiso ni borrar datos/código durante Etapa 1; `E4-003` puede reabrir la decisión.
-- **Decisión tomada / estado:** `PENDING` / `DEFERRED`. No existe aprobación para ofrecer Observaciones; la matriz RBAC la deja fuera y no crea un código de permiso.
-- **Consecuencias:** ningún menú o recorrido comercial debe prometerla. La protección de Etapa 1 no puede considerar autorizado el endpoint por el solo `PERM_APP_ACCESO`; para incluirla se exige ownership propio/global explícito y tests 401/403/permitido.
-- **Fecha:** 2026-07-10.
-- **Requiere confirmación:** **Sí** para incluirla en la release; mientras no exista, aplica la exclusión segura.
+- **Decisión tomada / estado:** `TOMADA` / `DEFERRED`. Observaciones queda fuera de alcance y sin superficie activa.
+- **Consecuencias:** se niegan endpoints, rutas y botones; se retira el caller frontend muerto y se conservan tabla, entidad y datos históricos. Incluirla luego exige permiso y ownership explícitos con pruebas.
+- **Fecha:** 2026-07-14.
+- **Requiere confirmación:** **No** para excluirla; **sí** para reactivarla.
 
 ### DEC-ENV-001 — Contrato de entorno y mutaciones externas
 
@@ -117,7 +117,7 @@ Una recomendación o un fallback seguro no equivale a aprobación. `PENDING` sig
 ### DEC-RELEASE-001 — Estado de salida
 
 - **ID:** `DEC-RELEASE-001`.
-- **Contexto:** GATE-1 sigue abierto, Etapas 1B-4 no están autorizadas, la suite frontend completa está roja y no existe evidencia de smoke limpio, demo por rol, backup/restore ni rollback.
+- **Contexto:** GATE-1 está verde localmente, pero faltan PR/checks/merge. Partes B, C y D no comenzaron y no existe evidencia de staging, recorridos finales por rol, backup/restore ni rollback.
 - **Opciones:** declarar `GO`; aceptar un `GO` condicionado sin cerrar gates; o conservar `NO-GO` hasta evidencia y autoridad completas.
 - **Recomendación:** conservar `NO-GO`.
 - **Decisión tomada / estado:** `TOMADA`: demo interna, demo comercial, staging y producción están en `NO-GO`; son cuatro decisiones distintas y secuenciales.
@@ -127,25 +127,20 @@ Una recomendación o un fallback seguro no equivale a aprobación. `PENDING` sig
 
 ## Bloqueos
 
-### BLK-001 — Falta de autoridad para la matriz RBAC
+### BLK-001 — Falta de autoridad para la matriz RBAC — CERRADO
 
 - **ID:** `BLK-001`.
-- **Síntoma:** `E1-001` no puede cerrarse y `E1-002` no puede comenzar; una base limpia continúa sin catálogo operativo determinístico.
-- **Causa:** `DEC-RBAC-001` define una propuesta que cambia autoridad persistida, pero el usuario aún no confirmó la matriz ni sus puntos sensibles.
-- **Intentos seguros / evidencia:** se inventariaron permisos usados/sembrados, matchers, rutas, guards, roles y huecos; V5, schema tests, bootstrap y seed demo fueron leídos. El subconjunto autorizado corrigió Usuarios/Roles, `/unauthorized` y el prefijo reservado `ROLE_`; sus suites focalizadas terminaron frontend 8/8 y backend 29/29. No se creó migración, permiso, rol ni asignación.
-- **Autoridad o dato necesario:** respuesta explícita que apruebe o corrija `DEC-RBAC-001`, incluyendo `ADMINISTRADOR`, seguridad de `DIRECCION`, egresos/venta de stock y la condición de habilitación de `PROFESOR`.
-- **Tarea afectada:** bloquea `E1-002`; mantiene `E1-001` como única tarea `IN_PROGRESS`.
-- **Condición de cierre:** registrar la respuesta en esta decisión y en la bitácora, actualizar primero [02_MATRIZ_RBAC.md](./02_MATRIZ_RBAC.md) si hubo correcciones, cerrar `E1-001` y recién entonces marcar sólo `E1-002` como `IN_PROGRESS`.
+- **Cierre:** la consigna del 2026-07-14 aprobó catálogo, matrices, compatibilidad de `ADMINISTRADOR`, límites de `DIRECCION`/`SECRETARIA`/`CAJA` y deshabilitación de `PROFESOR`.
+- **Evidencia:** contrato exacto registrado en `DEC-RBAC-001`; la implementación y las pruebas de V6 quedan sujetas al gate técnico, no a otra decisión funcional.
+- **Fecha de cierre:** 2026-07-14.
 
-### BLK-002 — Suite frontend completa roja
+### BLK-002 — Suite frontend completa roja — CERRADO
 
 - **ID:** `BLK-002`.
-- **Síntoma:** `npm test` terminó 33/36 en el baseline y 36/39 después de agregar tres pruebas RBAC verdes; GATE-2 y la salida de release no pueden considerarse verdes.
+- **Síntoma histórico:** `npm test` terminó 33/36 en el baseline y 36/39 después de agregar tres pruebas RBAC verdes.
 - **Causa:** una expectativa singular de Alumnos no contempla las representaciones desktop/mobile simultáneas del DOM y dos expectativas de Pagos usan `$ 100.50` en vez del formatter real `$ 100,50`. Son fallos preexistentes clasificados, no introducidos por este bloque RBAC.
-- **Intentos seguros / evidencia:** se ejecutó la validación Frontend; lint y build pasaron, se aislaron los tres casos y no se debilitaron las pruebas.
-- **Autoridad o dato necesario:** no falta información para reproducirlos; su corrección pertenece a `E2-010` y requiere respetar la secuencia/autorización de Etapa 2.
-- **Tarea afectada:** `E2-010`, GATE-2, demo y release; no bloquea la tarea actual `E1-001`.
-- **Condición de cierre:** corregir queries/expectativas conservando intención, ejecutar `npm test`, `npm run lint`, `npm run build` y registrar resultados completos verdes.
+- **Cierre / evidencia:** la suite actual terminó 21 archivos/140 tests, lint y build en exit 0 el 2026-07-14; las expectativas se corrigieron conservando intención.
+- **Efecto:** deja de bloquear GATE-1. Parte C sigue pendiente por alcance funcional, no por una suite roja.
 
 ### BLK-003 — Ambiente externo y operación de release no definidos
 
@@ -159,4 +154,4 @@ Una recomendación o un fallback seguro no equivale a aprobación. `PENDING` sig
 
 ## Próxima acción única
 
-Solicitar confirmación o corrección de `DEC-RBAC-001`. El bloque actual Usuarios/Roles queda cerrado sin ampliar autoridad, pero no habilita `E1-002`, Etapa 1B ni ninguna decisión diferida. Al cambiar un estado, mantener exactamente una tarea `IN_PROGRESS` y sincronizar índice, matriz, bitácora y checklist.
+Crear commits temáticos y el PR reemplazante desde `feat/rbac-production-hardening`; cerrar #11 sólo después de que el nuevo PR exista y esperar checks remotos. No iniciar Etapa 1B hasta confirmar el merge verde a `main`.

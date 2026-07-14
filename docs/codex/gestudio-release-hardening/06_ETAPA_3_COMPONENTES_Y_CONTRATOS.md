@@ -30,8 +30,8 @@ Reducir duplicación comprobada después de Etapa 2 sin crear un framework propi
 ## Estado actual verificado
 
 - `VALIDADO`: ya existen utilidades/componentes útiles (`filterNavigationItems`, `formatMoney`, `getApiErrorMessage`, tabla responsive y estados comunes); deben reutilizarse.
-- `VALIDADO`: `PermissionCode` existe pero todavía no tipa consumidores. Los strings ad hoc observados en Usuarios/Roles fueron corregidos en el bloque RBAC del 2026-07-11; la convergencia tipada general sigue pendiente de esta etapa.
-- `VALIDADO`: las rutas y sus permisos viven en estructuras separadas; no existe test que pruebe el contrato completo.
+- `RESUELTO EN GATE-1`: `PermissionCode` tipa rutas, navegación, gates y auth; no quedan literales productivos `PERM_*` fuera del catálogo.
+- `RESUELTO EN GATE-1`: rutas y permisos tienen cobertura exhaustiva y un contrato frontend que falla ante divergencias; la suite vigente cubre 21 archivos y 140 tests.
 - `VALIDADO`: la tabla responsive duplica deliberadamente contenido desktop/mobile y un test usa una query singular incompatible con ese DOM.
 - `INFERIDO`: selectores y formateos restantes pueden estar duplicados, pero sólo E3-001 puede confirmarlos después de Etapa 2.
 - `NO_VERIFICADO`: no se midió aún duplicación post-Etapa 2 ni accesibilidad de los candidatos.

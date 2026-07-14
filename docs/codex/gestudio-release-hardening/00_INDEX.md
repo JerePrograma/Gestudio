@@ -1,29 +1,30 @@
 # Gestudio release hardening — tablero maestro
 
-Última actualización: 2026-07-10 (America/Argentina/Buenos_Aires).
+Última actualización: 2026-07-14 (America/Argentina/Buenos_Aires).
 
 ## Estado ejecutivo
 
 | Campo | Estado |
 |---|---|
-| Baseline Git | `VALIDADO`: `main` y `origin/main` en `b833f6741cf614c508666e8a121701e8db2fcf9a` |
+| Baseline Git | `VALIDADO`: rama fuente `fix/ci-frontend-baseline`, HEAD `f6493a3b`; `origin/main` `644e044b` |
 | Working tree inicial | `VALIDADO`: limpio, sin cambios staged ni unstaged |
 | Etapa actual | Etapa 1 — Seguridad y RBAC mínimo publicable |
-| Única tarea activa | `E1-001` — congelar contrato y matriz RBAC (`IN_PROGRESS`) |
+| Trabajo activo | GATE-1: cierre de PR RBAC en `feat/rbac-production-hardening` |
 | Último gate cerrado | `GATE-0` — baseline y documentación |
-| Gate actual | `GATE-1` — abierto |
-| Bloqueo de autoridad | `BLK-001`: confirmar `DEC-RBAC-001`, la matriz de roles/permisos |
-| Próximo paso exacto | Confirmar o corregir `DEC-RBAC-001`; luego ejecutar `E1-002` sin modificar V1–V5 |
+| Gate actual | `GATE-1` — validación local completa; publicación/checks/merge remotos pendientes |
+| Decisión RBAC | `DEC-RBAC-001 TOMADA`; `BLK-001 CERRADO` |
+| Próximo paso exacto | Crear commits temáticos, publicar el PR reemplazante, cerrar #11 como superseded y esperar checks remotos |
 
 ## Baseline de validación
 
 | Alcance | Comando | Resultado |
 |---|---|---|
-| Frontend | `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\validate.ps1 -Scope Frontend` | `CLASIFICADO`: lint `PASS`, tests `FAIL` con 33/36 y tres fallos preexistentes, build `PASS` |
-| Backend | `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\validate.ps1 -Scope Backend` | `PASS`: `clean verify`, 115/115 tests, PostgreSQL 15 vía Testcontainers, `BUILD SUCCESS` |
-| Git remoto | protocolo de la consigna, incluido `git fetch origin --prune` | `PASS`: HEAD = `origin/main` = commit auditado |
+| PR #11 / CI | checks del SHA `f6493a3b` | `validate PASS`, `build-images PASS`, `GitGuardian PASS`, `smoke FAIL` por Salones 403 |
+| Backend focalizado inicial | seis clases RBAC/PostgreSQL | `PASS`: 36/36, 0 fallos/errores/skips |
+| Smoke local inicial | `.\scripts\smoke-local.ps1` | `FAIL`: 6 PASS, 1 FAIL por reemplazo duplicado de cookie refresh en Windows |
+| Git remoto | protocolo completo con `git fetch --prune origin` | `PASS`: refs y árbol limpio coinciden con el baseline esperado |
 
-Los tres fallos frontend y su clasificación están detallados en [01_BASELINE_Y_HALLAZGOS.md](./01_BASELINE_Y_HALLAZGOS.md). No se considera verde la suite frontend.
+Estos resultados son el baseline histórico que motivó el cambio. El cierre local post-cambio está registrado en la [bitácora](./09_BITACORA_IMPLEMENTACION.md): backend 129/129, frontend 140/140, lint, build, Compose y smoke 20/20 terminaron en exit 0. GATE-1 no se considera integrado hasta que el PR reemplazante tenga checks remotos verdes y sea mergeado a `main`.
 
 ## Documentos fuente de verdad
 
@@ -44,11 +45,11 @@ Los tres fallos frontend y su clasificación están detallados en [01_BASELINE_Y
 | Etapa | Estado | Gate | Evidencia / condición siguiente |
 |---|---|---|---|
 | 0 — Baseline y documentación | `DONE` | `GATE-0 CERRADO` | 12 documentos cruzados; Git y validaciones clasificados; P0 con tareas/pruebas |
-| 1 — Seguridad y RBAC | `IN_PROGRESS` | `GATE-1 ABIERTO` | `E1-001` espera decisión de matriz antes de cambiar autoridad persistida |
-| 1B — Liquidación por vigencia | `PENDING` | no autorizado | Sólo después de GATE-1 y autorización explícita |
-| 2 — UX operativa | `PENDING` | no autorizado | Sólo después de GATE-1B y autorización explícita |
-| 3 — Componentes/contratos | `PENDING` | no autorizado | Sólo después de GATE-2 y autorización explícita |
-| 4 — Demo/publicación | `PENDING` | no autorizado | Sólo después de GATE-3 y autorización explícita |
+| 1 — Seguridad y RBAC | `LOCAL-VALIDATED` | `GATE-1 REMOTE-PENDING` | Implementación y evidencia local completas; faltan PR, checks y merge |
+| 1B — Liquidación por vigencia | `PENDING` | gate de merge RBAC | Autorizada funcionalmente, pero sólo desde `main` actualizado después del PR RBAC verde |
+| 2 — UX operativa | `PENDING` | gate de merge financiero | Sólo desde `main` actualizado después del PR financiero verde |
+| 3 — Componentes/contratos | `PENDING` | subordinada a UX | Sin refactor general; sólo contratos necesarios para la release |
+| 4 — Operación/publicación | `PENDING` | gate de merge UX | Preparación autorizada; despliegue externo sigue sin host, secretos ni autorización |
 
 ## Definición de estados
 
@@ -60,11 +61,11 @@ Los tres fallos frontend y su clasificación están detallados en [01_BASELINE_Y
 
 ## Reglas operativas vigentes
 
-- V1–V5 forman la cadena Flyway activa observada. V1 queda congelada y no se reescribe V5; el próximo cambio aprobado será forward-only.
+- V1–V5 permanecen byte-identical. V6 agrega el catálogo y las matrices RBAC de forma forward-only; una corrección futura requiere otra migración.
 - No se usa el seed demo como catálogo productivo.
 - No se habilita `PROFESOR` hasta probar ownership backend o dejarlo expresamente inactivo.
 - Sin token = 401; token válido sin permiso = 403; conflicto de negocio = 409.
-- No se avanza a Etapa 1B sin cerrar GATE-1 y obtener autorización explícita.
+- No se avanza a Etapa 1B sin merge verde de GATE-1 a `main`; las ramas siguientes siempre nacen del `main` actualizado.
 - Se preservan `.env.*.local`, backups y otros artefactos locales ignorados; no se leen ni se incluyen.
 
 ## GATE-0 — evidencia de cierre

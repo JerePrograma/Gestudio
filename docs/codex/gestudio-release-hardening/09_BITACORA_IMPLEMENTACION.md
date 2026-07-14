@@ -133,6 +133,54 @@ Zona horaria: America/Argentina/Buenos_Aires (`-03:00`). Las horas de esta prime
 - Documentación actualizada: `02_MATRIZ_RBAC.md`, `03_ETAPA_1_SEGURIDAD_RBAC.md`, `06_ETAPA_3_COMPONENTES_Y_CONTRATOS.md` por una única referencia que había quedado obsoleta, esta bitácora, `10_DECISIONES_Y_BLOQUEOS.md` y `11_CHECKLIST_RELEASE.md`.
 - Estado de etapa: `E1-001` permanece como única tarea `IN_PROGRESS`; `E1-002` y la matriz comercial continúan bloqueadas por `DEC-RBAC-001`. El cierre de este subconjunto no cierra GATE-1.
 
-## Próxima entrada requerida
+## 2026-07-14
 
-Registrar la respuesta a `DEC-RBAC-001`. Si se aprueba, cerrar `E1-001`, marcar únicamente `E1-002` como `IN_PROGRESS`, anotar archivos antes de editarlos y registrar cada comando/test. Si se rechaza o corrige, actualizar primero matriz y decisión; no crear V6 hasta entonces. En cualquier caso, repetir el backend amplio con Docker disponible antes de declarar el gate verde.
+### Baseline verificable de `feat/rbac-production-hardening`
+
+- Estado inicial: `fix/ci-frontend-baseline` limpio en `f6493a3b1b7988a626c0742fe88ce75c2f1c4ee5`; `origin/fix/ci-frontend-baseline` en el mismo SHA y `origin/main` en `644e044b26438516ea093513ca5651ce72fb3fb3`.
+- PR #11: abierto, draft y mergeable. Checks para `f6493a3b`: `validate PASS`, `build-images PASS`, `GitGuardian PASS`, `smoke FAIL` por `POST /api/salones`, esperado 201 y actual 403.
+- Comandos Git: `git fetch --prune origin`, `git status --short --branch`, `git branch --show-current`, `git rev-parse HEAD`, `git rev-parse origin/main`, `git rev-parse origin/fix/ci-frontend-baseline`, `git log --oneline --decorate -10`, `git diff --check`. Todos terminaron en exit 0 y el árbol estaba limpio.
+- Herramientas: Docker client/server 29.3.1 disponible; `JAVA_HOME` apunta a Corretto 21.0.7 y Maven Wrapper usa Java 21; Node 22.14.0; npm 10.9.2; GitHub CLI autenticado. El `java` global del `PATH` aún resuelve Java 8, por lo que las validaciones fijan explícitamente `JAVA_HOME\\bin` al comienzo del `PATH`.
+- Rama: `git pull --ff-only` terminó sin cambios y se creó `feat/rbac-production-hardening` desde `f6493a3b`; no se movió `main`.
+
+### Decisiones aprobadas y auditoría previa
+
+- `DEC-RBAC-001`, `DEC-OWNERSHIP-001`, `DEC-WS-001`, `DEC-PRICING-001` y `DEC-OBS-001` quedaron resueltas por la consigna del 2026-07-14. `BLK-001` queda cerrado.
+- Inventario backend: 29 familias REST, 143 mappings HTTP y un controller STOMP. Los 143 mappings quedaron clasificados; no hay `PATCH`. Se confirmaron fallback `/api/**` con sólo APP, matcher mensual huérfano, matcher de auditoría huérfano y denegaciones de servicio convertidas hoy en 409.
+- Inventario DB: V1-V5 son la cadena activa; sólo existen `ADMINISTRADOR` y `SUPERADMIN`, cero permisos productivos y cero matriz en una base limpia. V1-V5 se registraron antes de editar con blobs `ca908e2a`, `0dea6a69`, `6096175`, `2d7a74d` y `5168f43a`.
+- Inventario frontend: 15 permisos, 27 rutas autorizadas sólo con APP y gates de acciones limitados a Usuarios/Roles. STOMP está activo con origin `*`; Observaciones carece de ruta visible pero su API backend queda alcanzable por fallback.
+- Baseline backend focalizado: `./mvnw.cmd -Dtest=PostgreSqlSchemaValidationTest,SuperadminBootstrapPostgreSqlTest,SuperadminBootstrapRunnerTest,SecurityHttpIntegrationTest,UsuarioServicioTest,RolServicioTest test` terminó `BUILD SUCCESS`, 36/36 tests, 0 fallos/errores/skips.
+- Baseline smoke local: `powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\smoke-local.ps1` terminó exit 1, 6 verificaciones PASS y 1 FAIL. En Windows la sustitución de la cookie refresh agregó una cookie duplicada y el servidor siguió recibiendo la válida: el caso access-token-como-refresh esperaba 401 y obtuvo 200. El smoke remoto sí supera ese punto y reproduce el 403 de Salones.
+
+### Cierre local de implementación RBAC — `DONE_LOCAL`
+
+- V6: `V6__rbac_permission_catalog_and_base_roles.sql`, SHA-256 `12D766F5C66FD2DA8A7A59DA5534C068DE95F45A2FBE539EDDD135F19768B04A`; checksum Flyway runtime `735784832`.
+- V1–V5 permanecen byte-identical: blobs `ca908e2a`, `0dea6a69`, `6096175`, `2d7a74d` y `5168f43a`.
+- PostgreSQL: base limpia V1–V6 y upgrade V5→V6 preservaron IDs, usuarios, roles personalizados, `usuario_roles` y datos. Las sesiones afectadas incrementaron `auth_version`.
+- Catálogo/matrices: 32 permisos activos/sistema; SUPERADMIN 32, DIRECCION 31, ADMINISTRADOR 31, SECRETARIA 17, CAJA 8 y PROFESOR 0/inactivo/no asignable.
+- Backend: catálogo tipado, bootstrap fail-fast, `AccessDeniedException` para autoridad, conflictos de negocio en 409, 144/144 mappings con APP + permiso funcional y `/api/**` desconocido en `denyAll`.
+- Frontend: catálogo de 32, sesión/rutas/navegación/acciones alineadas; Profesor excluido; `/unauthorized` autenticada; STOMP y Observaciones sin superficie.
+- Canales: configuración/controller/publisher/hook/dependencias STOMP retirados; REST/email conservados; datos históricos de Observaciones no se borraron.
+- Seed demo: cero `PERM_*`, cero `SUPERADMIN` y ninguna matriz productiva; sólo datos ficticios y asignación a rol existente.
+
+### Validaciones y fallos observados
+
+| Alcance | Comando | Resultado final | Conteo |
+|---|---|---|---|
+| Focalizado RBAC/PostgreSQL | `.\mvnw.cmd "-Dtest=PostgreSqlSchemaValidationTest,SuperadminBootstrapPostgreSqlTest,SuperadminBootstrapRunnerTest,SecurityHttpIntegrationTest,UsuarioServicioTest,RolServicioTest,TarifaDisciplinaPostgreSqlTest,CondicionEconomicaPostgreSqlTest" test` | `PASS` | 51/51 |
+| Regresión auditoría | `.\mvnw.cmd "-Dtest=AuditServicePostgreSqlTest" test` | `PASS` | 7/7 |
+| Backend | `validate.ps1 -Scope Backend` | `PASS` | 129/129, 0 fallos/errores/skips |
+| Frontend | `validate.ps1 -Scope Frontend` | `PASS` | lint; 21 archivos/140 tests; build 2337 módulos |
+| Integrado | `validate.ps1 -Scope All` | `PASS` | backend 129; frontend 140; lint/build/Compose |
+| Smoke | `scripts/smoke-local.ps1` | `PASS`, 00:03:20 | 20/20; imágenes backend/frontend reconstruidas; limpieza completa |
+| Compose | `docker compose config --quiet` | `PASS` | exit 0 |
+
+- Primera validación Backend: 126 tests, 1 fallo introducido porque `CanonicalArchitectureContractTest` conservaba la lista V1–V5. Se actualizó a V1–V6 y se repitió verde.
+- Primera corrida completa del smoke: 1 fallo real en `POST /api/usuarios/registro`, status 400. El diagnóstico mostró `VALIDATION_ERROR: La auditoría no admite secretos`: `AuditService` trataba `SECRETARIA` como secreto por substring. Se cambió la detección de valores a marcadores delimitados, se agregó regresión PostgreSQL y se repitieron Backend, All y smoke hasta exit 0.
+- No hubo fallos aceptados, tests deshabilitados ni sustitución por H2.
+
+### Estado Git y remoto al cierre local
+
+- `HEAD` continúa en `f6493a3b` porque la implementación todavía no fue commiteada; no debe citarse como SHA final RBAC.
+- PR #11 continúa abierto/draft con el smoke remoto rojo del baseline. El PR reemplazante todavía no existe.
+- Próxima acción: revisar diff, crear commits temáticos, push de `feat/rbac-production-hardening`, crear PR draft, cerrar #11 como superseded sólo después y esperar checks remotos. Parte B no comienza antes del merge confirmado a `main`.

@@ -1,29 +1,37 @@
 # Matriz RBAC
 
-Estado: `PROPUESTA` / `E1-001 IN_PROGRESS`. Esta matriz describe el código observado y la opción mínima recomendada, pero no autoriza cambios. [DEC-RBAC-001](./10_DECISIONES_Y_BLOQUEOS.md#dec-rbac-001--matriz-base-de-roles-y-permisos) sigue `PENDING` y [BLK-001](./10_DECISIONES_Y_BLOQUEOS.md#blk-001--falta-de-autoridad-para-la-matriz-rbac) impide iniciar `E1-002`.
+Estado: `APROBADA` / implementación `VALIDADA LOCALMENTE`; integración remota `PENDING`. [DEC-RBAC-001](./10_DECISIONES_Y_BLOQUEOS.md#dec-rbac-001--matriz-base-de-roles-y-permisos) fue tomada el 2026-07-14 y `BLK-001` quedó cerrado. Este documento es el contrato exacto.
 
-Baseline histórico de código: `b833f6741cf614c508666e8a121701e8db2fcf9a`. Baseline del primer bloque de implementación: `407e1cbcc277b4b6c385cddface2862259e87036`, alineado con `origin/main` y con árbol limpio al inicio del 2026-07-11. Referencias: [baseline](./01_BASELINE_Y_HALLAZGOS.md), [Etapa 1](./03_ETAPA_1_SEGURIDAD_RBAC.md), [plan de pruebas](./08_PLAN_DE_PRUEBAS.md), [bitácora](./09_BITACORA_IMPLEMENTACION.md) y [checklist de release](./11_CHECKLIST_RELEASE.md).
+Baseline de implementación: `feat/rbac-production-hardening` creada desde `f6493a3b1b7988a626c0742fe88ce75c2f1c4ee5`, con `origin/main` en `644e044b26438516ea093513ca5651ce72fb3fb3` y árbol limpio al inicio del 2026-07-14. Referencias: [baseline](./01_BASELINE_Y_HALLAZGOS.md), [Etapa 1](./03_ETAPA_1_SEGURIDAD_RBAC.md), [plan de pruebas](./08_PLAN_DE_PRUEBAS.md), [bitácora](./09_BITACORA_IMPLEMENTACION.md) y [checklist de release](./11_CHECKLIST_RELEASE.md).
 
-Actualización acotada 2026-07-11: la consigna autorizó corregir el bloque Usuarios/Roles usando únicamente el catálogo actual. Se verificó que backend y frontend declaran los mismos 15 códigos; no se creó permiso, rol, seed ni migración. Quedaron alineadas las acciones de Usuarios/Roles, la página autenticada `/unauthorized`, el rechazo del prefijo técnico `ROLE_` en códigos de rol y la cobertura HTTP real de `/api/roles` y `/api/permisos`. La matriz base propuesta, `ADMINISTRADOR`, los roles comerciales y `E1-002` continúan pendientes de `DEC-RBAC-001`.
+Actualización 2026-07-14: se aprobaron los 15 códigos existentes más 17 nuevos, las seis matrices base y la compatibilidad de `ADMINISTRADOR`. `PROFESOR` queda presente pero inactivo, sin permisos y fuera de la UI. Toda ruta operativa exige APP más permiso funcional; cualquier `/api/**` no inventariada se deniega.
 
 ## Leyenda y contrato general
 
 - `ACTUAL`: el código existe y se usa en el `HEAD` auditado.
-- `PROPUESTA`: todavía no existe en código ni Flyway; requiere aprobación.
+- `APROBADO`: contrato funcional resuelto; no implica que la implementación ya haya pasado sus pruebas.
 - `PROPIO`: sólo recursos derivados en backend desde el usuario autenticado; nunca desde un ID confiado al cliente.
-- `✓`: asignación recomendada, todavía no aprobada.
-- `?`: punto que el usuario debe confirmar dentro de `DEC-RBAC-001`.
+- `✓`: asignación exacta aprobada.
 - `—`: el rol no recibe ese permiso.
 - Toda ruta operativa exige además `PERM_APP_ACCESO`; ese permiso abre la aplicación, pero no sustituye lectura, escritura ni ownership.
 - Sin token = 401; token válido sin autoridad = 403; conflicto real de negocio = 409.
 - Menú y guards frontend son presentación. El matcher/controller y, cuando corresponde, el servicio son la autoridad.
 - Los códigos persistidos de rol no pueden comenzar con `ROLE_`: Spring agrega ese prefijo al construir authorities y aceptarlo en la API produciría `ROLE_ROLE_*`.
 
-Clasificación: `VALIDADO` para los 15 códigos, matchers, rutas, servicios y seeds observados; `INFERIDO` para el alcance de Profesor hasta probar ownership; `NO_VERIFICADO` para V6, roles base y matriz HTTP futura; `RIESGOSO` para el fallback actual y el canal STOMP incompleto; `RECOMENDADO` para la distribución mínima siguiente; `PROPUESTA` hasta que el usuario confirme `DEC-RBAC-001`.
+Clasificación: `VALIDADO` para V6, catálogo, matrices, políticas HTTP, contrato frontend y smoke local. La publicación/checks/merge del PR permanecen pendientes. Profesor no usa alcance inferido: permanece deshabilitado hasta que ownership sea demostrable.
 
-## Catálogo actual real
+## Evidencia de implementación — 2026-07-14
 
-V5 crea las tablas RBAC, pero el seed productivo contiene **cero permisos y cero asignaciones**. El seed demo inserta 14 de los 15 códigos actuales y omite `PERM_TARIFAS_HISTORICAS`; por lo tanto no es una fuente válida del catálogo.
+- V6 SHA-256 del archivo: `12D766F5C66FD2DA8A7A59DA5534C068DE95F45A2FBE539EDDD135F19768B04A`; checksum Flyway runtime: `735784832`.
+- V1–V5 conservaron sus blobs Git originales; no fueron editadas.
+- Base limpia y upgrade V5→V6 validaron 32 permisos activos/sistema y matrices exactas: SUPERADMIN 32, DIRECCION 31, ADMINISTRADOR 31, SECRETARIA 17, CAJA 8 y PROFESOR 0/inactivo.
+- El inventario automatizado cubre 144/144 mappings HTTP; no se observaron endpoints `PATCH`.
+- Backend 129/129, frontend 140/140 y smoke canónico 20/20 terminaron en exit 0.
+- El seed demo contiene sólo datos ficticios/asignación a roles existentes; no define catálogo, matriz ni permisos obligatorios de SUPERADMIN.
+
+## Catálogo del baseline histórico
+
+Antes de V6, V5 creaba las tablas RBAC, pero el seed productivo contenía **cero permisos y cero asignaciones**. El seed demo insertaba 14 de los 15 códigos de entonces y omitía `PERM_TARIFAS_HISTORICAS`; ese diagnóstico histórico explica V6 y ya no describe la fuente productiva actual.
 
 | Código actual | Módulo / uso observado | Backend | Frontend | Seed productivo | Seed demo | Estado |
 |---|---|---|---|---|---|---|
@@ -45,11 +53,11 @@ V5 crea las tablas RBAC, pero el seed productivo contiene **cero permisos y cero
 
 Conteo: 15 códigos actuales; 0 sembrados por Flyway; 14 presentes sólo en el seed demo.
 
-## Catálogo mínimo propuesto
+## Catálogo aprobado agregado
 
-Estos son los **17 códigos exactos** propuestos por el megaprompt. No se agregan permisos específicos para Matrículas, Cargos, Observaciones o Notificaciones sin una decisión adicional; la matriz de endpoints reutiliza códigos existentes donde el significado es suficiente y deja fuera la función cuando no lo es.
+Estos son los **17 códigos exactos aprobados**. No se agregan permisos específicos para Matrículas, Cargos, Observaciones o Notificaciones; la matriz de endpoints reutiliza códigos existentes donde el significado es suficiente y deja fuera la función cuando no lo es.
 
-| Código propuesto | Alcance mínimo | Razón |
+| Código aprobado | Alcance mínimo | Razón |
 |---|---|---|
 | `PERM_ALUMNOS_LEER` | listar, buscar y ver alumnos | separar lectura de mutación y servir búsquedas humanas |
 | `PERM_ALUMNOS_ADMIN` | alta, edición, baja y reactivación | proteger datos personales y estados |
@@ -69,61 +77,61 @@ Estos son los **17 códigos exactos** propuestos por el megaprompt. No se agrega
 | `PERM_CONFIG_LEER` | métodos, conceptos, subconceptos, salones, bonificaciones y recargos | catálogos necesarios para operar |
 | `PERM_CONFIG_ADMIN` | alta, edición y baja lógica de esos catálogos | configuración mutable agrupada sin permisos especulativos |
 
-Conteo propuesto: 17. Catálogo objetivo si se aprueba: 15 actuales + 17 nuevos = **32 códigos únicos**.
+Conteo agregado: 17. Catálogo productivo: 15 actuales + 17 nuevos = **32 códigos únicos**.
 
-## Matriz propuesta de roles base
+## Matriz aprobada de roles base
 
-Las marcas son una recomendación pendiente. Los `?` deben resolverse expresamente antes de V6.
+| Permiso | SUPERADMIN | DIRECCION | ADMINISTRADOR | SECRETARIA | CAJA | PROFESOR |
+|---|---:|---:|---:|---:|---:|---:|
+| `PERM_APP_ACCESO` | ✓ | ✓ | ✓ | ✓ | ✓ | — |
+| `PERM_USUARIOS_ADMIN` | ✓ | ✓ | ✓ | — | — | — |
+| `PERM_ROLES_ADMIN` | ✓ | — | — | — | — | — |
+| `PERM_AUDITORIA_SEGURIDAD_LEER` | ✓ | ✓ | ✓ | — | — | — |
+| `PERM_MENSUALIDADES_GENERAR_MANUAL` | ✓ | ✓ | ✓ | — | — | — |
+| `PERM_PAGOS_REGISTRAR` | ✓ | ✓ | ✓ | ✓ | ✓ | — |
+| `PERM_PAGOS_ANULAR` | ✓ | ✓ | ✓ | — | — | — |
+| `PERM_EGRESOS_ADMIN` | ✓ | ✓ | ✓ | — | — | — |
+| `PERM_STOCK_ADMIN` | ✓ | ✓ | ✓ | — | — | — |
+| `PERM_STOCK_VENDER` | ✓ | ✓ | ✓ | — | — | — |
+| `PERM_CREDITOS_ADMIN` | ✓ | ✓ | ✓ | — | — | — |
+| `PERM_CREDITOS_CONSUMIR` | ✓ | ✓ | ✓ | ✓ | ✓ | — |
+| `PERM_TARIFAS_ADMIN` | ✓ | ✓ | ✓ | — | — | — |
+| `PERM_TARIFAS_HISTORICAS` | ✓ | ✓ | ✓ | — | — | — |
+| `PERM_CONDICIONES_ECONOMICAS_ADMIN` | ✓ | ✓ | ✓ | ✓ | — | — |
+| `PERM_ALUMNOS_LEER` | ✓ | ✓ | ✓ | ✓ | ✓ | — |
+| `PERM_ALUMNOS_ADMIN` | ✓ | ✓ | ✓ | ✓ | — | — |
+| `PERM_INSCRIPCIONES_LEER` | ✓ | ✓ | ✓ | ✓ | — | — |
+| `PERM_INSCRIPCIONES_ADMIN` | ✓ | ✓ | ✓ | ✓ | — | — |
+| `PERM_DISCIPLINAS_LEER` | ✓ | ✓ | ✓ | ✓ | — | — |
+| `PERM_DISCIPLINAS_ADMIN` | ✓ | ✓ | ✓ | — | — | — |
+| `PERM_PROFESORES_LEER` | ✓ | ✓ | ✓ | ✓ | — | — |
+| `PERM_PROFESORES_ADMIN` | ✓ | ✓ | ✓ | — | — | — |
+| `PERM_ASISTENCIAS_LEER` | ✓ | ✓ | ✓ | ✓ | — | — |
+| `PERM_ASISTENCIAS_REGISTRAR` | ✓ | ✓ | ✓ | ✓ | — | — |
+| `PERM_PAGOS_LEER` | ✓ | ✓ | ✓ | ✓ | ✓ | — |
+| `PERM_CAJA_LEER` | ✓ | ✓ | ✓ | ✓ | ✓ | — |
+| `PERM_STOCK_LEER` | ✓ | ✓ | ✓ | ✓ | ✓ | — |
+| `PERM_REPORTES_LEER` | ✓ | ✓ | ✓ | ✓ | — | — |
+| `PERM_REPORTES_EXPORTAR` | ✓ | ✓ | ✓ | — | — | — |
+| `PERM_CONFIG_LEER` | ✓ | ✓ | ✓ | ✓ | ✓ | — |
+| `PERM_CONFIG_ADMIN` | ✓ | ✓ | ✓ | — | — | — |
 
-| Permiso | SUPERADMIN | DIRECCION | SECRETARIA | CAJA | PROFESOR |
-|---|---:|---:|---:|---:|---:|
-| `PERM_APP_ACCESO` | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `PERM_USUARIOS_ADMIN` | ✓ | ? | — | — | — |
-| `PERM_ROLES_ADMIN` | ✓ | — | — | — | — |
-| `PERM_AUDITORIA_SEGURIDAD_LEER` | ✓ | ? | — | — | — |
-| `PERM_MENSUALIDADES_GENERAR_MANUAL` | ✓ | ✓ | — | — | — |
-| `PERM_PAGOS_REGISTRAR` | ✓ | ✓ | ✓ | ✓ | — |
-| `PERM_PAGOS_ANULAR` | ✓ | ✓ | — | — | — |
-| `PERM_EGRESOS_ADMIN` | ✓ | ✓ | ? | ? | — |
-| `PERM_STOCK_ADMIN` | ✓ | ✓ | — | — | — |
-| `PERM_STOCK_VENDER` | ✓ | ✓ | ? | ? | — |
-| `PERM_CREDITOS_ADMIN` | ✓ | ✓ | — | — | — |
-| `PERM_CREDITOS_CONSUMIR` | ✓ | ✓ | ✓ | ✓ | — |
-| `PERM_TARIFAS_ADMIN` | ✓ | ✓ | — | — | — |
-| `PERM_TARIFAS_HISTORICAS` | ✓ | ✓ | — | — | — |
-| `PERM_CONDICIONES_ECONOMICAS_ADMIN` | ✓ | ✓ | ✓ | — | — |
-| `PERM_ALUMNOS_LEER` | ✓ | ✓ | ✓ | ✓ | `PROPIO` |
-| `PERM_ALUMNOS_ADMIN` | ✓ | ✓ | ✓ | — | — |
-| `PERM_INSCRIPCIONES_LEER` | ✓ | ✓ | ✓ | — | — |
-| `PERM_INSCRIPCIONES_ADMIN` | ✓ | ✓ | ✓ | — | — |
-| `PERM_DISCIPLINAS_LEER` | ✓ | ✓ | ✓ | — | `PROPIO` |
-| `PERM_DISCIPLINAS_ADMIN` | ✓ | ✓ | — | — | — |
-| `PERM_PROFESORES_LEER` | ✓ | ✓ | ✓ | — | `PROPIO` |
-| `PERM_PROFESORES_ADMIN` | ✓ | ✓ | — | — | — |
-| `PERM_ASISTENCIAS_LEER` | ✓ | ✓ | ✓ | — | `PROPIO` |
-| `PERM_ASISTENCIAS_REGISTRAR` | ✓ | ✓ | ✓ | — | `PROPIO` |
-| `PERM_PAGOS_LEER` | ✓ | ✓ | ✓ | ✓ | — |
-| `PERM_CAJA_LEER` | ✓ | ✓ | ✓ | ✓ | — |
-| `PERM_STOCK_LEER` | ✓ | ✓ | ✓ | ✓ | — |
-| `PERM_REPORTES_LEER` | ✓ | ✓ | ✓ | — | — |
-| `PERM_REPORTES_EXPORTAR` | ✓ | ✓ | — | — | — |
-| `PERM_CONFIG_LEER` | ✓ | ✓ | ✓ | ✓ | — |
-| `PERM_CONFIG_ADMIN` | ✓ | ✓ | — | — | — |
+Conteos exactos: SUPERADMIN 32; DIRECCION 31; ADMINISTRADOR 31; SECRETARIA 17; CAJA 8; PROFESOR 0.
 
 ### Propósito de cada rol
 
 - `SUPERADMIN`: recuperación y administración técnica completa; no es cuenta diaria.
-- `DIRECCION`: negocio, configuración, reportes y operaciones financieras sensibles. Usuarios/auditoría requieren confirmación; roles permanecen reservados a SUPERADMIN en la propuesta.
-- `SECRETARIA`: alumnos, inscripciones, condiciones económicas, asistencia, lectura/registro de pagos y caja. No anula pagos ni administra seguridad. Egresos y venta de stock requieren confirmación.
-- `CAJA`: lectura de alumnos/pagos/caja/stock/configuración, registro de pagos y consumo de crédito. Egresos y venta de stock requieren confirmación.
-- `PROFESOR`: sólo lectura/registro académico `PROPIO`. Permanece inactivo hasta cerrar `DEC-OWNERSHIP-001` con pruebas de acceso cruzado.
-- `ADMINISTRADOR`: rol legacy observado; no se borra, renombra ni convierte automáticamente. Su equivalencia/asignaciones se resuelven dentro de `DEC-RBAC-001` y la migración debe preservar datos existentes.
+- `DIRECCION`: matriz completa salvo administración de definiciones de roles; incluye usuarios y auditoría.
+- `SECRETARIA`: alumnos, inscripciones, condiciones económicas, asistencia, lectura/registro de pagos y caja; no anula pagos, administra seguridad, egresos, stock, tarifas, exportaciones ni configuración mutable.
+- `CAJA`: lectura de alumnos/pagos/caja/stock/configuración, registro de pagos y consumo de crédito; no administra egresos, stock, seguridad, reportes ni mutaciones académicas.
+- `PROFESOR`: rol sistema inactivo, sin permisos y no asignable. Sólo podrá habilitarse con ownership derivado del principal y acceso cruzado denegado.
+- `ADMINISTRADOR`: rol legacy preservado por ID y asignaciones; recibe la misma matriz funcional que DIRECCION sin conversión automática de usuarios.
 
 ## Matriz módulo, ruta, endpoint y control
 
-`Existe/seed`: `A` = código actual, `P` = propuesto; todos tienen seed productivo actual `No`. `FE / BE actual` describe lo que hoy exige el frontend y backend, no la solución deseada.
+La tabla siguiente conserva el snapshot diagnóstico de `f6493a3b`: `A` = código entonces existente, `P` = entonces propuesto y `No` = sin seed productivo en V5. Las columnas `Permiso baseline` y `FE / BE baseline` no describen el cierre vigente; el estado implementado está en la evidencia 2026-07-14 al inicio de este documento y en los contratos automatizados 144/144.
 
-| Módulo / ruta y acción visible | Método y endpoint backend | Permiso esperado | Permiso actual | Existe/seed | FE / BE actual | Ownership | Estado y cambio | Prueba mínima |
+| Módulo / ruta y acción visible | Método y endpoint backend | Permiso esperado | Permiso baseline | Existe/seed baseline | FE / BE baseline | Ownership | Estado y cambio | Prueba mínima |
 |---|---|---|---|---|---|---|---|---|
 | Login `/login` | `POST /api/login`, `/refresh`, `/logout` | público con controles de origen/cookie | público | n/a | público / `permitAll` | sesión propia | conservar; access/refresh no intercambiables | inválido 401; refresh/origen; permitido 200 |
 | Perfil autenticado | `GET /api/usuarios/perfil` | autenticado | autenticado | n/a | guard auth / `authenticated` | usuario actual | conservar sin exigir APP | anónimo 401; autenticado 200 |
@@ -169,8 +177,8 @@ Las marcas son una recomendación pendiente. Los `?` deben resolverse expresamen
 | Configuración `/metodos-pago`, `/conceptos`, `/subconceptos`, `/salones`, `/bonificaciones`, `/recargos`: consultar | `GET /api/metodos-pago/**`, `/api/conceptos/**`, `/api/sub-conceptos/**`, `/api/salones/**`, `/api/bonificaciones/**`, `/api/recargos/**` | `PERM_CONFIG_LEER` | `PERM_APP_ACCESO` | P/No | rutas APP / fallback APP | global | matchers GET sobre cada path real | 401/403/200 |
 | Configuración: altas/ediciones/bajas desde sus formularios | `POST`, `PUT`, `DELETE` sobre `/api/metodos-pago/**`, `/api/conceptos/**`, `/api/sub-conceptos/**`, `/api/salones/**`, `/api/bonificaciones/**`, `/api/recargos/**` | `PERM_CONFIG_ADMIN` | `PERM_APP_ACCESO` | P/No | rutas/acciones APP; Concepto form usa PAGOS_REGISTRAR / fallback APP | global | matcher por método + guards; baja lógica cuando aplique | 401/403/permitido |
 | Notificaciones REST: cumpleaños | `GET /api/notificaciones/cumpleaneros` | `PERM_ALUMNOS_LEER` | `PERM_APP_ACCESO` | P/No | modal REST / fallback APP | datos según alcance | reutilizar lectura de alumnos | 401/403/200 |
-| Observaciones de profesores | `/api/observaciones-profesores/**` | sin código aprobado; fuera de release | `PERM_APP_ACCESO` | n/a | sin ruta productiva / fallback APP | pendiente propio/global | negar/ocultar hasta `DEC-OBS-001`; no inventar permiso | 401/403 y cero superficie activa |
-| WebSocket/STOMP `/ws` | handshake, `/topic`, `/queue` | deshabilitado o contrato completo según `DEC-WS-001` | origen `*`, sin autorización STOMP; HTTP termina en deny | n/a | hook sin callers / canal incompleto | por usuario si se habilita | resolver `E1-009`; no estado intermedio | handshake anónimo negado; aislamiento |
+| Observaciones de profesores | `/api/observaciones-profesores/**` | sin código aprobado; fuera de release | `denyAll` | n/a | caller/componentes retirados | n/a | datos históricos conservados; cero superficie activa | 401/403 y cero superficie activa |
+| WebSocket/STOMP `/ws` | sin endpoint productivo | deshabilitado por `DEC-WS-001` | configuración/controller/publisher retirados | n/a | hook y dependencia retirados | n/a | REST/email únicamente | canal ausente |
 
 ## Reglas de delegación y escalamiento
 
@@ -185,7 +193,7 @@ Las marcas son una recomendación pendiente. Los `?` deben resolverse expresamen
 9. La UI sólo muestra capacidades; una URL, request o ID manipulados siguen siendo rechazados por backend.
 10. Toda denegación de autoridad registra un evento mínimo sin secretos ni payload personal completo y responde 403, no 409.
 
-## Diferencias de catálogo y cobertura
+## Diferencias históricas de catálogo y cobertura
 
 ### Usados pero no sembrados productivamente
 
@@ -199,11 +207,11 @@ Las marcas son una recomendación pendiente. Los `?` deben resolverse expresamen
 - Productivo: ninguno, porque no hay seed.
 - Seed demo: no se identificó un código huérfano; el problema es que ese script no es productivo, está incompleto y mezcla configuración obligatoria con datos demo.
 
-### Endpoints sin permiso granular actual
+### Endpoints sin permiso granular en el baseline
 
-Quedan sólo bajo `PERM_APP_ACCESO` las familias de Alumnos, Inscripciones, Disciplinas, Profesores, Asistencias, Mensualidades, Matrículas, Cargos, Caja, Reportes, Notificaciones, Observaciones y catálogos de configuración. Pagos, Egresos, Stock, Crédito y Tarifas/Condiciones conservan defensas parciales de servicio, pero sus matchers HTTP siguen cayendo en el fallback. El matcher de generación manual de mensualidades no coincide con ningún endpoint real.
+En `f6493a3b`, quedaban sólo bajo `PERM_APP_ACCESO` las familias de Alumnos, Inscripciones, Disciplinas, Profesores, Asistencias, Mensualidades, Matrículas, Cargos, Caja, Reportes, Notificaciones, Observaciones y catálogos de configuración. V6 y las políticas granulares corrigen ese baseline; el path real de generación manual también quedó cubierto.
 
-Usuarios y Roles/Permisos son las únicas familias reales separadas por matcher de módulo. Auditoría tiene un matcher específico, pero no se observó controller; debe retirarse o respaldarse con un endpoint y prueba reales. En Usuarios/Roles quedaron corregidos los guards frontend y la matriz HTTP focalizada; siguen pendientes las pruebas completas de delegación y la matriz persistida.
+En el baseline, Usuarios y Roles/Permisos eran las únicas familias separadas por matcher de módulo. La implementación actual inventaría y prueba todas las rutas reales, deniega rutas desconocidas y mantiene defensas de servicio en operaciones sensibles.
 
 ## Contrato automatizado requerido
 
@@ -217,15 +225,6 @@ Antes de cerrar GATE-1 debe existir una prueba que compare:
 
 Cada fila operativa prueba 401, 403 y permitido; los writes agregan conflicto 409 cuando exista una invariante. La prueba debe montar el controller real: un 404 no cuenta como permitido. Profesor agrega propio/cruzado; WebSocket agrega handshake/origen/destino o demuestra que el canal no existe.
 
-## Condición para cerrar E1-001
+## Cierre de E1-001
 
-El usuario debe aprobar o corregir explícitamente:
-
-1. los 15 códigos actuales y 17 propuestos;
-2. los `?` de la matriz de roles;
-3. la transición de `ADMINISTRADOR`;
-4. la reutilización de permisos para Mensualidades, Matrículas y Cargos;
-5. el fallback `PROFESOR` inactivo hasta probar ownership;
-6. la decisión separada de WebSocket.
-
-Después se actualiza primero este documento y [10_DECISIONES_Y_BLOQUEOS.md](./10_DECISIONES_Y_BLOQUEOS.md), se registra la respuesta en la bitácora, se cierra `E1-001` y recién entonces `E1-002` pasa a ser la única tarea `IN_PROGRESS`. Mientras eso no ocurra, no se crea V6 ni se modifica autoridad persistida.
+E1-001 quedó cerrado por la consigna del 2026-07-14: aprobó los 15 códigos existentes y 17 nuevos, las matrices sin incógnitas, compatibilidad de `ADMINISTRADOR`, reutilización para Mensualidades/Matrículas/Cargos, Profesor inactivo y STOMP deshabilitado. La evidencia de implementación local está completa; el gate restante es exclusivamente el PR remoto verde y su merge confirmado.

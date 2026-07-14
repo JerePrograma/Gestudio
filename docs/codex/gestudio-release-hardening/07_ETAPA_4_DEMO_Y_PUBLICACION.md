@@ -29,10 +29,10 @@ Hacer que Gestudio explique qué requiere atención, demostrar separación real 
 
 ## Estado actual verificado
 
-- `VALIDADO`: existen `Dashboard.tsx`, `Reportes.tsx`, API/componente de observaciones, `scripts/gestudio_demo_seed_full.sql`, `scripts/smoke-local.ps1`, Dockerfiles y `docker-compose.yml`.
+- `VALIDADO`: existen `Dashboard.tsx`, `Reportes.tsx`, `scripts/gestudio_demo_seed_full.sql`, `scripts/smoke-local.ps1`, Dockerfiles y `docker-compose.yml`; la API/componente frontend de Observaciones fue retirada del alcance activo.
 - `VALIDADO`: el dashboard actual reutiliza navegación filtrada; todavía no prueba señales operativas por rol.
-- `VALIDADO`: el seed demo es un script separado, pero actualmente suple permisos que deben pertenecer al catálogo productivo; no puede ser requisito de bootstrap.
-- `VALIDADO`: el frontend tiene 33/36 tests verdes en el baseline actual, por lo que el gate de release está rojo.
+- `VALIDADO`: el seed demo es un script separado y ya no define catálogo, matriz ni permisos obligatorios de SUPERADMIN; bootstrap/smoke no dependen de él.
+- `VALIDADO GATE-1`: el frontend termina lint, build y 21 archivos/140 tests con exit 0; esto no cierra los recorridos de demo pendientes.
 - `NO_VERIFICADO`: no se ejecutaron demo por rol, navegador PC/celular, base limpia, upgrade, Docker limpio, staging, backup/restore ni rollback.
 - `RIESGOSO`: el compose actual usa nombres/puertos que dificultan aislamiento; Docker no debe iniciarse automáticamente.
 - `PENDING`: ninguna tarea E4 fue iniciada; `GATE-4` está abierto y no existe autorización de publicación.
@@ -61,16 +61,16 @@ Hacer que Gestudio explique qué requiere atención, demostrar separación real 
 - **Aceptación:** acceso directo/API no escala privilegios y archivos no exponen IDs técnicos.
 - **Validación/evidencia:** 401/403/permitido, contenido/filename y flujo UI. `NO_VERIFICADO`.
 
-### E4-003 — Decidir Observaciones
+### E4-003 — Diferir Observaciones
 
-- **Estado:** `PENDING`.
-- **Dependencias:** decisión de producto/ownership registrada.
-- **Archivos esperados:** `ObservacionProfesorControlador.java`, API/DTO/mapeador de observaciones y cualquier componente/ruta frontend existente.
-- **Cambio esperado:** integrar con ruta, permiso y ownership completos o retirar/ocultar el flujo de la release.
-- **Estrategia:** preferir retirar de alcance si no existe contrato comercial confirmado; no dejar una función a medio conectar.
-- **Riesgo/rollback:** exponer notas privadas. Mantenerla deshabilitada hasta probar acceso propio/global según matriz.
+- **Estado:** `DONE / DEFERRED` por `DEC-OBS-001`.
+- **Dependencias:** ninguna para primera release; un futuro retorno exige ownership y decisión nueva.
+- **Archivos afectados:** callers/API/componente frontend retirados; controller y datos históricos backend conservados detrás de `denyAll`.
+- **Cambio aplicado:** sin ruta, navegación, botón ni caller frontend activo; endpoint productivo denegado explícitamente.
+- **Estrategia:** conservar historia sin publicar una función incompleta.
+- **Riesgo/rollback:** exponer notas privadas. No habilitar hasta probar ownership propio/global.
 - **Aceptación:** no existe endpoint o acción ambiguamente accesible.
-- **Validación/evidencia:** decisión, tests de ownership si se habilita y búsqueda de callers/rutas. `NO_VERIFICADO`.
+- **Validación/evidencia:** búsqueda contractual sin callers y matriz HTTP con Observaciones en `denyAll`. `VALIDADO`.
 
 ### E4-004 — Empty states con siguiente acción
 

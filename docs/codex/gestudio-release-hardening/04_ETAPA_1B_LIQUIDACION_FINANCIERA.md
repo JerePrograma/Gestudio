@@ -1,6 +1,6 @@
 # Etapa 1B — Liquidación financiera por vigencia
 
-Estado actual: `PENDING` / `NO AUTORIZADA`. No hay tarea E1B activa. La única tarea global `IN_PROGRESS` es `E1-001`. Esta etapa comienza sólo cuando [GATE-1](./03_ETAPA_1_SEGURIDAD_RBAC.md) esté cerrado y el usuario autorice expresamente continuar.
+Estado actual: `PENDING` / `BLOQUEADA POR MERGE VERDE DEL PR RBAC`. La secuencia fue autorizada por la consigna del 2026-07-14, pero esta etapa sólo puede comenzar desde `main` actualizado después del merge confirmado de [GATE-1](./03_ETAPA_1_SEGURIDAD_RBAC.md).
 
 Referencias: [baseline financiero](./01_BASELINE_Y_HALLAZGOS.md#hallazgos-p0-financieros), [plan de pruebas](./08_PLAN_DE_PRUEBAS.md), [DEC-PRICING-001](./10_DECISIONES_Y_BLOQUEOS.md#dec-pricing-001--contrato-de-liquidación-por-vigencia) y [bitácora](./09_BITACORA_IMPLEMENTACION.md).
 
@@ -10,7 +10,7 @@ Eliminar la doble fuente de precios. Una fecha efectiva debe resolver una única
 
 ## Fuera de alcance
 
-- No iniciar antes de GATE-1 ni continuar a Etapa 2.
+- No iniciar antes del merge verde de GATE-1 ni continuar a Etapa 2 antes del merge verde del PR financiero.
 - No reescribir V1-V5 ni usar el seed demo como migración.
 - No rediseñar pagos, crédito, caja o recibos salvo el contrato mínimo necesario para consumir el cargo correcto.
 - No borrar cargos ni snapshots históricos.
@@ -20,7 +20,7 @@ Eliminar la doble fuente de precios. Una fecha efectiva debe resolver una única
 ## Dependencias
 
 1. GATE-1 cerrado: catálogo RBAC determinístico, permisos de tarifas/condiciones y semántica 401/403/409.
-2. Autorización explícita del usuario para Etapa 1B.
+2. Secuencia autorizada por la consigna del 2026-07-14; no se requiere otra decisión funcional.
 3. `DEC-PRICING-001` confirmada antes de cambiar cálculo.
 4. Cadena Flyway efectiva verificada después de Etapa 1. V1-V5 quedan inmutables; V6 se reserva para RBAC. Si 1B necesita esquema, usar la siguiente versión libre, previsiblemente V7, nunca asumirla sin inspección.
 5. Docker Engine disponible para PostgreSQL/Testcontainers.
@@ -52,14 +52,14 @@ Todas forman un único contrato indivisible en `DEC-PRICING-001`:
 | Fórmula | sin versión; entero constante; motor configurable | entero constante inicial `1`, persistido en cada snapshot; cambiarlo sólo al cambiar semántica |
 | Matrícula con varias disciplinas | máximo; suma; una por disciplina; política institucional | requiere confirmación explícita; el comportamiento actual es máximo y no prueba intención de negocio |
 
-Hasta que estas decisiones se confirmen, `E1B-001` sigue `PENDING` y ninguna tarea de cálculo puede comenzar.
+Las decisiones están confirmadas por la consigna del 2026-07-14. `E1B-001` sigue `PENDING` exclusivamente hasta que GATE-1 esté integrado en `main` con checks verdes.
 
 ## Orden obligatorio de tareas
 
 ### `E1B-001` — Mapear cálculo y cerrar decisiones
 
 - Estado: `PENDING`.
-- Dependencias: GATE-1, autorización de Etapa 1B.
+- Dependencias: GATE-1 integrado y `main` actualizado desde remoto.
 - Archivos: servicios/repositorios de mensualidad, matrícula, tarifas, condiciones; V3/V4; tests PostgreSQL; `10_DECISIONES_Y_BLOQUEOS.md`.
 - Cambio esperado: caracterización ejecutable del comportamiento actual y aprobación de `DEC-PRICING-001`.
 - Riesgo: cambiar importes históricos por una suposición.
@@ -176,4 +176,4 @@ Si hay migración, además: Flyway en PostgreSQL limpio, upgrade desde el estado
 - [ ] Base limpia/upgrade pasan si hubo migración.
 - [ ] Backend, Frontend y All están clasificados y documentos actualizados.
 
-Al cerrar GATE-1B: detenerse y pedir exactamente autorización para Etapa 2. No iniciar UX operativa por cuenta propia.
+Al cerrar GATE-1B: integrar su PR sólo con checks verdes, actualizar `main` desde remoto y recién entonces iniciar Etapa 2 desde una rama nueva.

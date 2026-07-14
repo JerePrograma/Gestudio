@@ -1,8 +1,8 @@
 # Baseline y hallazgos
 
-Última actualización: 2026-07-10 14:27 -03:00. Estado: `VALIDADO` para Git y comandos ejecutados; `INFERIDO` sólo donde se indica. Este documento se cruza con [matriz RBAC](./02_MATRIZ_RBAC.md), [Etapa 1](./03_ETAPA_1_SEGURIDAD_RBAC.md), [Etapa 1B](./04_ETAPA_1B_LIQUIDACION_FINANCIERA.md), [plan de pruebas](./08_PLAN_DE_PRUEBAS.md), [bitácora](./09_BITACORA_IMPLEMENTACION.md) y [decisiones](./10_DECISIONES_Y_BLOQUEOS.md).
+Última actualización: 2026-07-14 -03:00. Estado: `VALIDADO` para Git, CI y comandos efectivamente ejecutados; `INFERIDO` sólo donde se indica. La sección original de 2026-07-10 se conserva como historia y el baseline operativo actual se agrega debajo. Este documento se cruza con [matriz RBAC](./02_MATRIZ_RBAC.md), [Etapa 1](./03_ETAPA_1_SEGURIDAD_RBAC.md), [Etapa 1B](./04_ETAPA_1B_LIQUIDACION_FINANCIERA.md), [plan de pruebas](./08_PLAN_DE_PRUEBAS.md), [bitácora](./09_BITACORA_IMPLEMENTACION.md) y [decisiones](./10_DECISIONES_Y_BLOQUEOS.md).
 
-## Baseline Git
+## Baseline Git histórico — 2026-07-10
 
 | Evidencia | Resultado |
 |---|---|
@@ -16,6 +16,22 @@
 Comandos registrados: `git status --short --branch`, `git branch --show-current`, `git rev-parse HEAD`, `git fetch origin --prune`, `git rev-parse origin/main`, `git log -1 --oneline`, `git diff --exit-code` y `git diff --cached --exit-code`. No se modificaron refs.
 
 Artefactos locales ignorados preservados y fuera de lectura/escritura: `.env.bootstrap.local`, `.env.runtime.local`, `basebackup/`, `.idea/`, `backend/target/`, `frontend/node_modules/` y `frontend/dist/`.
+
+## Baseline operativo — 2026-07-14
+
+| Evidencia | Resultado |
+|---|---|
+| Rama fuente | `fix/ci-frontend-baseline` |
+| `HEAD` / `origin/fix/ci-frontend-baseline` | `f6493a3b1b7988a626c0742fe88ce75c2f1c4ee5` |
+| `origin/main` | `644e044b26438516ea093513ca5651ce72fb3fb3` |
+| Árbol inicial | limpio; `git diff --check` exit 0 |
+| Rama de implementación | `feat/rbac-production-hardening`, creada desde ese HEAD con pull `--ff-only` |
+| PR #11 | abierto, draft, mergeable; será reemplazado sólo después de crear correctamente el nuevo PR |
+| Checks conocidos | validate/build-images/GitGuardian PASS; smoke FAIL en `POST /api/salones` 403 |
+
+Herramientas verificadas: Docker 29.3.1, Corretto/Javac 21.0.7 mediante `JAVA_HOME`, Maven Wrapper 3.9.10, Node 22.14.0, npm 10.9.2 y GitHub CLI autenticado. El ejecutable `java` global del `PATH` aún apunta a Java 8; no se toma como runtime válido y los comandos Maven fijan Java 21 explícitamente.
+
+La auditoría inicial clasificó 143 mappings HTTP; la proyección mínima de roles asignables agregó un endpoint y el contrato final cubre 144/144. No existía migración posterior a V5 antes de implementar. `DEC-RBAC-001`, ownership Profesor, STOMP, Observaciones y pricing quedaron resueltos por el contrato del 2026-07-14. El cierre local posterior validó V6, la matriz HTTP/frontend y el smoke; el gate remoto del PR sigue pendiente.
 
 ## Stack verificado
 
@@ -56,7 +72,7 @@ No se debilitan esas pruebas durante Etapa 1. Su corrección pertenece a `E2-010
 | `E0-007` IDs/búsquedas/flujos UX | `DONE` | `P1-UX-001` a `022` clasificados |
 | `E0-008` documentación cruzada | `DONE` | tablero y doce documentos enlazados |
 
-`GATE-0` queda cerrado. La única tarea `IN_PROGRESS` es `E1-001`; `E1-002` está bloqueada por [DEC-RBAC-001](./10_DECISIONES_Y_BLOQUEOS.md#dec-rbac-001--matriz-base-de-roles-y-permisos).
+`GATE-0` queda cerrado. Desde el 2026-07-14 `DEC-RBAC-001` está tomada, `BLK-001` está cerrado y GATE-1 está cerrado localmente; permanece abierto sólo para integrar el PR reemplazante con todos sus checks remotos verdes.
 
 ## Hallazgos P0 de seguridad
 
@@ -125,14 +141,15 @@ No se debilitan esas pruebas durante Etapa 1. Su corrección pertenece a `E2-010
 | `P2-DOC-001` | `VALIDADO` | `AGENTS.md` conserva texto pre-V2 mientras README/smoke operan V1-V5. | DEC-DB-001 evita reescrituras; actualizar instrucciones con autoridad explícita. |
 | `P2-TEST-001` | `VALIDADO` | `TESTING.md` y `TESTING_QUICKSTART.md` reflejan conteos y comandos antiguos. | Etapa 4/informe release. |
 
-## Riesgos que bloquean demo o publicación
+## Riesgos y estado después del cierre local RBAC
 
-- `RIESGOSO`: base limpia sin catálogo RBAC determinístico puede autenticar y negar toda la API.
-- `RIESGOSO`: writes operativos quedan bajo permiso genérico; 409 oculta denegaciones de autoridad.
+- `CORREGIDO Y VALIDADO LOCALMENTE`: V6 deja 32 permisos activos/sistema y matrices exactas en base limpia y upgrade V5→V6.
+- `CORREGIDO Y VALIDADO LOCALMENTE`: los 143 mappings inventariados inicialmente más el endpoint mínimo de roles asignables están cubiertos por 144 políticas explícitas; autoridad faltante responde 403 y rutas `/api/**` desconocidas se deniegan.
 - `RIESGOSO`: doble fuente financiera puede cobrar un importe distinto al configurado por vigencia.
-- `RIESGOSO`: WebSocket queda abierto/incompleto hasta elegir deshabilitar o asegurar.
-- `RIESGOSO`: ownership Profesor no está probado; el rol no debe habilitarse.
-- `NO_VERIFICADO`: no hay GATE-1, smoke de seguridad ni GATE-1B cerrados.
-- `VALIDADO`: la suite frontend no está verde; los tres fallos están clasificados, no resueltos.
+- `CORREGIDO Y VALIDADO LOCALMENTE`: STOMP/WebSocket y Observaciones no tienen superficie activa; notificaciones de primera release quedan en REST/email.
+- `DEFERRED SEGURO`: ownership Profesor no está probado; V6 lo mantiene inactivo, sin permisos y fuera de la UI.
+- `VALIDADO LOCALMENTE`: backend 129/129, frontend 140/140, lint, build, Compose y smoke canónico 20/20.
+- `PENDIENTE REMOTO`: falta crear el PR reemplazante, obtener los cuatro checks verdes y confirmar su merge a `main`.
+- `BLOQUEO DE RELEASE`: GATE-1B financiero, UX operativa, staging, backup/restore y rollback todavía no fueron ejecutados.
 
-Próximo paso único: resolver [DEC-RBAC-001](./10_DECISIONES_Y_BLOQUEOS.md#dec-rbac-001--matriz-base-de-roles-y-permisos) para completar `E1-001` y habilitar `E1-002`.
+Próximo paso único: congelar el diff en commits temáticos, publicar el PR reemplazante y esperar checks remotos. No iniciar Etapa 1B desde esta rama ni antes del merge confirmado a `main`.

@@ -25,7 +25,7 @@
 | Resumen de caja | `GET /api/caja/resumen` | `CajaServicio` read-only | lee movimientos del período | n/a | Agrega en respuesta; no persiste totales. |
 | Generación de recibo | outbox después del commit | `ReciboStorageService.procesarPendientes` | claim corto `SKIP LOCKED`; PDF/storage fuera de lock; confirmaciones cortas | unique pago+tipo/key; lease recuperable; máximo 5 intentos | Documento y trabajo técnico separados. El pago no se revierte por fallo externo. |
 | Email de recibo | mismo worker | `ReciboStorageService` / `IEmailService` | `enviado_at`, outbox | un trabajo por pago | No se dispara desde controller ni desde la transacción de pago. Riesgo de crash después de SMTP y antes de commit documentado abajo. |
-| Notificación de cumpleaños | cron diario 10:00 | `NotificacionService.generarYObtenerCumpleanerosDelDia` | notificación con `dedup_key` | unique dedup key | Efectos after-commit; email asíncrono y WebSocket se disparan una vez por ejecución exitosa. |
+| Notificación de cumpleaños | cron diario 10:00 | `NotificacionService.generarYObtenerCumpleanerosDelDia` | notificación con `dedup_key` | unique dedup key | Efectos after-commit; email asíncrono y consulta REST. STOMP queda fuera de la primera release. |
 | Asistencia mensual/diaria | endpoints y cron 02:00 | `AsistenciaMensualServicio` / `AsistenciaDiariaServicio` | planilla, vínculos, estados diarios | uniques de período/vínculo/fecha | Un scheduler; conserva correcciones lógicas. |
 
 ## Flujo financiero detallado

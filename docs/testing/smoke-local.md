@@ -2,7 +2,7 @@
 
 ## Alcance
 
-`scripts/smoke-local.ps1` valida V1–V5 desde una base vacía en un proyecto Docker
+`scripts/smoke-local.ps1` valida V1–V6 desde una base vacía en un proyecto Docker
 Compose único. Genera en memoria credenciales PostgreSQL, JWT y un usuario
 temporal con rol efectivo `SUPERADMIN`.
 
@@ -45,7 +45,8 @@ Por API:
 
 Por SQL de solo lectura:
 
-- exactamente cinco migraciones Flyway exitosas, V1–V5;
+- exactamente seis migraciones Flyway exitosas, V1–V6;
+- 32 permisos productivos y matrices exactas 32/31/31/17/8/0 para los seis roles base;
 - rol/usuario bootstrap activo, vínculo en `usuario_roles`, BCrypt y ninguna
   contraseña plana;
 - pagos, aplicaciones, caja, stock y outbox sin duplicados;

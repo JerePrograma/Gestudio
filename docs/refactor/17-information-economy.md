@@ -68,7 +68,7 @@ Los DTO no se persisten: se indican sólo para identificar el consumidor.
 | `movimientos_stock` / `MovimientoStock` | todos: `id`, `stock_id`, `tipo`, `cantidad`, `venta_stock_id`, `movimiento_revertido_id`, `usuario_id`, `idempotency_key`, `motivo`, `created_at` | stock/venta | A | Sólo `StockServicio`; append-only | Autoridad de movimientos; reconcilia proyección `cantidad_actual`. |
 | `recibos` / `Recibo` | `id`, `pago_id`, `storage_key`, `generado_at`, `enviado_at` | descarga de recibo | A/B | Worker de recibos | Documento histórico y hechos de generación/envío. Se eliminaron estado, intentos y error duplicados. |
 | `recibos_pendientes` / `ReciboPendiente` | `id`, `pago_id`, `tipo`, `estado`, `intentos`, `next_attempt_at`, `ultimo_error`, `idempotency_key`, `claim_token`, `claimed_at`, `lease_until`, `created_at`, `processed_at` | sin payload frontend | A | Outbox específica y worker | Estado técnico único; claim/lease recuperable, sin contenido financiero duplicado. |
-| `notificaciones` / `Notificacion` | `id`, `usuario_id`, `tipo`, `mensaje`, `fecha_creacion`, `fecha_negocio`, `dedup_key`, `leida` | modal/WebSocket | A | `NotificacionService` | Mensaje persistido y deduplicado; no es total derivado. |
+| `notificaciones` / `Notificacion` | `id`, `usuario_id`, `tipo`, `mensaje`, `fecha_creacion`, `fecha_negocio`, `dedup_key`, `leida` | REST/email | A | `NotificacionService` | Mensaje persistido y deduplicado; STOMP queda fuera de la primera release. |
 
 ## Datos transitorios y derivados no persistidos
 

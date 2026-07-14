@@ -30,9 +30,9 @@ Permitir que Secretaría complete los flujos cotidianos sin conocer IDs internos
 ## Estado actual verificado
 
 - `VALIDADO`: el baseline Git inicial era limpio y coincidía con `b833f6741cf614c508666e8a121701e8db2fcf9a`.
-- `VALIDADO`: `npm test` ejecutado en este HEAD terminó con 33/36 tests; falla una prueba de Alumnos por duplicación desktop/mobile y dos de Pagos por esperar `$ 100.50` cuando la UI usa `$ 100,50`.
+- `BASELINE HISTÓRICO`: `npm test` sobre el snapshot inicial terminó con 33/36 tests; esas tres regresiones ya no se reproducen. La suite vigente de GATE-1 cubre 21 archivos y 140 tests.
 - `VALIDADO`: Pagos, Usuarios y varios catálogos conservan IDs o referencias técnicas visibles; Caja construye referencias técnicas y las exportaciones incluyen identificadores internos.
-- `VALIDADO`: existen mutaciones académicas, de configuración, pagos y stock sin una presentación de acciones completamente alineada con permisos y estados.
+- `PARCIAL`: GATE-1 alineó permisos de menú, ruta y acciones sensibles; siguen pendientes en esta etapa los estados operativos, referencias humanas y recorridos UX completos.
 - `INFERIDO`: hay selectores de alumnos y disciplinas repetidos; E2-002 debe medir y confirmar el contrato común antes de extraerlo.
 - `NO_VERIFICADO`: ningún recorrido completo de Secretaría, responsive real, accesibilidad manual ni backend afectado de Etapa 2 fue ejecutado todavía.
 - `PENDING`: no se inició ninguna tarea E2; `GATE-2` permanece abierto.

@@ -9,8 +9,9 @@ Monorepo de gestión para alumnos, inscripciones, disciplinas, asistencias, mens
 - Desarrollo local: Windows PowerShell y Docker Compose.
 
 El repositorio está en etapa pre-productiva. Flyway parte de
-`V1__canonical_schema.sql` y aplica las migraciones forward-only V2–V5; V5
-incorpora roles múltiples y permisos. No existe una ruta de upgrade desde el
+`V1__canonical_schema.sql` y aplica las migraciones forward-only V2–V6. V5
+incorpora las estructuras RBAC y el backfill de roles múltiples; V6 incorpora
+el catálogo y las matrices productivas. No existe una ruta de upgrade desde el
 historial retirado V1-V060.
 
 La autorización usa permisos efectivos calculados en backend. El contrato de

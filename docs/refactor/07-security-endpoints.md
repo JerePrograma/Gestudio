@@ -3,7 +3,7 @@
 > Inventario histórico previo a V5. La fuente ejecutable actual es
 > `SecurityConfigurations`; la autorización vigente usa `PERM_*`.
 
-Estado: 2026-07-01. La política se evalúa en este orden:
+Snapshot histórico: 2026-07-01. En ese snapshot la política se evaluaba en este orden:
 
 1. `OPTIONS /**`, `POST /api/login` y `POST /api/login/refresh`: públicos.
 2. `GET /api/usuarios/perfil`: cualquier usuario autenticado y activo.
@@ -16,7 +16,7 @@ administrador, no abierto por omisión.
 
 Leyenda: `S` datos personales/sensibles; `F` escritura o lectura financiera;
 `I` idempotencia explícita (`key+hash`), natural (`unique`) o no aplicable.
-Cada entrada de la tabla es un endpoint HTTP actual.
+Cada entrada de la tabla era un endpoint HTTP vigente en el snapshot 2026-07-01. El contrato actual está en `SecurityConfigurations` y en la matriz automatizada 144/144 de `docs/codex/gestudio-release-hardening/02_MATRIZ_RBAC.md`.
 
 | Base | Endpoints actuales | Política | S/F/I |
 | --- | --- | --- | --- |
@@ -61,6 +61,7 @@ Cada entrada de la tabla es un endpoint HTTP actual.
 - validación 400, recurso inexistente y 500 sanitizado sin stack trace;
 - preflight CORS.
 
-La cobertura de todos los endpoints deriva del matcher único `/api/**` y no de
-una lista parcial susceptible de quedar obsoleta. La prueba de arquitectura
-impide que controladores retornen entidades JPA.
+La cobertura vigente deriva de 144 políticas explícitas por método/ruta; el
+fallback `/api/**` es `denyAll`. La prueba de arquitectura impide que
+controladores retornen entidades JPA y la matriz contractual detecta endpoints
+sin política declarada.

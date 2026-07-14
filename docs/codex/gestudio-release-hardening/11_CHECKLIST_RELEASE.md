@@ -2,9 +2,9 @@
 
 > Decisión actual: `NO-GO`
 >
-> Baseline del primer bloque real: `main` en `407e1cbcc277b4b6c385cddface2862259e87036`
+> Baseline actual: `feat/rbac-production-hardening` desde `f6493a3b1b7988a626c0742fe88ce75c2f1c4ee5`; `origin/main` inicial `644e044b26438516ea093513ca5651ce72fb3fb3`
 >
-> Última revisión documental: 2026-07-11
+> Última revisión documental: 2026-07-14
 >
 > Regla: una casilla sólo se marca con comando/recorrido, fecha y resultado enlazados.
 
@@ -20,19 +20,18 @@
 - Un build o smoke verde no autoriza despliegue. Toda mutación externa requiere confirmación explícita y alcance definido.
 - La evidencia completa se registra en [09_BITACORA_IMPLEMENTACION.md](./09_BITACORA_IMPLEMENTACION.md); aquí sólo se resume y enlaza.
 
-## Evidencia disponible en el baseline
+## Evidencia actual
 
 | Evidencia | Estado | Resultado actual |
 |---|---|---|
-| Branch/HEAD/árbol inicial | `VALIDADO` | `main = origin/main = 407e1cbc`; árbol limpio antes del bloque del 2026-07-11. |
-| Suite frontend RBAC focalizada | `VALIDADO` | Evidencia histórica 15/15; suite modificada del bloque Usuarios/Roles 8/8 `PASS`. |
-| `npm test` completo | `BLOCKED`, sin regresión nueva | Baseline 33/36; post-cambio 36/39. Persisten sólo 1 fallo Alumnos por DOM responsive duplicado y 2 Pagos por formato `$ 100.50` vs `$ 100,50`. |
-| `npm run lint` / `npm run build` | `VALIDADO` | Ambos terminaron `PASS` antes y después del bloque. |
-| Backend `clean verify` | `BLOCKED` por ambiente al 2026-07-11 | Evidencia histórica: 115/115 con Docker. Ejecución actual: 91 tests, 0 fallos, 16 errores por `Could not find a valid Docker environment`; `BUILD FAILURE`. |
-| Backend Usuarios/Roles focalizado | `VALIDADO` | `SecurityHttpIntegrationTest,UsuarioServicioTest,RolServicioTest`: 29/29, `BUILD SUCCESS`; cubre 401/403/200 en `/api/roles` y `/api/permisos`. |
-| Flyway base limpia/upgrade | `VALIDADO` para V1–V5 | `PostgreSqlSchemaValidationTest` cubrió base limpia y V4→V5; una futura V6 sigue `NO_VERIFICADO`. |
-| Smoke sin seed demo | `NO_VERIFICADO` | `scripts/smoke-local.ps1` existe; no fue ejecutado aquí. |
-| Docker limpio | `NO_VERIFICADO` | Docker no se inicia automáticamente. |
+| Branch/HEAD/árbol inicial | `VALIDADO` | Fuente `f6493a3b`, árbol limpio; implementación en `feat/rbac-production-hardening`. El SHA final se registra después de commits. |
+| Frontend test/lint/build | `VALIDADO` | 21 archivos/140 tests, lint y build 2337 módulos, exit 0. |
+| Backend `clean verify` | `VALIDADO` | 129/129, 0 fallos/errores/skips, jar generado. |
+| Políticas HTTP | `VALIDADO` | 144/144 mappings reales contractualizados; ruta desconocida y Observaciones en `denyAll`. |
+| Flyway base limpia/upgrade | `VALIDADO` para V1–V6 | Base limpia y V5→V6; 32 permisos y matrices 32/31/31/17/8/0; V1–V5 inmutables. |
+| Smoke sin seed demo | `VALIDADO` | 20/20, base limpia, imágenes reconstruidas y limpieza completa. |
+| Docker Compose | `VALIDADO` | `docker compose config --quiet` exit 0. |
+| Integración remota | `PENDING` | Sólo PR #11 sigue draft con smoke rojo del baseline; falta PR reemplazante/checks/merge. |
 | Demo, backup/restore y rollback | `NO_VERIFICADO` | Sin ejecución registrada. |
 
 ## Gate: demo interna
@@ -42,7 +41,7 @@
 - [ ] Todas las suites obligatorias están verdes o cualquier fallo está aceptado explícitamente con alcance y riesgo.
 - [ ] Base descartable migra, bootstrap funciona y el primer GET operativo no requiere SQL manual.
 - [ ] Dataset demo se carga después del bootstrap y no siembra permisos productivos faltantes.
-- [ ] Dirección, Secretaría, Caja y Profesor habilitado pueden iniciar sesión con datos ficticios.
+- [ ] Dirección, Secretaría y Caja completan recorridos con datos ficticios; Profesor permanece inactivo/no asignable y sus accesos son denegados.
 - [ ] Recorrido alumno → inscripción → cargo → pago → recibo → caja se completa.
 - [ ] Egresos, Stock y Asistencia demuestran el alcance comercial declarado.
 - [ ] Intentos sin permiso muestran 403/UX accionable y preservan la sesión.
@@ -71,7 +70,7 @@
 
 - [ ] Ambiente, dominio, responsables, ventana y datos permitidos están identificados.
 - [ ] Secretos provienen de variables/gestor externo; no están en repo, imágenes ni logs.
-- [ ] TLS, CORS, cookies y URLs frontend/backend/WebSocket usan el ambiente correcto.
+- [ ] TLS, CORS, cookies y URLs frontend/backend usan el ambiente correcto; STOMP continúa ausente y REST/email está configurado.
 - [ ] Imagen/backend usa Java 21 y los builds Docker limpios terminan correctamente.
 - [ ] Base de staging tiene backup previo y restore probado en un destino aislado.
 - [ ] Flyway base limpia y upgrade desde el estado anterior terminan correctamente.
@@ -97,38 +96,39 @@
 
 ## Gate: seguridad
 
-**Estado:** `BLOCKED` por P0 de Etapa 1.
+**Estado:** `VALIDADO LOCAL / PENDIENTE CI Y MERGE`.
 
-- [ ] Catálogo y roles base son determinísticos desde base limpia.
-- [ ] SUPERADMIN bootstrap recibe la matriz productiva sin seed demo.
-- [ ] Todos los permisos usados existen, están activos y sembrados/asignados.
-- [ ] Sin autenticación devuelve 401; autenticado sin autoridad devuelve 403; conflicto real devuelve 409.
-- [ ] Cada write sensible tiene permiso backend explícito y defensa de servicio cuando corresponde.
-- [ ] Usuario, rol o permiso inactivo y `authVersion` invalidan acceso efectivo.
-- [ ] Delegación no permite escalamiento ni desactivar el último SUPERADMIN.
-- [ ] Profesor tiene ownership probado o el rol permanece deshabilitado.
-- [ ] Menú, rutas y acciones frontend usan la misma matriz; `/unauthorized` no entra en loop.
+- [x] Catálogo y roles base son determinísticos desde base limpia.
+- [x] SUPERADMIN bootstrap recibe la matriz productiva sin seed demo.
+- [x] Todos los permisos canónicos usados existen, están activos y sembrados/asignados.
+- [x] Sin autenticación devuelve 401; autenticado sin autoridad devuelve 403; conflicto real devuelve 409.
+- [x] Cada write sensible tiene permiso backend explícito y defensa de servicio cuando corresponde.
+- [x] Usuario, rol o permiso inactivo y `authVersion` invalidan acceso efectivo.
+- [x] Delegación no permite escalamiento ni desactivar el último SUPERADMIN.
+- [x] Profesor permanece deshabilitado, sin permisos, no asignable y sin rutas visibles.
+- [x] Menú, rutas y acciones frontend usan la misma matriz; `/unauthorized` no entra en loop.
 - [x] Usuarios/Roles usan `PERM_USUARIOS_ADMIN` / `PERM_ROLES_ADMIN`, no strings `*_WRITE` — 2026-07-11, UI permitido/denegado y HTTP focalizado verdes.
 - [x] `/unauthorized` no exige un permiso funcional y conserva autenticación; códigos de rol `ROLE_*` son rechazados — 2026-07-11, pruebas focalizadas verdes.
-- [ ] Refresh se mantiene serializado sólo para 401; 403 conserva sesión.
-- [ ] WebSocket está autenticado/autorizado/aislado o deshabilitado por completo.
-- [ ] Matriz HTTP, contrato frontend y smoke de seguridad están verdes.
+- [x] Refresh se mantiene serializado sólo para 401; 403 conserva sesión.
+- [x] WebSocket/STOMP está deshabilitado por completo; REST/email permanece.
+- [x] Matriz HTTP, contrato frontend y smoke de seguridad están verdes localmente.
+- [ ] PR reemplazante, checks remotos y merge a `main` completados.
 
 ## Gate: datos y migraciones
 
-**Estado:** `NO_VERIFICADO`.
+**Estado:** `RBAC V6 VALIDADO`; contratos financieros de Parte B `PENDING`.
 
-- [ ] Historial Flyway real y versión siguiente fueron confirmados antes de editar migraciones.
-- [ ] Base limpia aplica toda la historia y JPA valida el esquema.
-- [ ] Upgrade desde el estado anterior soportado termina sin pérdida.
-- [ ] Precondiciones detectan duplicados/inconsistencias antes de normalizar.
-- [ ] Reconciliaciones informan conteos, diferencias y filas ambiguas.
-- [ ] No se borra historia de pagos, cuotas, inscripciones, asistencia, caja, egresos o usuarios auditables.
-- [ ] RBAC productivo y dataset demo permanecen separados.
+- [x] Historial Flyway real y versión siguiente fueron confirmados antes de editar V6.
+- [x] Base limpia aplica V1–V6 y JPA valida el esquema.
+- [x] Upgrade V5→V6 termina sin pérdida y preserva IDs/asignaciones personalizadas.
+- [x] Precondiciones V6 fallan ante colisiones incompatibles antes de reconciliar.
+- [x] Reconciliación RBAC verifica conteos y matrices exactas.
+- [x] V6 no borra historia de pagos, cuotas, inscripciones, asistencia, caja, egresos o usuarios auditables.
+- [x] RBAC productivo y dataset demo permanecen separados.
 - [ ] Tarifa/condición vigente es la única fuente de cargos y conserva snapshot/versionado.
 - [ ] Idempotencia evita cargos, pagos, egresos, ventas o liquidaciones duplicados.
-- [ ] Pruebas PostgreSQL/Testcontainers pasan; H2 no se usa como prueba de Flyway/PostgreSQL.
-- [ ] Recovery/rollback lógico de cada migración está documentado.
+- [x] Pruebas PostgreSQL/Testcontainers de RBAC pasan; H2 no se usa como prueba de Flyway/PostgreSQL.
+- [x] Recovery/rollback lógico de V6 está documentado como forward-only/restauración aislada.
 
 ## Gate: observabilidad y backup
 
@@ -159,7 +159,7 @@
 
 ## Gate: UX crítica
 
-**Estado:** `BLOCKED`; `npm test` está rojo y Etapa 2 no comenzó.
+**Estado:** `PENDING`; la suite actual está verde, pero Parte C no comenzó.
 
 - [ ] Cero IDs técnicos visibles en tablas, formularios, toasts, labels y filenames operativos.
 - [ ] Búsqueda de alumnos funciona por nombre, apellido, ambos órdenes y DNI/documento.
@@ -172,7 +172,7 @@
 - [ ] Asistencia diaria cubre PRESENTE/AUSENTE/JUSTIFICADO y estado de guardado.
 - [ ] Estados empty/loading/error ofrecen feedback y siguiente paso autorizado.
 - [ ] Flujos críticos funcionan en PC, celular y teclado.
-- [ ] Suite frontend, lint y build están verdes.
+- [x] Suite frontend, lint y build están verdes para el alcance RBAC actual.
 
 ## Gate: documentación
 
