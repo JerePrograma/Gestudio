@@ -1,4 +1,4 @@
--- Baseline canónica de Le Dance. Requiere un esquema public vacío.
+-- Baseline canónica de Gestudio. Requiere un esquema public vacío.
 -- El esquema heredado V1-V060 sólo se conserva en Git, commit
 -- 2764083a47303880b2e90dc6bcef807406b3ee32.
 

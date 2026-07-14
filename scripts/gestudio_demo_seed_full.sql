@@ -1,11 +1,125 @@
--- gestudio_demo_seed_full_v4.sql
--- Seed demo manual para Gestudio, pensado para ejecutarse DESPUES de Flyway V1..V6.
--- No poner en db/migration. Ejecutar manualmente contra una base de desarrollo/demo.
--- Flyway V6 es la única autoridad del catálogo RBAC y de las matrices productivas.
--- Usuario demo: admin / admin
--- Password BCrypt para "admin": $2a$10$20gyPVFS3kpF8j8KZ.c0zer5c1LUzVWJS7Uu9rdvQVFxJp8Oc1hBa
+-- V6__demo_seed_complete.sql
+-- Migración Flyway EXCLUSIVA para una base de demostración de Gestudio.
+-- Autoridad de esquema: V1..V5 del branch main, commit 644e044b26438516ea093513ca5651ce72fb3fb3.
+--
+-- ADVERTENCIA:
+--   * Incluye credenciales conocidas y datos ficticios.
+--   * No debe habilitarse en producción.
+--   * Ejecutar únicamente en una base nueva o dedicada a demostraciones.
+--
+-- Credenciales:
+--   admin      / admin
+--   secretaria / admin
+--   profesor   / admin
+--
+-- Hash BCrypt compartido para la contraseña "admin":
+-- $2a$10$20gyPVFS3kpF8j8KZ.c0zer5c1LUzVWJS7Uu9rdvQVFxJp8Oc1hBa
 
 BEGIN;
+
+-- ============================================================
+-- PRECONDICIÓN: esta V6 debe ejecutarse después de V1..V5
+-- ============================================================
+
+DO $$
+BEGIN
+    IF to_regclass('public.usuario_roles') IS NULL
+       OR to_regclass('public.rol_permisos') IS NULL
+       OR to_regclass('public.permisos') IS NULL THEN
+        RAISE EXCEPTION
+            'V6 demo requiere que Flyway haya aplicado V1..V5 completamente';
+    END IF;
+END
+$$;
+
+-- ============================================================
+-- A. Catálogo RBAC demo autosuficiente
+-- ============================================================
+
+INSERT INTO public.roles (
+    descripcion, activo, codigo, nombre,
+    descripcion_funcional, sistema, editable
+)
+VALUES
+    ('SUPERADMIN', TRUE, 'SUPERADMIN', 'Superadministrador',
+     'Administración técnica completa de la plataforma', TRUE, FALSE),
+    ('ADMINISTRADOR', TRUE, 'ADMINISTRADOR', 'Dirección / Administración',
+     'Administración integral de la institución', TRUE, TRUE),
+    ('SECRETARIA', TRUE, 'SECRETARIA', 'Secretaría',
+     'Gestión cotidiana de alumnos, cobros, caja, inscripciones y stock', FALSE, TRUE),
+    ('PROFESOR', TRUE, 'PROFESOR', 'Profesor',
+     'Consulta operativa de sus clases, alumnos y asistencias', FALSE, TRUE)
+ON CONFLICT (codigo) DO UPDATE
+SET descripcion = EXCLUDED.descripcion,
+    activo = EXCLUDED.activo,
+    nombre = EXCLUDED.nombre,
+    descripcion_funcional = EXCLUDED.descripcion_funcional,
+    sistema = EXCLUDED.sistema,
+    editable = EXCLUDED.editable;
+
+WITH seed(codigo, descripcion, modulo) AS (
+    VALUES
+        ('PERM_APP_ACCESO', 'Acceso general a la aplicación', 'APP'),
+        ('PERM_USUARIOS_ADMIN', 'Administrar usuarios', 'USUARIOS'),
+        ('PERM_ROLES_ADMIN', 'Administrar roles y permisos', 'ROLES'),
+        ('PERM_AUDITORIA_SEGURIDAD_LEER', 'Consultar auditoría de seguridad', 'AUDITORIA'),
+        ('PERM_MENSUALIDADES_GENERAR_MANUAL', 'Generar mensualidades manualmente', 'MENSUALIDADES'),
+        ('PERM_PAGOS_REGISTRAR', 'Registrar pagos', 'PAGOS'),
+        ('PERM_PAGOS_ANULAR', 'Anular pagos', 'PAGOS'),
+        ('PERM_EGRESOS_ADMIN', 'Administrar egresos', 'EGRESOS'),
+        ('PERM_STOCK_ADMIN', 'Administrar catálogo y movimientos de stock', 'STOCK'),
+        ('PERM_STOCK_VENDER', 'Registrar ventas de stock', 'STOCK'),
+        ('PERM_CREDITOS_ADMIN', 'Administrar créditos de alumnos', 'CREDITOS'),
+        ('PERM_CREDITOS_CONSUMIR', 'Aplicar créditos a cargos', 'CREDITOS'),
+        ('PERM_TARIFAS_ADMIN', 'Administrar tarifas por vigencia', 'TARIFAS'),
+        ('PERM_TARIFAS_HISTORICAS', 'Consultar historial de tarifas', 'TARIFAS'),
+        ('PERM_CONDICIONES_ECONOMICAS_ADMIN',
+         'Administrar condiciones económicas de inscripciones', 'CONDICIONES')
+)
+INSERT INTO public.permisos (codigo, descripcion, modulo, activo, sistema)
+SELECT codigo, descripcion, modulo, TRUE, TRUE
+FROM seed
+ON CONFLICT (codigo) DO UPDATE
+SET descripcion = EXCLUDED.descripcion,
+    modulo = EXCLUDED.modulo,
+    activo = TRUE,
+    sistema = TRUE;
+
+-- SUPERADMIN y ADMINISTRADOR: matriz completa.
+INSERT INTO public.rol_permisos (rol_id, permiso_id)
+SELECT r.id, p.id
+FROM public.roles r
+CROSS JOIN public.permisos p
+WHERE r.codigo IN ('SUPERADMIN', 'ADMINISTRADOR')
+ON CONFLICT DO NOTHING;
+
+-- SECRETARIA: operación diaria sin administración de usuarios/roles.
+INSERT INTO public.rol_permisos (rol_id, permiso_id)
+SELECT r.id, p.id
+FROM public.roles r
+JOIN public.permisos p ON p.codigo IN (
+    'PERM_APP_ACCESO',
+    'PERM_MENSUALIDADES_GENERAR_MANUAL',
+    'PERM_PAGOS_REGISTRAR',
+    'PERM_PAGOS_ANULAR',
+    'PERM_EGRESOS_ADMIN',
+    'PERM_STOCK_ADMIN',
+    'PERM_STOCK_VENDER',
+    'PERM_CREDITOS_ADMIN',
+    'PERM_CREDITOS_CONSUMIR',
+    'PERM_TARIFAS_HISTORICAS'
+)
+WHERE r.codigo = 'SECRETARIA'
+ON CONFLICT DO NOTHING;
+
+-- PROFESOR: acceso mínimo compatible con la seguridad global actual.
+INSERT INTO public.rol_permisos (rol_id, permiso_id)
+SELECT r.id, p.id
+FROM public.roles r
+JOIN public.permisos p ON p.codigo = 'PERM_APP_ACCESO'
+WHERE r.codigo = 'PROFESOR'
+ON CONFLICT DO NOTHING;
+
 
 -- ============================================================
 -- 0. Usuario demo asignado a un rol productivo ya existente
@@ -54,6 +168,59 @@ WHERE lower(u.nombre_usuario) = 'admin'
 ON CONFLICT DO NOTHING;
 
 -- ============================================================
+-- 0B. Usuarios adicionales para demostrar RBAC
+-- ============================================================
+
+INSERT INTO public.usuarios (
+    id, nombre_usuario, contrasena, rol_id, activo,
+    auth_version, password_changed_at, version
+)
+SELECT
+    v.id,
+    v.nombre_usuario,
+    '$2a$10$20gyPVFS3kpF8j8KZ.c0zer5c1LUzVWJS7Uu9rdvQVFxJp8Oc1hBa',
+    r.id,
+    TRUE,
+    0,
+    CURRENT_TIMESTAMP,
+    0
+FROM (
+    VALUES
+        (900002::bigint, 'secretaria', 'SECRETARIA'),
+        (900003::bigint, 'profesor', 'PROFESOR')
+) AS v(id, nombre_usuario, rol_codigo)
+JOIN public.roles r ON r.codigo = v.rol_codigo
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM public.usuarios u
+    WHERE lower(u.nombre_usuario) = lower(v.nombre_usuario)
+);
+
+UPDATE public.usuarios u
+SET contrasena = '$2a$10$20gyPVFS3kpF8j8KZ.c0zer5c1LUzVWJS7Uu9rdvQVFxJp8Oc1hBa',
+    rol_id = r.id,
+    activo = TRUE,
+    auth_version = 0,
+    password_changed_at = CURRENT_TIMESTAMP
+FROM public.roles r
+WHERE (lower(u.nombre_usuario) = 'secretaria' AND r.codigo = 'SECRETARIA')
+   OR (lower(u.nombre_usuario) = 'profesor' AND r.codigo = 'PROFESOR');
+
+INSERT INTO public.usuario_roles (usuario_id, rol_id, asignado_por_usuario_id)
+SELECT u.id, r.id, admin.id
+FROM public.usuarios u
+JOIN public.roles r
+  ON (lower(u.nombre_usuario) = 'secretaria' AND r.codigo = 'SECRETARIA')
+  OR (lower(u.nombre_usuario) = 'profesor' AND r.codigo = 'PROFESOR')
+CROSS JOIN LATERAL (
+    SELECT id
+    FROM public.usuarios
+    WHERE lower(nombre_usuario) = 'admin'
+    LIMIT 1
+) admin
+ON CONFLICT DO NOTHING;
+
+-- ============================================================
 -- 1. Catálogos base
 -- ============================================================
 
@@ -78,6 +245,12 @@ SET nombre = EXCLUDED.nombre,
     telefono = EXCLUDED.telefono,
     usuario_id = EXCLUDED.usuario_id,
     activo = EXCLUDED.activo;
+
+UPDATE public.profesores
+SET usuario_id = (
+    SELECT id FROM public.usuarios WHERE lower(nombre_usuario) = 'profesor'
+)
+WHERE id = 900002;
 
 INSERT INTO public.observaciones_profesores (id, profesor_id, fecha, observacion, activa)
 VALUES
@@ -644,6 +817,58 @@ SET usuario_id = EXCLUDED.usuario_id,
     fecha_negocio = EXCLUDED.fecha_negocio,
     dedup_key = EXCLUDED.dedup_key,
     leida = EXCLUDED.leida;
+
+-- ============================================================
+-- 7B. Validaciones de consistencia de la demo
+-- ============================================================
+
+DO $$
+DECLARE
+    faltantes integer;
+BEGIN
+    SELECT count(*)
+    INTO faltantes
+    FROM (
+        VALUES
+            ('admin'),
+            ('secretaria'),
+            ('profesor')
+    ) AS esperados(nombre_usuario)
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM public.usuarios u
+        WHERE lower(u.nombre_usuario) = esperados.nombre_usuario
+          AND u.activo
+    );
+
+    IF faltantes > 0 THEN
+        RAISE EXCEPTION 'La migración demo no pudo crear todos los usuarios esperados';
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM public.alumnos WHERE id BETWEEN 900001 AND 909999) THEN
+        RAISE EXCEPTION 'La migración demo no creó alumnos';
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM public.cargos WHERE id BETWEEN 900001 AND 909999) THEN
+        RAISE EXCEPTION 'La migración demo no creó cargos';
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM public.pagos WHERE id BETWEEN 900001 AND 909999) THEN
+        RAISE EXCEPTION 'La migración demo no creó pagos';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM public.rol_permisos rp
+        JOIN public.roles r ON r.id = rp.rol_id
+        JOIN public.permisos p ON p.id = rp.permiso_id
+        WHERE r.codigo = 'ADMINISTRADOR'
+          AND p.codigo = 'PERM_TARIFAS_HISTORICAS'
+    ) THEN
+        RAISE EXCEPTION 'La matriz RBAC demo quedó incompleta';
+    END IF;
+END
+$$;
 
 -- ============================================================
 -- 8. Ajuste de secuencias identity para inserts futuros
