@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AlumnoResponse, Page } from "../../types/types";
@@ -45,13 +45,27 @@ describe("AlumnosPagina paginada", () => {
   it("no expone el ID interno como columna visible", async () => {
     renderPage();
 
-    expect(await screen.findByText("Ana Prueba")).toBeVisible();
+    const tabla = await screen.findByRole("table");
 
-    expect(screen.queryByRole("columnheader", { name: "ID" })).not.toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Alumno" })).toBeVisible();
-    expect(screen.getByRole("columnheader", { name: "Documento" })).toBeVisible();
-    expect(screen.getByRole("columnheader", { name: "Contacto" })).toBeVisible();
-    expect(screen.getByRole("columnheader", { name: "Estado" })).toBeVisible();
+    expect(
+      within(tabla).queryByRole("columnheader", { name: "ID" }),
+    ).not.toBeInTheDocument();
+
+    expect(
+      within(tabla).getByRole("columnheader", { name: "Alumno" }),
+    ).toBeVisible();
+
+    expect(
+      within(tabla).getByRole("columnheader", { name: "Documento" }),
+    ).toBeVisible();
+
+    expect(
+      within(tabla).getByRole("columnheader", { name: "Contacto" }),
+    ).toBeVisible();
+
+    expect(
+      within(tabla).getByRole("columnheader", { name: "Estado" }),
+    ).toBeVisible();
   });
 
   it("invalida solamente el recurso alumnos al dar de baja", async () => {

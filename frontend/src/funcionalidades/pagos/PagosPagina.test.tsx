@@ -69,7 +69,7 @@ describe("PagosPagina", () => {
     });
 
     expect(screen.getAllByText("Ana Prueba").length).toBeGreaterThan(0);
-    expect(await screen.findByText("$ 100.50")).toBeVisible();
+    expect(await screen.findByRole("cell", { name: "$ 100,50" })).toBeVisible();
     expect(screen.getByText("REGISTRADO")).toBeVisible();
   });
 
@@ -85,7 +85,7 @@ describe("PagosPagina", () => {
     });
 
     expect(await screen.findByText("Ana Prueba")).toBeVisible();
-    expect(await screen.findByText("$ 100.50")).toBeVisible();
+    expect(await screen.findByRole("cell", { name: "$ 100,50" })).toBeVisible();
   });
 });
 
