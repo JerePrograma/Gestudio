@@ -22,6 +22,9 @@ $refreshToken = $null
 $postgresPassword = $null
 $jwtSecret = $null
 $adminPassword = $null
+$secretariaPassword = $null
+$cajaPassword = $null
+$limitedPassword = $null
 $http = $null
 $cookieContainer = $null
 $caught = $null
@@ -46,12 +49,24 @@ function Get-FreePort {
     finally { $listener.Stop() }
 }
 
+function Get-BusinessNow {
+    try {
+        $zone = [TimeZoneInfo]::FindSystemTimeZoneById("America/Argentina/Buenos_Aires")
+    }
+    catch {
+        $zone = [TimeZoneInfo]::FindSystemTimeZoneById("Argentina Standard Time")
+    }
+
+    return [TimeZoneInfo]::ConvertTime([DateTimeOffset]::UtcNow, $zone)
+}
+
 function Redact {
     param([AllowNull()][string] $Text)
 
     if ($null -eq $Text) { return "" }
     $safe = $Text
     foreach ($secret in @($script:postgresPassword, $script:jwtSecret, $script:adminPassword,
+            $script:secretariaPassword, $script:cajaPassword, $script:limitedPassword,
             $script:accessToken, $script:refreshToken)) {
         if (-not [string]::IsNullOrEmpty($secret)) { $safe = $safe.Replace($secret, "<redacted>") }
     }
@@ -199,9 +214,15 @@ function Get-RefreshToken {
 
 function Set-RefreshToken {
     param([Parameter(Mandatory)][string] $Value)
-    $cookie = [Net.Cookie]::new("gestudio_refresh", $Value, "/api/login", "127.0.0.1")
-    $cookie.HttpOnly = $true
-    $script:cookieContainer.Add([Uri]($script:apiBase + "/login"), $cookie)
+    $uri = [Uri]($script:apiBase + "/login")
+    $cookie = $script:cookieContainer.GetCookies($uri)["gestudio_refresh"]
+    if ($null -ne $cookie) {
+        $cookie.Value = $Value
+        return
+    }
+    $newCookie = [Net.Cookie]::new("gestudio_refresh", $Value, "/api/login", "127.0.0.1")
+    $newCookie.HttpOnly = $true
+    $script:cookieContainer.Add($uri, $newCookie)
 }
 
 function Invoke-Api {
@@ -214,7 +235,9 @@ function Invoke-Api {
     )
 
     $result = Invoke-SmokeHttp -Method $Method -Uri ($script:apiBase + $Path) -Body $Body -Token $Token
-    Assert-Equal -Actual $result.Status -Expected $ExpectedStatus -Message "$Method $Path devolvio un estado inesperado"
+    if ($result.Status -ne $ExpectedStatus) {
+        throw "$Method $Path devolvio un estado inesperado (esperado=$ExpectedStatus, actual=$($result.Status), body=$(Redact $result.Body))"
+    }
     $json = $null
     if (-not [string]::IsNullOrWhiteSpace($result.Body)) { $json = $result.Body | ConvertFrom-Json }
     return [pscustomobject]@{ Status = $result.Status; Body = $result.Body; Json = $json }
@@ -233,6 +256,22 @@ function Login {
     $script:accessToken = [string]$response.Json.accessToken
     $script:refreshToken = Get-RefreshToken
     return $response.Json.usuario
+}
+
+function Login-Actor {
+    param(
+        [Parameter(Mandatory)][string] $Username,
+        [Parameter(Mandatory)][string] $Password,
+        [Parameter(Mandatory)][string] $ExpectedRole
+    )
+
+    $response = Invoke-Api -Method "POST" -Path "/login" -Body @{
+        nombreUsuario = $Username
+        contrasena = $Password
+    } -Token $null -ExpectedStatus 200
+    Assert-True -Condition ($response.Json.usuario.roles -contains $ExpectedRole) -Message "Rol de actor incorrecto"
+    Assert-True -Condition (-not [string]::IsNullOrWhiteSpace($response.Json.accessToken)) -Message "Actor sin access token"
+    return [string]$response.Json.accessToken
 }
 
 function Restart-Backend {
@@ -261,6 +300,9 @@ $postgresUser = "gestudio_smoke"
 $postgresPassword = "Pg-$(New-HexSecret 24)"
 $jwtSecret = New-HexSecret 64
 $adminPassword = "Smoke-$(New-HexSecret 24)"
+$secretariaPassword = "Smoke-Secretaria-$(New-HexSecret 12)"
+$cajaPassword = "Smoke-Caja-$(New-HexSecret 12)"
+$limitedPassword = "Smoke-Limited-$(New-HexSecret 12)"
 $adminUsername = "smoke-admin-$suffix"
 $apiBase = "http://127.0.0.1:$backendPort/api"
 $frontendOrigin = "http://127.0.0.1:$frontendPort"
@@ -322,11 +364,23 @@ try {
         Assert-Equal -Actual $front.Status -Expected 200 -Message "Frontend no responde"
         Pass "Stack healthy"
 
-        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM flyway_schema_history WHERE success") -Expected "5" -Message "Flyway no aplico V1-V5"
-        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM flyway_schema_history WHERE version = '5' AND success") -Expected "1" -Message "Flyway V5 no esta aplicada"
-        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM flyway_schema_history WHERE NOT success OR version::int NOT BETWEEN 1 AND 5") -Expected "0" -Message "Hay migraciones fallidas o inesperadas"
+        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM flyway_schema_history WHERE success") -Expected "6" -Message "Flyway no aplico V1-V6"
+        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM flyway_schema_history WHERE version = '6' AND success") -Expected "1" -Message "Flyway V6 no esta aplicada"
+        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM flyway_schema_history WHERE NOT success OR version::int NOT BETWEEN 1 AND 6") -Expected "0" -Message "Hay migraciones fallidas o inesperadas"
+        $flywayChecksums = Invoke-Sql "SELECT 'V' || version, checksum::text FROM flyway_schema_history WHERE success AND version::int BETWEEN 1 AND 6 ORDER BY version::int"
+        $v6Checksum = @($flywayChecksums -split "`r?`n" | Where-Object { $_ -match '^V6\|-?\d+$' })
+        Assert-Equal -Actual $v6Checksum.Count -Expected 1 -Message "Flyway V6 no tiene un checksum registrado"
+        Write-Host "[INFO] Flyway checksums V1-V6:`n$flywayChecksums"
+        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM permisos") -Expected "32" -Message "Catalogo RBAC inesperado"
+        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM permisos WHERE activo AND sistema") -Expected "32" -Message "Hay permisos productivos inactivos o no sistema"
         Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM roles WHERE codigo = 'SUPERADMIN' AND activo") -Expected "1" -Message "Falta SUPERADMIN activo"
-        Pass "Flyway V1-V5"
+        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM roles WHERE codigo = 'SUPERADMIN' AND sistema AND NOT editable") -Expected "1" -Message "SUPERADMIN no esta protegido"
+        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM roles WHERE codigo IN ('DIRECCION','ADMINISTRADOR','SECRETARIA','CAJA') AND activo AND sistema") -Expected "4" -Message "Roles base activos incompletos"
+        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM roles WHERE codigo = 'PROFESOR' AND NOT activo AND sistema") -Expected "1" -Message "PROFESOR debe estar inactivo"
+        $matrixDiff = Invoke-Sql "WITH expected(role_code, permission_code) AS (SELECT 'SUPERADMIN', codigo FROM permisos UNION ALL SELECT 'DIRECCION', codigo FROM permisos WHERE codigo <> 'PERM_ROLES_ADMIN' UNION ALL SELECT 'ADMINISTRADOR', codigo FROM permisos WHERE codigo <> 'PERM_ROLES_ADMIN' UNION ALL SELECT 'SECRETARIA', codigo FROM permisos WHERE codigo IN ('PERM_APP_ACCESO','PERM_PAGOS_REGISTRAR','PERM_CREDITOS_CONSUMIR','PERM_CONDICIONES_ECONOMICAS_ADMIN','PERM_ALUMNOS_LEER','PERM_ALUMNOS_ADMIN','PERM_INSCRIPCIONES_LEER','PERM_INSCRIPCIONES_ADMIN','PERM_DISCIPLINAS_LEER','PERM_PROFESORES_LEER','PERM_ASISTENCIAS_LEER','PERM_ASISTENCIAS_REGISTRAR','PERM_PAGOS_LEER','PERM_CAJA_LEER','PERM_STOCK_LEER','PERM_REPORTES_LEER','PERM_CONFIG_LEER') UNION ALL SELECT 'CAJA', codigo FROM permisos WHERE codigo IN ('PERM_APP_ACCESO','PERM_ALUMNOS_LEER','PERM_PAGOS_LEER','PERM_PAGOS_REGISTRAR','PERM_CAJA_LEER','PERM_STOCK_LEER','PERM_CONFIG_LEER','PERM_CREDITOS_CONSUMIR')), actual AS (SELECT r.codigo, p.codigo FROM roles r JOIN rol_permisos rp ON rp.rol_id=r.id JOIN permisos p ON p.id=rp.permiso_id WHERE r.codigo IN ('SUPERADMIN','DIRECCION','ADMINISTRADOR','SECRETARIA','CAJA','PROFESOR')), differences AS ((SELECT * FROM expected EXCEPT SELECT * FROM actual) UNION ALL (SELECT * FROM actual EXCEPT SELECT * FROM expected)) SELECT count(*) FROM differences"
+        Assert-Equal -Actual $matrixDiff -Expected "0" -Message "La matriz de roles base no es exacta"
+        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM usuarios WHERE nombre_usuario LIKE 'demo-%'") -Expected "0" -Message "El smoke no debe depender del seed demo"
+        Pass "Flyway V1-V6 y matriz RBAC"
 
         $quotedUser = $adminUsername.Replace("'", "''")
         Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM usuarios") -Expected "1" -Message "El bootstrap no creo exactamente un usuario"
@@ -348,6 +402,8 @@ try {
         $profile = Invoke-Api -Method "GET" -Path "/usuarios/perfil" -ExpectedStatus 200
         Assert-Equal -Actual $profile.Json.nombreUsuario -Expected $adminUsername -Message "Perfil incorrecto"
         Assert-True -Condition ($profile.Json.roles -contains "SUPERADMIN") -Message "Rol de perfil incorrecto"
+        Assert-Equal -Actual @($profile.Json.permisos).Count -Expected 32 -Message "Perfil SUPERADMIN sin catalogo completo"
+        Invoke-Api -Method "GET" -Path "/alumnos?page=0&size=1" -ExpectedStatus 200 | Out-Null
         Pass "Login"
 
         Set-RefreshToken -Value $accessToken
@@ -399,7 +455,8 @@ try {
             requiereControlDeStock = $true; activo = $true; codigoBarras = "SMOKE$suffix"; idempotencyKey = $stockCreateKey
         } -ExpectedStatus 200).Json
 
-        $today = Get-Date -Format "yyyy-MM-dd"
+        $businessNow = Get-BusinessNow
+        $today = $businessNow.ToString("yyyy-MM-dd")
         $alumnoName = "Alumno-$suffix"
         $alumno = (Invoke-Api -Method "POST" -Path "/alumnos" -Body @{
             id = $null; nombre = $alumnoName; apellido = "Smoke"; fechaNacimiento = "2000-01-01"
@@ -428,14 +485,14 @@ try {
         Invoke-Api -Method "POST" -Path "/inscripciones" -Body $inscripcionBody -ExpectedStatus 409 | Out-Null
         $inscripcionGet = Invoke-Api -Method "GET" -Path "/inscripciones/$($inscripcion.id)" -ExpectedStatus 200
         Assert-Equal -Actual ([long]$inscripcionGet.Json.id) -Expected ([long]$inscripcion.id) -Message "Inscripcion no persistida"
-        $anio = [int](Get-Date -Format "yyyy")
+        $anio = $businessNow.Year
         $matricula = Invoke-Api -Method "GET" -Path "/matriculas/alumno/$($alumno.id)?anio=$anio" -ExpectedStatus 200
         Assert-Equal -Actual $matricula.Json.estado -Expected "EMITIDA" -Message "Matricula automatica ausente"
         Pass "Inscripcion"
 
         $cargoKey = "cargo-$suffix"
         $cargo = (Invoke-Api -Method "POST" -Path "/cargos/concepto" -Body @{
-            alumnoId = $alumno.id; conceptoId = $concepto.id; fechaVencimiento = (Get-Date).AddDays(10).ToString("yyyy-MM-dd")
+            alumnoId = $alumno.id; conceptoId = $concepto.id; fechaVencimiento = $businessNow.AddDays(10).ToString("yyyy-MM-dd")
             descripcion = "Cargo smoke $suffix"; idempotencyKey = $cargoKey
         } -ExpectedStatus 201).Json
         Assert-Equal -Actual $cargo.importeOriginal -Expected "100.00" -Message "Importe original incorrecto"
@@ -505,7 +562,7 @@ try {
         $saleKey = "venta-$suffix"
         $saleBody = @{
             alumnoId = $alumno.id; stockId = $stock.id; cantidad = 2
-            fechaVencimiento = (Get-Date).AddDays(10).ToString("yyyy-MM-dd"); idempotencyKey = $saleKey
+            fechaVencimiento = $businessNow.AddDays(10).ToString("yyyy-MM-dd"); idempotencyKey = $saleKey
         }
         $saleCargo = (Invoke-Api -Method "POST" -Path "/stocks/ventas" -Body $saleBody -ExpectedStatus 200).Json
         Assert-Equal -Actual $saleCargo.importeOriginal -Expected "40.00" -Message "Cargo de venta incorrecto"
@@ -525,6 +582,42 @@ try {
         Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM movimientos_stock WHERE venta_stock_id=$saleId AND tipo='REVERSO'") -Expected "1" -Message "Reversion de stock duplicada"
         Pass "Stock y reversion"
 
+        $secretariaUsername = "smoke-secretaria-$suffix"
+        $cajaUsername = "smoke-caja-$suffix"
+        $limitedUsername = "smoke-limited-$suffix"
+        $limitedRoleCode = "SMOKE_LIMITED_$($suffix.ToUpperInvariant())"
+        Invoke-Api -Method "POST" -Path "/roles" -Body @{
+            codigo = $limitedRoleCode; nombre = "Smoke limited $suffix"
+            descripcionFuncional = "Actor sintetico para denegaciones"; permisos = @("PERM_APP_ACCESO")
+        } -ExpectedStatus 201 | Out-Null
+        Invoke-Api -Method "POST" -Path "/usuarios/registro" -Body @{
+            nombreUsuario = $secretariaUsername; contrasena = $secretariaPassword; roles = @("SECRETARIA")
+        } -ExpectedStatus 201 | Out-Null
+        Invoke-Api -Method "POST" -Path "/usuarios/registro" -Body @{
+            nombreUsuario = $cajaUsername; contrasena = $cajaPassword; roles = @("CAJA")
+        } -ExpectedStatus 201 | Out-Null
+        Invoke-Api -Method "POST" -Path "/usuarios/registro" -Body @{
+            nombreUsuario = $limitedUsername; contrasena = $limitedPassword; roles = @($limitedRoleCode)
+        } -ExpectedStatus 201 | Out-Null
+
+        $secretariaToken = Login-Actor -Username $secretariaUsername -Password $secretariaPassword -ExpectedRole "SECRETARIA"
+        $cajaToken = Login-Actor -Username $cajaUsername -Password $cajaPassword -ExpectedRole "CAJA"
+        $limitedToken = Login-Actor -Username $limitedUsername -Password $limitedPassword -ExpectedRole $limitedRoleCode
+        Invoke-Api -Method "GET" -Path "/roles" -Token $secretariaToken -ExpectedStatus 403 | Out-Null
+        Invoke-Api -Method "POST" -Path "/pagos/$($partial.id)/anulacion" -Body @{
+            idempotencyKey = "secretaria-anulacion-$suffix"; motivo = "Debe ser denegado"
+        } -Token $secretariaToken -ExpectedStatus 403 | Out-Null
+        Invoke-Api -Method "POST" -Path "/egresos" -Body @{
+            fecha = $today; monto = "1.00"; observaciones = "Debe ser denegado"
+            metodoPagoId = $metodo.id; idempotencyKey = "caja-egreso-$suffix"
+        } -Token $cajaToken -ExpectedStatus 403 | Out-Null
+        Invoke-Api -Method "POST" -Path "/stocks" -Body @{
+            nombre = "Debe ser denegado"; precio = "1.00"; stock = 1
+            requiereControlDeStock = $true; activo = $true; idempotencyKey = "caja-stock-$suffix"
+        } -Token $cajaToken -ExpectedStatus 403 | Out-Null
+        Invoke-Api -Method "GET" -Path "/alumnos?page=0&size=1" -Token $limitedToken -ExpectedStatus 403 | Out-Null
+        Pass "Denegaciones RBAC por rol"
+
         Restart-Backend
         Login | Out-Null
         Assert-Equal -Actual (Invoke-Api -Method "GET" -Path "/alumnos/$($alumno.id)" -ExpectedStatus 200).Json.id -Expected $alumno.id -Message "Alumno perdido tras reinicio"
@@ -536,14 +629,14 @@ try {
         Assert-Equal -Actual (Invoke-Sql "SELECT estado FROM ventas_stock WHERE id=$saleId") -Expected "ANULADA" -Message "Reversion perdida tras reinicio"
         Pass "Persistencia tras reinicio"
 
-        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM usuarios") -Expected "1" -Message "Cantidad final de usuarios incorrecta"
+        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM usuarios") -Expected "4" -Message "Cantidad final de usuarios incorrecta"
         $finalHash = Invoke-Sql "SELECT contrasena FROM usuarios WHERE nombre_usuario='$quotedUser'"
         Assert-True -Condition ($finalHash -ne $adminPassword -and $finalHash -match '^\$2[aby]\$') -Message "Hash final del bootstrap invalido"
         Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM (SELECT idempotency_key FROM pagos GROUP BY idempotency_key HAVING count(*) <> 1) x") -Expected "0" -Message "Idempotencia de pagos inconsistente"
         Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM aplicaciones_pago WHERE pago_id IN ($($partial.id),$($finalPayment.id))") -Expected "2" -Message "Cantidad final de aplicaciones incorrecta"
         Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM stocks WHERE cantidad_actual < 0") -Expected "0" -Message "Stock negativo"
         Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM (SELECT pago_id,tipo FROM recibos_pendientes GROUP BY pago_id,tipo HAVING count(*) > 1) x") -Expected "0" -Message "Outbox duplicado"
-        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM flyway_schema_history WHERE NOT success OR version::int NOT BETWEEN 1 AND 5") -Expected "0" -Message "Historial Flyway final invalido"
+        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM flyway_schema_history WHERE NOT success OR version::int NOT BETWEEN 1 AND 6") -Expected "0" -Message "Historial Flyway final invalido"
         Assert-AuditZero -RelativePath "docs/refactor/sql/03-orphans.sql"
         Assert-AuditZero -RelativePath "docs/refactor/sql/04-financial-inconsistencies.sql"
         Assert-AuditZero -RelativePath "docs/refactor/sql/05-state-inconsistencies.sql"
@@ -589,6 +682,9 @@ finally {
     $accessToken = $null
     $refreshToken = $null
     $adminPassword = $null
+    $secretariaPassword = $null
+    $cajaPassword = $null
+    $limitedPassword = $null
     $jwtSecret = $null
     $postgresPassword = $null
 }

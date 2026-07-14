@@ -108,7 +108,7 @@ jobs:
   smoke:
     needs: validate
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
 
     steps:
       - name: Checkout verified SHA
