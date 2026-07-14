@@ -11,7 +11,6 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/recargos")  // URL base de los recargos
-@CrossOrigin(origins = "*")  // Habilitar CORS
 public class RecargoControlador {
 
     private final RecargoServicio recargoServicio;
