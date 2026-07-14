@@ -8,7 +8,6 @@ import gestudio.repositorios.ProfesorRepositorio;
 import gestudio.servicios.email.EmailAsyncService;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -27,7 +26,6 @@ public class NotificacionService {
     private final AlumnoRepositorio alumnos;
     private final ProfesorRepositorio profesores;
     private final NotificacionRepositorio notificaciones;
-    private final SimpMessagingTemplate websocket;
     private final Environment environment;
     private final EmailAsyncService email;
     private final Clock clock;
@@ -35,14 +33,12 @@ public class NotificacionService {
     public NotificacionService(AlumnoRepositorio alumnos,
                                ProfesorRepositorio profesores,
                                NotificacionRepositorio notificaciones,
-                               SimpMessagingTemplate websocket,
                                Environment environment,
                                EmailAsyncService email,
                                Clock clock) {
         this.alumnos = alumnos;
         this.profesores = profesores;
         this.notificaciones = notificaciones;
-        this.websocket = websocket;
         this.environment = environment;
         this.email = email;
         this.clock = clock;
@@ -78,7 +74,6 @@ public class NotificacionService {
             @Override
             public void afterCommit() {
                 efectos.forEach(Runnable::run);
-                websocket.convertAndSend("/topic/notificaciones", mensajes);
             }
         });
         return mensajes;
