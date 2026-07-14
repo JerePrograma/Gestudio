@@ -17,7 +17,7 @@
     <artifactId>backend</artifactId>
     <version>1.0</version>
     <name>backend</name>
-    <description>Backend de sistemas de Le Dance</description>
+    <description>Backend de sistemas de Gestudio</description>
 
     <properties>
         <!-- Codificación UTF-8 para compilación y reportes -->

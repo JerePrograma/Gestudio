@@ -23,7 +23,7 @@ public class EmailAsyncService {
             String subject = "¡Feliz Cumpleaños, " + alumno.getNombre() + "!";
             String htmlBody =
                     "<p>FELICIDADES <strong>" + alumno.getNombre() + "</strong></p>"
-                            + "<p>De parte de todo el Staff de LE DANCE arte escuela, te deseamos un "
+                            + "<p>De parte de todo el Staff de Gestudio arte escuela, te deseamos un "
                             + "<strong>MUY FELIZ CUMPLEAÑOS!</strong></p>"
                             + "<p>Katia, Anto y Nati te desean un nuevo año lleno de deseos por cumplir!</p>"
                             + "<p>Te adoramos.</p>"
