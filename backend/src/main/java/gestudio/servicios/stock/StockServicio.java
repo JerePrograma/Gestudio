@@ -41,13 +41,13 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Locale;
 
+import static gestudio.infra.seguridad.PermissionCodes.PERM_STOCK_ADMIN;
+import static gestudio.infra.seguridad.PermissionCodes.PERM_STOCK_VENDER;
+
 @Service
 public class StockServicio {
 
     private static final Logger log = LoggerFactory.getLogger(StockServicio.class);
-
-    private static final String PERM_STOCK_ADMIN = "PERM_STOCK_ADMIN";
-    private static final String PERM_STOCK_VENDER = "PERM_STOCK_VENDER";
 
     private final StockRepositorio stocks;
     private final VentaStockRepositorio ventas;

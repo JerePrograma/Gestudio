@@ -20,10 +20,10 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
+import static gestudio.infra.seguridad.PermissionCodes.PERM_ROLES_ADMIN;
+
 @Service
 public class RolServicio {
-
-    private static final String PERM_ROLES_ADMIN = "PERM_ROLES_ADMIN";
 
     private final RolRepositorio roles;
     private final PermisoRepositorio permisos;

@@ -13,6 +13,7 @@ import gestudio.tarifas.api.CondicionEconomicaRequest;
 import gestudio.tarifas.api.CondicionEconomicaResponse;
 import gestudio.tarifas.persistence.CondicionEconomicaInscripcion;
 import gestudio.tarifas.persistence.CondicionEconomicaRepositorio;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,12 +23,11 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
+import static gestudio.infra.seguridad.PermissionCodes.PERM_CONDICIONES_ECONOMICAS_ADMIN;
+import static gestudio.infra.seguridad.PermissionCodes.PERM_TARIFAS_HISTORICAS;
+
 @Service
 public class CondicionEconomicaServicio {
-
-    private static final String PERM_CONDICIONES_ECONOMICAS_ADMIN = "PERM_CONDICIONES_ECONOMICAS_ADMIN";
-    private static final String PERM_TARIFAS_ADMIN = "PERM_TARIFAS_ADMIN";
-    private static final String PERM_TARIFAS_HISTORICAS = "PERM_TARIFAS_HISTORICAS";
 
     private final CondicionEconomicaRepositorio condiciones;
     private final InscripcionRepositorio inscripciones;
@@ -58,7 +58,7 @@ public class CondicionEconomicaServicio {
 
         if (request.vigenteDesde().isBefore(LocalDate.now(clock))
                 && !actorActual.tienePermiso(PERM_TARIFAS_HISTORICAS)) {
-            throw new OperacionNoPermitidaException("Permiso requerido: " + PERM_TARIFAS_HISTORICAS);
+            throw new AccessDeniedException("Permiso requerido: " + PERM_TARIFAS_HISTORICAS);
         }
 
         if (condiciones.existsByInscripcionIdAndVigenteDesde(inscripcionId, request.vigenteDesde())) {
@@ -127,14 +127,13 @@ public class CondicionEconomicaServicio {
 
     private Usuario actorAutorizado(Usuario actor) {
         if (actor == null || actor.getId() == null) {
-            throw new OperacionNoPermitidaException("Actor requerido");
+            throw new AccessDeniedException("Actor requerido");
         }
 
         return usuarios.findByIdConRolesYPermisos(actor.getId())
                 .filter(Usuario::isEnabled)
-                .filter(usuario -> usuario.tienePermiso(PERM_CONDICIONES_ECONOMICAS_ADMIN)
-                        || usuario.tienePermiso(PERM_TARIFAS_ADMIN))
-                .orElseThrow(() -> new OperacionNoPermitidaException("Actor sin permisos para administrar condiciones económicas"));
+                .filter(usuario -> usuario.tienePermiso(PERM_CONDICIONES_ECONOMICAS_ADMIN))
+                .orElseThrow(() -> new AccessDeniedException("Actor sin permisos para administrar condiciones económicas"));
     }
 
     private CondicionEconomicaResponse response(CondicionEconomicaInscripcion value) {

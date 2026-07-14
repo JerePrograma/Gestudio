@@ -1,7 +1,6 @@
 package gestudio.tarifas;
 
 import gestudio.entidades.Usuario;
-import gestudio.infra.errores.TratadorDeErrores.OperacionNoPermitidaException;
 import gestudio.infra.persistencia.PostgreSqlIntegrationTest;
 import gestudio.repositorios.UsuarioRepositorio;
 import gestudio.tarifas.api.TarifaDisciplinaRequest;
@@ -11,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.access.AccessDeniedException;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -18,12 +18,11 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static gestudio.infra.seguridad.PermissionCodes.PERM_TARIFAS_ADMIN;
+import static gestudio.infra.seguridad.PermissionCodes.PERM_TARIFAS_HISTORICAS;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 class TarifaDisciplinaPostgreSqlTest extends PostgreSqlIntegrationTest {
-
-    private static final String PERM_TARIFAS_ADMIN = "PERM_TARIFAS_ADMIN";
-    private static final String PERM_TARIFAS_HISTORICAS = "PERM_TARIFAS_HISTORICAS";
 
     @Autowired private TarifaDisciplinaServicio tarifas;
     @Autowired private UsuarioRepositorio usuarios;
@@ -105,7 +104,7 @@ class TarifaDisciplinaPostgreSqlTest extends PostgreSqlIntegrationTest {
         );
 
         assertThatThrownBy(() -> tarifas.crear(fixture.disciplinaId(), historical, fixture.gestor()))
-                .isInstanceOf(OperacionNoPermitidaException.class)
+                .isInstanceOf(AccessDeniedException.class)
                 .hasMessageContaining(PERM_TARIFAS_HISTORICAS);
 
         assertThat(tarifas.crear(fixture.disciplinaId(), historical, fixture.superadmin()).valorCuota())

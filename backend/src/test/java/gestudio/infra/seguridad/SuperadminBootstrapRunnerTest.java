@@ -51,6 +51,18 @@ class SuperadminBootstrapRunnerTest {
         verify(service, never()).bootstrap(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
     }
 
+    @Test
+    void reinicioPropagaElRechazoDeEjecucionUnica() {
+        when(service.bootstrap("root", "clave-superadmin-segura"))
+                .thenThrow(new IllegalStateException("El bootstrap SUPERADMIN ya fue ejecutado"));
+
+        assertThatThrownBy(() -> runner(true, false).run(new DefaultApplicationArguments()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("ya fue ejecutado");
+
+        verify(service).bootstrap("root", "clave-superadmin-segura");
+    }
+
     private SuperadminBootstrapRunner runner(boolean enabled, boolean legacyEnabled) {
         return new SuperadminBootstrapRunner(
                 new SuperadminBootstrapProperties(enabled, "root", "clave-superadmin-segura"),

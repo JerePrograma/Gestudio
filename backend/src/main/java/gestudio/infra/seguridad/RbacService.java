@@ -2,8 +2,8 @@ package gestudio.infra.seguridad;
 
 import gestudio.auditoria.application.AuditFailureService;
 import gestudio.entidades.Usuario;
-import gestudio.infra.errores.TratadorDeErrores.OperacionNoPermitidaException;
 import gestudio.repositorios.UsuarioRepositorio;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,7 +22,7 @@ public class RbacService {
     public Usuario exigirPermiso(Usuario actor, String permiso, String operacion) {
         if (actor == null || actor.getId() == null) {
             auditFailures.registrarEscalamiento(actor, operacion);
-            throw new OperacionNoPermitidaException("Actor requerido");
+            throw new AccessDeniedException("Actor requerido");
         }
 
         return usuarios.findByIdConRolesYPermisos(actor.getId())
@@ -32,7 +32,7 @@ public class RbacService {
                 .filter(usuario -> usuario.tienePermiso(permiso))
                 .orElseThrow(() -> {
                     auditFailures.registrarEscalamiento(actor, operacion);
-                    return new OperacionNoPermitidaException("Permiso requerido: " + permiso);
+                    return new AccessDeniedException("Permiso requerido: " + permiso);
                 });
     }
 
@@ -40,7 +40,7 @@ public class RbacService {
     public Usuario exigirSuperadminSistema(Usuario actor, String operacion) {
         if (actor == null || actor.getId() == null) {
             auditFailures.registrarEscalamiento(actor, operacion);
-            throw new OperacionNoPermitidaException("SUPERADMIN autenticado requerido");
+            throw new AccessDeniedException("SUPERADMIN autenticado requerido");
         }
 
         return usuarios.findByIdConRolesYPermisos(actor.getId())
@@ -48,7 +48,7 @@ public class RbacService {
                 .filter(Usuario::esSuperadminSistema)
                 .orElseThrow(() -> {
                     auditFailures.registrarEscalamiento(actor, operacion);
-                    return new OperacionNoPermitidaException("La operación requiere SUPERADMIN sistema");
+                    return new AccessDeniedException("La operación requiere SUPERADMIN sistema");
                 });
     }
 }

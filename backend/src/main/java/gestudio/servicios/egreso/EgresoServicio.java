@@ -29,12 +29,12 @@ import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.LocalDate;
 
+import static gestudio.infra.seguridad.PermissionCodes.PERM_EGRESOS_ADMIN;
+
 @Service
 public class EgresoServicio {
 
     private static final Logger log = LoggerFactory.getLogger(EgresoServicio.class);
-
-    private static final String PERM_EGRESOS_ADMIN = "PERM_EGRESOS_ADMIN";
 
     private final EgresoRepositorio egresos;
     private final MetodoPagoRepositorio metodos;

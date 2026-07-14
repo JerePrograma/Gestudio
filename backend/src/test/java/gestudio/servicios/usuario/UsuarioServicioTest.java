@@ -15,12 +15,14 @@ import gestudio.repositorios.RolRepositorio;
 import gestudio.repositorios.UsuarioRepositorio;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
@@ -150,9 +152,25 @@ class UsuarioServicioTest {
                 ),
                 profesor
         ))
-                .isInstanceOf(OperacionNoPermitidaException.class);
+                .isInstanceOf(AccessDeniedException.class);
 
         verify(usuarios, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void faltaDeSuperadminEs403YAunRegistraElIntento() {
+        Usuario gestor = usuario(
+                4L,
+                "gestor",
+                true,
+                rol(4L, "GESTOR_USUARIOS", "PERM_USUARIOS_ADMIN")
+        );
+        when(usuarios.findByIdConRolesYPermisos(gestor.getId())).thenReturn(Optional.of(gestor));
+
+        assertThatThrownBy(() -> rbac.exigirSuperadminSistema(gestor, "OPERACION_SENSIBLE"))
+                .isInstanceOf(AccessDeniedException.class);
+
+        verify(auditFailures).registrarEscalamiento(gestor, "OPERACION_SENSIBLE");
     }
 
     @Test
@@ -175,6 +193,23 @@ class UsuarioServicioTest {
                 .hasMessageContaining("permisos");
 
         verify(usuarios, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void listaSoloRolesQueElAdministradorDeUsuariosPuedeAsignar() {
+        Rol direccion = rol(4L, "DIRECCION", "PERM_APP_ACCESO", "PERM_USUARIOS_ADMIN");
+        Rol caja = rol(5L, "CAJA", "PERM_APP_ACCESO");
+        Rol profesor = rol(6L, "PROFESOR");
+        Rol privilegiado = rol(7L, "PRIVILEGIADO", "PERM_ROLES_ADMIN");
+        Usuario gestor = usuario(4L, "direccion", true, direccion);
+
+        when(usuarios.findByIdConRolesYPermisos(gestor.getId())).thenReturn(Optional.of(gestor));
+        when(roles.findAllByOrderByCodigoAsc())
+                .thenReturn(List.of(caja, direccion, profesor, privilegiado, superadmin));
+
+        assertThat(service.listarRolesAsignables(gestor))
+                .extracting("codigo")
+                .containsExactly("CAJA", "DIRECCION");
     }
 
     @Test
@@ -201,6 +236,29 @@ class UsuarioServicioTest {
         assertThat(objetivo.getRoles()).containsExactlyInAnyOrder(superadmin, recepcion);
         assertThat(objetivo.getAuthVersion()).isOne();
 
+        verify(usuarios).saveAndFlush(objetivo);
+    }
+
+    @Test
+    void editarOtrosDatosConservaProfesorInactivoSinVolverloAsignable() {
+        Rol profesor = rol(9L, "PROFESOR");
+        profesor.setActivo(false);
+        Usuario objetivo = usuario(9L, "docente", true, profesor);
+
+        when(usuarios.findByIdConRolesYPermisos(objetivo.getId()))
+                .thenReturn(Optional.of(objetivo));
+        when(usuarios.saveAndFlush(any(Usuario.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.editarUsuario(
+                objetivo.getId(),
+                new UsuarioModificacionRequest("docente-actualizado", null, Set.of("PROFESOR"), null),
+                actor
+        );
+
+        assertThat(objetivo.getNombreUsuario()).isEqualTo("docente-actualizado");
+        assertThat(objetivo.getRoles()).containsExactly(profesor);
+        verify(roles, never()).findWithPermisosByCodigoIgnoreCase("PROFESOR");
         verify(usuarios).saveAndFlush(objetivo);
     }
 

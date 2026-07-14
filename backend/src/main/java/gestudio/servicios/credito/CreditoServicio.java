@@ -27,11 +27,11 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.Map;
 
+import static gestudio.infra.seguridad.PermissionCodes.PERM_CREDITOS_ADMIN;
+import static gestudio.infra.seguridad.PermissionCodes.PERM_CREDITOS_CONSUMIR;
+
 @Service
 public class CreditoServicio {
-
-    private static final String PERM_CREDITOS_ADMIN = "PERM_CREDITOS_ADMIN";
-    private static final String PERM_CREDITOS_CONSUMIR = "PERM_CREDITOS_CONSUMIR";
 
     private final MovimientoCreditoRepositorio movimientos;
     private final AlumnoRepositorio alumnos;

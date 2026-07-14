@@ -22,6 +22,10 @@ public class AuditService {
     private static final Set<String> NON_SECRET_CLASSIFICATIONS = Set.of("TOKEN_INVALIDO");
     private static final Pattern JWT = Pattern.compile(
             "^[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}$");
+    private static final Pattern SENSITIVE_VALUE_MARKER = Pattern.compile(
+            "(^|[\\s._-])(password|contrasena|contraseña|token|secret|jwt|authorization|bearer)"
+                    + "(?=\\s*[:=]|[\\s._-]|$)",
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
     private final Clock clock;
@@ -107,6 +111,6 @@ public class AuditService {
         }
         String normalized = trimmed.toLowerCase(Locale.ROOT);
         return JWT.matcher(trimmed).matches()
-                || SECRET_FRAGMENTS.stream().anyMatch(normalized::contains);
+                || SENSITIVE_VALUE_MARKER.matcher(normalized).find();
     }
 }

@@ -11,8 +11,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
-import java.util.Map;
 import java.util.LinkedHashSet;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 public class SuperadminBootstrapService {
@@ -58,9 +59,16 @@ public class SuperadminBootstrapService {
         } catch (IllegalArgumentException e) {
             throw new IllegalStateException("APP_BOOTSTRAP_SUPERADMIN_PASSWORD: " + e.getMessage(), e);
         }
-        var role = roles.findByCodigoIgnoreCase(RolSistema.SUPERADMIN.name())
+        var role = roles.findWithPermisosByCodigoIgnoreCase(RolSistema.SUPERADMIN.name())
                 .filter(existing -> Boolean.TRUE.equals(existing.getActivo()))
-                .orElseThrow(() -> new IllegalStateException("No existe el rol SUPERADMIN activo"));
+                .orElseThrow(() -> new IllegalStateException("El rol SUPERADMIN no está disponible"));
+        var permisosActivos = role.getPermisos().stream()
+                .filter(permiso -> Boolean.TRUE.equals(permiso.getActivo()))
+                .map(permiso -> permiso.getCodigo())
+                .collect(Collectors.toSet());
+        if (!permisosActivos.containsAll(PermissionCodes.ALL)) {
+            throw new IllegalStateException("La matriz obligatoria del rol SUPERADMIN no está disponible");
+        }
         if (usuarios.findByNombreUsuarioIgnoreCase(username).isPresent()) {
             throw new IllegalStateException("El username del bootstrap ya existe");
         }

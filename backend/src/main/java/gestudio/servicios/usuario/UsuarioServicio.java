@@ -4,6 +4,7 @@ import gestudio.auditoria.application.AuditService;
 import gestudio.dto.usuario.UsuarioMapper;
 import gestudio.dto.usuario.request.UsuarioModificacionRequest;
 import gestudio.dto.usuario.request.UsuarioRegistroRequest;
+import gestudio.dto.usuario.response.RolAsignableResponse;
 import gestudio.dto.usuario.response.UsuarioResponse;
 import gestudio.entidades.Rol;
 import gestudio.entidades.Usuario;
@@ -23,10 +24,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static gestudio.infra.seguridad.PermissionCodes.PERM_USUARIOS_ADMIN;
+
 @Service
 public class UsuarioServicio {
-
-    private static final String PERM_USUARIOS_ADMIN = "PERM_USUARIOS_ADMIN";
 
     private final UsuarioRepositorio usuarios;
     private final PasswordEncoder passwordEncoder;
@@ -107,7 +108,7 @@ public class UsuarioServicio {
         Set<Rol> rolesActuales = new LinkedHashSet<>(usuario.rolesEfectivos());
         Set<Rol> rolesNuevos = request.roles() == null || request.roles().isEmpty()
                 ? rolesActuales
-                : rolesActivos(request.roles());
+                : rolesParaEdicion(request.roles(), rolesActuales);
 
         validarAsignacionPermitida(actorActual, rolesNuevos);
 
@@ -202,6 +203,20 @@ public class UsuarioServicio {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<RolAsignableResponse> listarRolesAsignables(Usuario actor) {
+        Usuario actorActual = rbac.exigirPermiso(actor, PERM_USUARIOS_ADMIN, "LISTAR_ROLES_ASIGNABLES");
+        Set<String> permisosActor = actorActual.codigosPermisosActivos();
+
+        return roles.findAllByOrderByCodigoAsc().stream()
+                .filter(Rol::estaActivo)
+                .filter(rol -> !"PROFESOR".equals(rol.getCodigo()))
+                .filter(rol -> actorActual.esSuperadminSistema()
+                        || (!rol.esSuperadminSistema() && permisosActor.containsAll(permisosActivos(rol))))
+                .map(rol -> new RolAsignableResponse(rol.getCodigo(), rol.getNombre()))
+                .toList();
+    }
+
     public UsuarioResponse convertirAUsuarioResponse(Usuario usuario) {
         return mapper.toDTO(usuario);
     }
@@ -260,6 +275,31 @@ public class UsuarioServicio {
         return result;
     }
 
+    private Set<Rol> rolesParaEdicion(Set<String> codigos, Set<Rol> rolesActuales) {
+        Map<String, Rol> actualesPorCodigo = rolesActuales.stream()
+                .collect(Collectors.toMap(
+                        rol -> rol.getCodigo().toUpperCase(),
+                        rol -> rol
+                ));
+        Set<Rol> result = new LinkedHashSet<>();
+
+        for (String codigo : codigos) {
+            String normalizado = normalizarCodigoRol(codigo);
+            Rol actual = actualesPorCodigo.get(normalizado);
+            if (actual != null) {
+                result.add(actual);
+                continue;
+            }
+
+            result.add(roles.findWithPermisosByCodigoIgnoreCase(normalizado)
+                    .or(() -> roles.findByDescripcionIgnoreCase(normalizado))
+                    .filter(Rol::estaActivo)
+                    .orElseThrow(() -> new IllegalArgumentException("Rol no válido o inactivo: " + codigo)));
+        }
+
+        return result;
+    }
+
     private void validarAsignacionPermitida(Usuario actor, Set<Rol> rolesObjetivo) {
         if (actor.esSuperadminSistema()) {
             return;
@@ -302,6 +342,13 @@ public class UsuarioServicio {
                 .map(Rol::getCodigo)
                 .map(String::toUpperCase)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    private static Set<String> permisosActivos(Rol rol) {
+        return rol.getPermisos().stream()
+                .filter(permiso -> Boolean.TRUE.equals(permiso.getActivo()))
+                .map(permiso -> permiso.getCodigo())
+                .collect(Collectors.toSet());
     }
 
     private static String normalizarUsername(String username) {

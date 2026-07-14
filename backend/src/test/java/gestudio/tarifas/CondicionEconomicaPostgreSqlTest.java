@@ -1,7 +1,6 @@
 package gestudio.tarifas;
 
 import gestudio.entidades.Usuario;
-import gestudio.infra.errores.TratadorDeErrores.OperacionNoPermitidaException;
 import gestudio.infra.persistencia.PostgreSqlIntegrationTest;
 import gestudio.repositorios.UsuarioRepositorio;
 import gestudio.tarifas.api.CondicionEconomicaRequest;
@@ -10,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.access.AccessDeniedException;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -17,12 +17,12 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static gestudio.infra.seguridad.PermissionCodes.PERM_CONDICIONES_ECONOMICAS_ADMIN;
+import static gestudio.infra.seguridad.PermissionCodes.PERM_TARIFAS_ADMIN;
+import static gestudio.infra.seguridad.PermissionCodes.PERM_TARIFAS_HISTORICAS;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 class CondicionEconomicaPostgreSqlTest extends PostgreSqlIntegrationTest {
-
-    private static final String PERM_TARIFAS_ADMIN = "PERM_TARIFAS_ADMIN";
-    private static final String PERM_TARIFAS_HISTORICAS = "PERM_TARIFAS_HISTORICAS";
 
     @Autowired private CondicionEconomicaServicio condiciones;
     @Autowired private UsuarioRepositorio usuarios;
@@ -103,8 +103,14 @@ class CondicionEconomicaPostgreSqlTest extends PostgreSqlIntegrationTest {
         assertThat(condiciones.crear(fixture.inscripcionId(), future, fixture.gestor()).id())
                 .isPositive();
 
+        assertThatThrownBy(() -> condiciones.crear(
+                fixture.inscripcionId(),
+                future,
+                fixture.gestorTarifas()
+        )).isInstanceOf(AccessDeniedException.class);
+
         assertThatThrownBy(() -> condiciones.crear(fixture.inscripcionId(), historical, fixture.gestor()))
-                .isInstanceOf(OperacionNoPermitidaException.class)
+                .isInstanceOf(AccessDeniedException.class)
                 .hasMessageContaining(PERM_TARIFAS_HISTORICAS);
 
         var created = condiciones.crear(fixture.inscripcionId(), historical, fixture.superadmin());
@@ -128,12 +134,14 @@ class CondicionEconomicaPostgreSqlTest extends PostgreSqlIntegrationTest {
 
         garantizarPermiso(PERM_TARIFAS_ADMIN);
         garantizarPermiso(PERM_TARIFAS_HISTORICAS);
+        garantizarPermiso(PERM_CONDICIONES_ECONOMICAS_ADMIN);
 
         asignarPermiso(superRole, PERM_TARIFAS_ADMIN);
         asignarPermiso(superRole, PERM_TARIFAS_HISTORICAS);
 
         Long superId = usuario("root-condition-" + suffix, superRole);
-        Long gestorId = usuarioConPermiso("gestor-condition-" + suffix, PERM_TARIFAS_ADMIN);
+        Long gestorId = usuarioConPermiso("gestor-condition-" + suffix, PERM_CONDICIONES_ECONOMICAS_ADMIN);
+        Long gestorTarifasId = usuarioConPermiso("gestor-tarifas-" + suffix, PERM_TARIFAS_ADMIN);
 
         Long profesorId = jdbc.queryForObject("""
                 INSERT INTO profesores(nombre, apellido)
@@ -169,7 +177,8 @@ class CondicionEconomicaPostgreSqlTest extends PostgreSqlIntegrationTest {
         return new Fixture(
                 inscripcionId,
                 usuarios.findByIdConRolesYPermisos(superId).orElseThrow(),
-                usuarios.findByIdConRolesYPermisos(gestorId).orElseThrow()
+                usuarios.findByIdConRolesYPermisos(gestorId).orElseThrow(),
+                usuarios.findByIdConRolesYPermisos(gestorTarifasId).orElseThrow()
         );
     }
 
@@ -228,6 +237,6 @@ class CondicionEconomicaPostgreSqlTest extends PostgreSqlIntegrationTest {
                 """, roleId, permiso);
     }
 
-    private record Fixture(Long inscripcionId, Usuario superadmin, Usuario gestor) {
+    private record Fixture(Long inscripcionId, Usuario superadmin, Usuario gestor, Usuario gestorTarifas) {
     }
 }

@@ -29,10 +29,10 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.util.List;
 
+import static gestudio.infra.seguridad.PermissionCodes.PERM_PAGOS_REGISTRAR;
+
 @Service
 public class CargoServicio {
-
-    private static final String PERM_PAGOS_REGISTRAR = "PERM_PAGOS_REGISTRAR";
 
     private final CargoRepositorio cargos;
     private final AlumnoRepositorio alumnos;

@@ -100,6 +100,18 @@ class AuditServicePostgreSqlTest extends PostgreSqlIntegrationTest {
     }
 
     @Test
+    void conservaValoresLegitimosQueEmpiezanConSecret() {
+        String key = "audit-secretaria-role:" + UUID.randomUUID();
+
+        audit.registrar("USUARIOS", "USUARIO_CREADO", "USUARIO", "1",
+                null, key, Map.of(
+                        "username", "secretaria.turno",
+                        "roles", List.of("SECRETARIA")));
+
+        assertThat(count(key)).isOne();
+    }
+
+    @Test
     void rechazaSecretosEnEstadosAnteriorYNuevo() {
         String previousKey = "audit-secret-previous:" + UUID.randomUUID();
         assertThatThrownBy(() -> audit.registrar("SEGURIDAD", "PRUEBA_SECRETO", null, null,

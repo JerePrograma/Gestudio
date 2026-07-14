@@ -3,6 +3,7 @@ package gestudio.controladores;
 import jakarta.validation.Valid;
 import gestudio.dto.usuario.request.UsuarioModificacionRequest;
 import gestudio.dto.usuario.request.UsuarioRegistroRequest;
+import gestudio.dto.usuario.response.RolAsignableResponse;
 import gestudio.dto.usuario.response.UsuarioResponse;
 import gestudio.entidades.Usuario;
 import gestudio.servicios.usuario.UsuarioServicio;
@@ -63,6 +64,13 @@ public class UsuarioControlador {
                 .toList();
 
         return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/roles-asignables")
+    public ResponseEntity<List<RolAsignableResponse>> listarRolesAsignables(
+            @AuthenticationPrincipal Usuario actor
+    ) {
+        return ResponseEntity.ok(usuarioService.listarRolesAsignables(actor));
     }
 
     @DeleteMapping("/{id}")

@@ -10,6 +10,7 @@ import gestudio.tarifas.api.TarifaDisciplinaRequest;
 import gestudio.tarifas.api.TarifaDisciplinaResponse;
 import gestudio.tarifas.persistence.TarifaDisciplina;
 import gestudio.tarifas.persistence.TarifaDisciplinaRepositorio;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,11 +19,11 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
+import static gestudio.infra.seguridad.PermissionCodes.PERM_TARIFAS_ADMIN;
+import static gestudio.infra.seguridad.PermissionCodes.PERM_TARIFAS_HISTORICAS;
+
 @Service
 public class TarifaDisciplinaServicio {
-
-    private static final String PERM_TARIFAS_ADMIN = "PERM_TARIFAS_ADMIN";
-    private static final String PERM_TARIFAS_HISTORICAS = "PERM_TARIFAS_HISTORICAS";
 
     private final TarifaDisciplinaRepositorio tarifas;
     private final DisciplinaRepositorio disciplinas;
@@ -48,7 +49,7 @@ public class TarifaDisciplinaServicio {
 
         if (request.vigenteDesde().isBefore(LocalDate.now(clock))
                 && !actorActual.tienePermiso(PERM_TARIFAS_HISTORICAS)) {
-            throw new OperacionNoPermitidaException("Permiso requerido: " + PERM_TARIFAS_HISTORICAS);
+            throw new AccessDeniedException("Permiso requerido: " + PERM_TARIFAS_HISTORICAS);
         }
 
         if (tarifas.existsByDisciplinaIdAndVigenteDesde(disciplinaId, request.vigenteDesde())) {
@@ -105,13 +106,13 @@ public class TarifaDisciplinaServicio {
 
     private Usuario actorAutorizado(Usuario actor) {
         if (actor == null || actor.getId() == null) {
-            throw new OperacionNoPermitidaException("Actor requerido");
+            throw new AccessDeniedException("Actor requerido");
         }
 
         return usuarios.findByIdConRolesYPermisos(actor.getId())
                 .filter(Usuario::isEnabled)
                 .filter(usuario -> usuario.tienePermiso(PERM_TARIFAS_ADMIN))
-                .orElseThrow(() -> new OperacionNoPermitidaException("Actor sin permisos para administrar tarifas"));
+                .orElseThrow(() -> new AccessDeniedException("Actor sin permisos para administrar tarifas"));
     }
 
     private TarifaDisciplinaResponse response(TarifaDisciplina value) {

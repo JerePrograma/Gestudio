@@ -56,15 +56,15 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
+import static gestudio.infra.seguridad.PermissionCodes.PERM_PAGOS_ANULAR;
+import static gestudio.infra.seguridad.PermissionCodes.PERM_PAGOS_REGISTRAR;
+
 @Service
 public class PagoServicio {
 
     private static final Logger log = LoggerFactory.getLogger(PagoServicio.class);
 
     private static final BigDecimal CERO = new BigDecimal("0.00");
-
-    private static final String PERM_PAGOS_REGISTRAR = "PERM_PAGOS_REGISTRAR";
-    private static final String PERM_PAGOS_ANULAR = "PERM_PAGOS_ANULAR";
 
     private final PagoRepositorio pagos;
     private final CargoRepositorio cargos;
