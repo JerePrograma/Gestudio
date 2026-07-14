@@ -51,7 +51,8 @@ class CanonicalArchitectureContractTest {
                             "V2__security_superadmin_sessions_audit.sql",
                             "V3__effective_dated_pricing.sql",
                             "V4__cargo_liquidations_and_events.sql",
-                            "V5__base_roles_permissions_seed.sql"
+                            "V5__base_roles_permissions_seed.sql",
+                            "V6__rbac_permission_catalog_and_base_roles.sql"
                     );
         }
     }

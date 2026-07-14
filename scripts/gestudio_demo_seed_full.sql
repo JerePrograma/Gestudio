@@ -1,74 +1,15 @@
--- gestudio_demo_seed_full_v3.sql
--- Seed demo manual para Gestudio, pensado para ejecutarse DESPUES de Flyway V1..V5.
+-- gestudio_demo_seed_full_v4.sql
+-- Seed demo manual para Gestudio, pensado para ejecutarse DESPUES de Flyway V1..V6.
 -- No poner en db/migration. Ejecutar manualmente contra una base de desarrollo/demo.
+-- Flyway V6 es la única autoridad del catálogo RBAC y de las matrices productivas.
 -- Usuario demo: admin / admin
 -- Password BCrypt para "admin": $2a$10$20gyPVFS3kpF8j8KZ.c0zer5c1LUzVWJS7Uu9rdvQVFxJp8Oc1hBa
 
 BEGIN;
 
 -- ============================================================
--- 0. Roles, permisos y usuario admin
+-- 0. Usuario demo asignado a un rol productivo ya existente
 -- ============================================================
-
-INSERT INTO public.roles (descripcion, activo, codigo, nombre, descripcion_funcional, sistema, editable)
-VALUES
-    ('ADMINISTRADOR', TRUE, 'ADMINISTRADOR', 'Administrador', 'Administración general de la academia', TRUE, TRUE),
-    ('SUPERADMIN', TRUE, 'SUPERADMIN', 'Superadmin', 'Rol técnico de máxima administración del sistema', TRUE, FALSE)
-ON CONFLICT (descripcion) DO UPDATE
-SET activo = EXCLUDED.activo,
-    nombre = EXCLUDED.nombre,
-    descripcion_funcional = EXCLUDED.descripcion_funcional,
-    sistema = EXCLUDED.sistema,
-    editable = EXCLUDED.editable;
-
-WITH seed(codigo, descripcion, modulo) AS (
-    VALUES
-        ('PERM_APP_ACCESO', 'Acceso general a la aplicación', 'APP'),
-        ('PERM_USUARIOS_ADMIN', 'Administrar usuarios', 'USUARIOS'),
-        ('PERM_ROLES_ADMIN', 'Administrar roles y permisos', 'ROLES'),
-        ('PERM_AUDITORIA_SEGURIDAD_LEER', 'Consultar auditoría de seguridad', 'AUDITORIA'),
-        ('PERM_MENSUALIDADES_GENERAR_MANUAL', 'Generar mensualidades manualmente', 'MENSUALIDADES'),
-        ('PERM_PAGOS_REGISTRAR', 'Registrar pagos', 'PAGOS'),
-        ('PERM_PAGOS_ANULAR', 'Anular pagos', 'PAGOS'),
-        ('PERM_EGRESOS_ADMIN', 'Administrar egresos', 'EGRESOS'),
-        ('PERM_STOCK_ADMIN', 'Administrar stock', 'STOCK'),
-        ('PERM_STOCK_VENDER', 'Vender productos de stock', 'STOCK'),
-        ('PERM_CREDITOS_ADMIN', 'Administrar créditos de alumnos', 'CREDITOS'),
-        ('PERM_CREDITOS_CONSUMIR', 'Consumir crédito de alumnos', 'CREDITOS'),
-        ('PERM_TARIFAS_ADMIN', 'Administrar tarifas históricas', 'TARIFAS'),
-        ('PERM_CONDICIONES_ECONOMICAS_ADMIN', 'Administrar condiciones económicas de inscripciones', 'CONDICIONES')
-)
-INSERT INTO public.permisos (codigo, descripcion, modulo, activo, sistema)
-SELECT codigo, descripcion, modulo, TRUE, TRUE
-FROM seed
-ON CONFLICT (codigo) DO UPDATE
-SET descripcion = EXCLUDED.descripcion,
-    modulo = EXCLUDED.modulo,
-    activo = TRUE,
-    sistema = TRUE;
-
-INSERT INTO public.rol_permisos (rol_id, permiso_id)
-SELECT r.id, p.id
-FROM public.roles r
-CROSS JOIN public.permisos p
-WHERE r.codigo IN ('ADMINISTRADOR', 'SUPERADMIN')
-  AND p.codigo IN (
-      'PERM_APP_ACCESO',
-      'PERM_USUARIOS_ADMIN',
-      'PERM_ROLES_ADMIN',
-      'PERM_AUDITORIA_SEGURIDAD_LEER',
-      'PERM_MENSUALIDADES_GENERAR_MANUAL',
-      'PERM_PAGOS_REGISTRAR',
-      'PERM_PAGOS_ANULAR',
-      'PERM_EGRESOS_ADMIN',
-      'PERM_STOCK_ADMIN',
-      'PERM_STOCK_VENDER',
-      'PERM_CREDITOS_ADMIN',
-      'PERM_CREDITOS_CONSUMIR',
-      'PERM_TARIFAS_ADMIN',
-      'PERM_CONDICIONES_ECONOMICAS_ADMIN'
-  )
-ON CONFLICT DO NOTHING;
 
 INSERT INTO public.usuarios (
     id,
@@ -108,7 +49,7 @@ WHERE lower(u.nombre_usuario) = 'admin';
 INSERT INTO public.usuario_roles (usuario_id, rol_id, asignado_por_usuario_id)
 SELECT u.id, r.id, u.id
 FROM public.usuarios u
-JOIN public.roles r ON r.codigo IN ('ADMINISTRADOR', 'SUPERADMIN')
+JOIN public.roles r ON r.codigo = 'ADMINISTRADOR'
 WHERE lower(u.nombre_usuario) = 'admin'
 ON CONFLICT DO NOTHING;
 
@@ -749,7 +690,6 @@ BEGIN
         'auditoria_eventos',
         'disciplina_tarifas',
         'inscripcion_condiciones_economicas',
-        'permisos',
         'cargo_eventos'
     ] LOOP
         SELECT pg_get_serial_sequence('public.' || t, 'id') INTO seq;
