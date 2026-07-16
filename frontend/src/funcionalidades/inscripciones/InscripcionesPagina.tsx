@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { BadgePercent, Pencil, PlusCircle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import inscripcionesApi from "../../api/inscripcionesApi";
@@ -28,6 +28,7 @@ const InscripcionesPagina = () => {
   const inscripciones = useQuery({
     queryKey: queryKeys.inscripciones(page, PAGE_SIZE, search),
     queryFn: () => inscripcionesApi.listar(page, PAGE_SIZE, search.trim()),
+    placeholderData: keepPreviousData,
   });
 
   if (inscripciones.isLoading) return <LoadingState message="Cargando inscripciones..." />;

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CreditCard, Pencil, PlusCircle, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
@@ -32,6 +32,7 @@ const AlumnosPagina = () => {
     queryFn: () => search.trim()
       ? alumnosApi.buscarPorNombre(search.trim(), page, PAGE_SIZE)
       : alumnosApi.listar(page, PAGE_SIZE),
+    placeholderData: keepPreviousData,
   });
 
   const baja = useMutation({

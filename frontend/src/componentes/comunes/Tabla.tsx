@@ -37,6 +37,10 @@ const Tabla = <T extends object>({
     return <EmptyState message={emptyMessage} />;
   }
 
+  const dataHeaders = actions && headers[headers.length - 1]?.toLowerCase() === "acciones"
+    ? headers.slice(0, -1)
+    : headers;
+
   return (
     <div className={`w-full ${className}`}>
       {/* Versión para pantallas medianas y grandes */}
@@ -44,7 +48,7 @@ const Tabla = <T extends object>({
         <Table>
           <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur-sm">
             <TableRow className="hover:bg-transparent">
-              {headers.map((header, idx) => (
+              {dataHeaders.map((header, idx) => (
                 <TableHead
                   key={`${header}-${idx}`}
                   className="h-11 whitespace-nowrap px-4 text-left text-xs font-bold uppercase tracking-[0.06em] text-muted-foreground"
@@ -95,7 +99,7 @@ const Tabla = <T extends object>({
             const cells = customRender ? customRender(row) : Object.values(row);
             return (
             <article key={getRowKey(row)} className="section-card space-y-3">
-              {headers.map((header, headerIndex) => {
+              {dataHeaders.map((header, headerIndex) => {
                 const value = cells[headerIndex];
                 return (
                   <div

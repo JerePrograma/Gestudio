@@ -408,11 +408,12 @@ export interface RolResponse {
   id: number;
   codigo: string;
   nombre: string;
+  descripcion?: string;
   descripcionFuncional?: string;
   activo: boolean;
   sistema: boolean;
   editable: boolean;
-  cantidadPermisos: number;
+  permisos: PermisoResponse[];
 }
 
 export interface RolAsignableResponse {
@@ -429,9 +430,7 @@ export interface PermisoResponse {
   sistema: boolean;
 }
 
-export interface RolDetalleResponse extends Omit<RolResponse, "cantidadPermisos"> {
-  permisos: PermisoResponse[];
-}
+export type RolDetalleResponse = RolResponse;
 
 // src/types/conceptosTypes.ts
 export interface ConceptoRegistroRequest {

@@ -27,7 +27,14 @@ describe("RolesPagina", () => {
       activo: true,
       sistema: true,
       editable: false,
-      cantidadPermisos: 1,
+      permisos: [{
+        id: 1,
+        codigo: "PERM_APP_ACCESO",
+        descripcion: "Acceso",
+        modulo: "APP",
+        activo: true,
+        sistema: true,
+      }],
     }]);
   });
 
@@ -37,6 +44,7 @@ describe("RolesPagina", () => {
     render(<MemoryRouter><RolesPagina /></MemoryRouter>);
 
     expect(await screen.findAllByText("Lectura")).not.toHaveLength(0);
+    expect(screen.queryByText("undefined")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /nuevo rol/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /editar/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /desactivar/i })).not.toBeInTheDocument();

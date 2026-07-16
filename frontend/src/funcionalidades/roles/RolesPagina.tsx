@@ -59,7 +59,7 @@ const RolesPagina = () => {
             rol.nombre,
             rol.activo ? "Activo" : "Inactivo",
             rol.sistema ? "Sistema" : "Personalizado",
-            rol.cantidadPermisos,
+            rol.permisos.length,
           ]}
           actions={puedeEscribir ? (rol) => (
             <div className="flex gap-2">

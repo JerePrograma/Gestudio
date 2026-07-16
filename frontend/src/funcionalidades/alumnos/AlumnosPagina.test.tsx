@@ -46,6 +46,19 @@ describe("AlumnosPagina paginada", () => {
     expect(screen.queryByRole("row", { name: /Ana/ })).not.toBeInTheDocument();
   });
 
+  it("mantiene el buscador enfocado mientras actualiza los resultados", async () => {
+    buscarPorNombre.mockReturnValue(new Promise(() => undefined));
+    renderPage();
+
+    const buscador = await screen.findByLabelText("Buscar");
+    buscador.focus();
+    fireEvent.change(buscador, { target: { value: "Ana" } });
+
+    await waitFor(() => expect(buscarPorNombre).toHaveBeenCalledWith("Ana", 0, 50));
+    expect(screen.getByLabelText("Buscar")).toBe(buscador);
+    expect(buscador).toHaveFocus();
+  });
+
   it("no expone el ID interno como columna visible", async () => {
     renderPage();
 
