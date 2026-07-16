@@ -9,7 +9,7 @@
     <meta name="color-scheme" content="light dark" />
     <meta
       name="description"
-      content="Gestudio: gestión de alumnos, cobranzas, asistencia y reportes. Plataforma web rápida y segura."
+      content="Gestudio centraliza pagos, deudas, caja, asistencias, recibos y reportes para academias de danza y estudios artísticos."
     />
     <meta name="robots" content="index,follow" />
     <link rel="canonical" href="https://gestudio.example.com/" />
@@ -25,7 +25,7 @@
     img-src 'self' data: blob:;
     font-src 'self' data:;
     style-src 'self' 'unsafe-inline';
-    connect-src 'self' http://localhost:8080 ws://localhost:5173 ws://127.0.0.1:5173;
+    connect-src 'self' %VITE_API_BASE_URL%/ ws://localhost:5173 ws://127.0.0.1:5173;
     script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:;
     worker-src 'self' blob:;
     object-src 'none';

@@ -52,6 +52,7 @@ recibos se procesa fuera de la transacción financiera mediante `ReciboPendiente
 
 ## Documentación
 
+- [Estrategia comercial canónica](docs/comercial/estrategia-comercial.md)
 - [Desarrollo local](docs/development/local-development.md)
 - [Variables de entorno](docs/development/environment-variables.md)
 - [Auditoría del entorno](docs/development/environment-audit.md)

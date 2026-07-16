@@ -11,6 +11,8 @@
 
 Hacer que Gestudio explique qué requiere atención, demostrar separación real por rol y completar una demo comercial reproducible de 10–15 minutos antes de evaluar staging o producción.
 
+El posicionamiento, los precios, el programa piloto y la comunicación comercial se definen únicamente en la [estrategia comercial canónica](../../comercial/estrategia-comercial.md). Este documento conserva sólo el gate técnico y operativo de la demostración y la publicación.
+
 ## Fuera de alcance
 
 - Reabrir gates funcionales anteriores para sumar funciones no necesarias para la demo.
