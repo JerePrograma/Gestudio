@@ -49,7 +49,7 @@ jwt:
 
 app:
   time-zone: ${APP_TIME_ZONE:America/Argentina/Buenos_Aires}
-  cors-allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:8081}
+  cors-allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:8080}
   scheduling-enabled: ${APP_SCHEDULING_ENABLED:false}
   security:
     bcrypt-strength: ${APP_SECURITY_BCRYPT_STRENGTH:12}

@@ -879,7 +879,7 @@ function Get-DemoSnapshot {
 WITH demo_users AS (
     SELECT id FROM usuarios WHERE lower(nombre_usuario) LIKE 'demo-%'
 ), demo_alumnos AS (
-    SELECT id FROM alumnos WHERE documento LIKE 'DEMO-DNI-%'
+    SELECT id FROM alumnos WHERE email LIKE '%@correo.local'
 ), demo_inscripciones AS (
     SELECT i.id FROM inscripciones i JOIN demo_alumnos a ON a.id = i.alumno_id
 ), demo_mensualidades AS (
@@ -893,11 +893,18 @@ WITH demo_users AS (
 ), demo_ventas AS (
     SELECT v.id FROM ventas_stock v JOIN demo_alumnos a ON a.id = v.alumno_id
 ), demo_stocks AS (
-    SELECT s.id FROM stocks s WHERE s.codigo_barras LIKE 'DEMO-STOCK-%'
+    SELECT s.id FROM stocks s WHERE s.codigo_barras IN (
+        '7790000000012', '7790000000029', '7790000000036',
+        '7790000000043', '7790000000050', '7790000000067'
+    )
 ), demo_asistencia_mensual AS (
     SELECT am.id FROM asistencias_mensuales am
     JOIN disciplinas d ON d.id = am.disciplina_id
-    WHERE d.nombre LIKE 'DEMO · %'
+    WHERE d.nombre IN (
+        'Ballet Inicial (4 a 6 años)', 'Jazz Infantil (7 a 10 años)',
+        'Danza Urbana Teen', 'Danza Contemporánea',
+        'Ritmos Latinos Adultos', 'Entrenamiento Escénico'
+    )
 ), demo_asistencia_alumno AS (
     SELECT aam.id FROM asistencias_alumno_mensual aam
     JOIN demo_inscripciones i ON i.id = aam.inscripcion_id
@@ -1025,7 +1032,7 @@ WHERE lower(u.nombre_usuario) LIKE 'demo-%' AND r.codigo = 'PROFESOR';
 "@
 
     Assert-SqlZero -Stage "FK demo huérfanas" -Query @"
-WITH demo_alumnos AS (SELECT id FROM alumnos WHERE documento LIKE 'DEMO-DNI-%')
+WITH demo_alumnos AS (SELECT id FROM alumnos WHERE email LIKE '%@correo.local')
 SELECT sum(invalidos) FROM (
     SELECT count(*) AS invalidos FROM inscripciones i JOIN demo_alumnos da ON da.id=i.alumno_id LEFT JOIN disciplinas d ON d.id=i.disciplina_id WHERE d.id IS NULL
     UNION ALL SELECT count(*) FROM cargos c JOIN demo_alumnos da ON da.id=c.alumno_id LEFT JOIN alumnos a ON a.id=c.alumno_id WHERE a.id IS NULL
@@ -1038,7 +1045,7 @@ SELECT sum(invalidos) FROM (
 SELECT count(*) FROM (
     SELECT p.id
     FROM pagos p
-    JOIN alumnos a ON a.id=p.alumno_id AND a.documento LIKE 'DEMO-DNI-%'
+    JOIN alumnos a ON a.id=p.alumno_id AND a.email LIKE '%@correo.local'
     LEFT JOIN aplicaciones_pago ap ON ap.pago_id=p.id AND ap.estado='APLICADA'
     GROUP BY p.id, p.monto_recibido
     HAVING COALESCE(sum(ap.importe_aplicado),0) > p.monto_recibido
@@ -1060,7 +1067,7 @@ WITH pagos AS (
     ) x GROUP BY cargo_id
 )
 SELECT count(*) FROM cargos c
-JOIN alumnos a ON a.id=c.alumno_id AND a.documento LIKE 'DEMO-DNI-%'
+JOIN alumnos a ON a.id=c.alumno_id AND a.email LIKE '%@correo.local'
 LEFT JOIN pagos p ON p.cargo_id=c.id
 LEFT JOIN credito cr ON cr.cargo_id=c.id
 WHERE COALESCE(p.importe,0) + COALESCE(cr.importe,0) > c.importe_original;
@@ -1079,7 +1086,7 @@ WITH pagos AS (
     ) x GROUP BY cargo_id
 )
 SELECT count(*) FROM cargos c
-JOIN alumnos a ON a.id=c.alumno_id AND a.documento LIKE 'DEMO-DNI-%'
+JOIN alumnos a ON a.id=c.alumno_id AND a.email LIKE '%@correo.local'
 LEFT JOIN pagos p ON p.cargo_id=c.id
 LEFT JOIN credito cr ON cr.cargo_id=c.id
 WHERE c.estado <> CASE
@@ -1131,7 +1138,7 @@ WHERE s.requiere_control_de_stock AND (s.cantidad_actual<0 OR s.cantidad_actual<
 
     Assert-SqlZero -Stage "Ventas demo inconsistentes" -Query @"
 SELECT count(*) FROM ventas_stock v
-JOIN alumnos a ON a.id=v.alumno_id AND a.documento LIKE 'DEMO-DNI-%'
+JOIN alumnos a ON a.id=v.alumno_id AND a.email LIKE '%@correo.local'
 LEFT JOIN cargos c ON c.venta_stock_id=v.id
 LEFT JOIN movimientos_stock original ON original.venta_stock_id=v.id AND original.tipo='VENTA'
 LEFT JOIN movimientos_stock reverso ON reverso.movimiento_revertido_id=original.id AND reverso.tipo='REVERSO'
@@ -1416,7 +1423,7 @@ try {
 SELECT a.id, i.id
 FROM alumnos a
 JOIN inscripciones i ON i.alumno_id=a.id AND i.estado='ACTIVA'
-WHERE a.documento='DEMO-DNI-A001'
+WHERE a.documento='49287134'
 ORDER BY i.id LIMIT 1;
 "@
     $idParts = $ids.Split("|")

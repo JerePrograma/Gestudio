@@ -133,18 +133,19 @@ SELECT
 
 DO $$
 DECLARE
-    expected_note text := '[DEMO:SEED_V1] anchor=' || (SELECT anchor_date::text FROM _demo_config);
+    expected_note text := 'Ficha revisada por administración. Actualización de referencia: '
+        || (SELECT anchor_date::text FROM _demo_config) || '.';
     namespace_exists boolean;
 BEGIN
     SELECT EXISTS (SELECT 1 FROM public.usuarios WHERE lower(nombre_usuario) LIKE 'demo-%')
-        OR EXISTS (SELECT 1 FROM public.alumnos WHERE documento LIKE 'DEMO-DNI-%')
+        OR EXISTS (SELECT 1 FROM public.alumnos WHERE email LIKE '%@correo.local')
         OR EXISTS (SELECT 1 FROM public.cargos WHERE idempotency_key LIKE 'demo-seed:v1:%')
     INTO namespace_exists;
 
     IF namespace_exists AND NOT EXISTS (
         SELECT 1
         FROM public.alumnos
-        WHERE documento = 'DEMO-DNI-A001'
+        WHERE documento = '49287134'
           AND otras_notas = expected_note
     ) THEN
         RAISE EXCEPTION 'El namespace demo ya existe con otra fecha ancla o está incompleto';
@@ -222,9 +223,9 @@ SET asignado_at = EXCLUDED.asignado_at,
 -- Catálogos visibles.
 INSERT INTO public.salones (nombre, descripcion, activo)
 VALUES
-    ('DEMO · Sala Norte', 'Salón amplio con piso técnico.', TRUE),
-    ('DEMO · Sala Sur', 'Salón para grupos infantiles.', TRUE),
-    ('DEMO · Estudio Central', 'Espacio multipropósito de la demo.', TRUE)
+    ('Sala Principal', 'Salón amplio con piso flotante, espejos y barras móviles.', TRUE),
+    ('Estudio Infantil', 'Espacio climatizado y equipado para grupos infantiles.', TRUE),
+    ('Sala de Ensayo', 'Sala multipropósito para ensayos, talleres y clases especiales.', TRUE)
 ON CONFLICT (nombre) DO UPDATE
 SET descripcion = EXCLUDED.descripcion,
     activo = EXCLUDED.activo;
@@ -238,15 +239,13 @@ CREATE TEMP TABLE _demo_professors_desired (
     activo boolean NOT NULL
 ) ON COMMIT DROP;
 
-INSERT INTO _demo_professors_desired
-SELECT n,
-       'DEMO · Profesor ' || lpad(n::text, 2, '0'),
-       CASE n WHEN 1 THEN 'Álvarez' WHEN 2 THEN 'Benítez' WHEN 3 THEN 'Castro'
-              WHEN 4 THEN 'Domínguez' WHEN 5 THEN 'Escobar' ELSE 'Fernández' END,
-       (SELECT anchor_date FROM _demo_config) - (interval '27 years' + n * interval '13 months'),
-       '+54 11 5555-' || lpad((1000 + n)::text, 4, '0'),
-       n <> 6
-FROM generate_series(1, 6) AS g(n);
+INSERT INTO _demo_professors_desired VALUES
+    (1, 'Luciana', 'Álvarez', (SELECT anchor_date FROM _demo_config) - interval '31 years 43 days', '+54 9 11 5555-1101', TRUE),
+    (2, 'Marcos', 'Benítez', (SELECT anchor_date FROM _demo_config) - interval '36 years 119 days', '+54 9 11 5555-1102', TRUE),
+    (3, 'Carolina', 'Castro', (SELECT anchor_date FROM _demo_config) - interval '29 years 211 days', '+54 9 11 5555-1103', TRUE),
+    (4, 'Federico', 'Domínguez', (SELECT anchor_date FROM _demo_config) - interval '34 years 302 days', '+54 9 11 5555-1104', TRUE),
+    (5, 'Paula', 'Escobar', (SELECT anchor_date FROM _demo_config) - interval '41 years 17 days', '+54 9 11 5555-1105', TRUE),
+    (6, 'Gabriela', 'Fernández', (SELECT anchor_date FROM _demo_config) - interval '38 years 256 days', '+54 9 11 5555-1106', FALSE);
 
 UPDATE public.profesores p
 SET apellido = d.apellido,
@@ -268,28 +267,28 @@ SET fecha = (SELECT anchor_date - 20 FROM _demo_config),
 FROM public.profesores p, _demo_professors_desired d
 WHERE op.profesor_id = p.id
   AND p.nombre = d.nombre
-  AND op.observacion = '[DEMO:PROFESOR:' || lpad(d.seq::text, 2, '0') || '] Seguimiento interno ficticio.';
+  AND op.observacion = 'Seguimiento pedagógico trimestral al día.';
 
 INSERT INTO public.observaciones_profesores (profesor_id, fecha, observacion, activa)
 SELECT p.id,
        (SELECT anchor_date - 20 FROM _demo_config),
-       '[DEMO:PROFESOR:' || lpad(d.seq::text, 2, '0') || '] Seguimiento interno ficticio.',
+       'Seguimiento pedagógico trimestral al día.',
        TRUE
 FROM _demo_professors_desired d
 JOIN public.profesores p ON p.nombre = d.nombre
 WHERE NOT EXISTS (
     SELECT 1 FROM public.observaciones_profesores op
     WHERE op.profesor_id = p.id
-      AND op.observacion = '[DEMO:PROFESOR:' || lpad(d.seq::text, 2, '0') || '] Seguimiento interno ficticio.'
+      AND op.observacion = 'Seguimiento pedagógico trimestral al día.'
 );
 
 INSERT INTO public.bonificaciones
     (descripcion, porcentaje_descuento, valor_fijo, activo, observaciones)
 VALUES
-    ('DEMO · Hermanos 10%', 10.0000, 0.00, TRUE, 'Beneficio ficticio por grupo familiar.'),
-    ('DEMO · Beca 25%', 25.0000, 0.00, TRUE, 'Beca parcial ficticia.'),
-    ('DEMO · Descuento fijo', 0.0000, 3500.00, TRUE, 'Descuento fijo de demostración.'),
-    ('DEMO · Beneficio inactivo', 5.0000, 0.00, FALSE, 'Histórico no asignable.')
+    ('Descuento hermanos 10%', 10.0000, 0.00, TRUE, 'Beneficio para dos o más integrantes del mismo grupo familiar.'),
+    ('Beca institucional 25%', 25.0000, 0.00, TRUE, 'Beca parcial otorgada por dirección.'),
+    ('Convenio familiar', 0.0000, 3500.00, TRUE, 'Bonificación fija mensual por convenio.'),
+    ('Promoción apertura 2025', 5.0000, 0.00, FALSE, 'Beneficio histórico no asignable a nuevas inscripciones.')
 ON CONFLICT (descripcion) DO UPDATE
 SET porcentaje_descuento = EXCLUDED.porcentaje_descuento,
     valor_fijo = EXCLUDED.valor_fijo,
@@ -299,9 +298,9 @@ SET porcentaje_descuento = EXCLUDED.porcentaje_descuento,
 INSERT INTO public.recargos
     (descripcion, porcentaje, valor_fijo, dia_del_mes_aplicacion, activo)
 VALUES
-    ('DEMO · Mora 5%', 5.0000, 0.00, 11, TRUE),
-    ('DEMO · Gestión fija', 0.0000, 2500.00, 16, TRUE),
-    ('DEMO · Recargo histórico', 8.0000, 0.00, 20, FALSE)
+    ('Mora por vencimiento 5%', 5.0000, 0.00, 11, TRUE),
+    ('Gastos administrativos', 0.0000, 2500.00, 16, TRUE),
+    ('Recargo extraordinario 2025', 8.0000, 0.00, 20, FALSE)
 ON CONFLICT (descripcion) DO UPDATE
 SET porcentaje = EXCLUDED.porcentaje,
     valor_fijo = EXCLUDED.valor_fijo,
@@ -310,20 +309,20 @@ SET porcentaje = EXCLUDED.porcentaje,
 
 INSERT INTO public.metodo_pagos (descripcion, activo, recargo)
 VALUES
-    ('DEMO · Efectivo', TRUE, 0.0000),
-    ('DEMO · Transferencia', TRUE, 0.0000),
-    ('DEMO · Débito', TRUE, 0.0000),
-    ('DEMO · Crédito', TRUE, 3.0000)
+    ('Efectivo', TRUE, 0.0000),
+    ('Transferencia bancaria', TRUE, 0.0000),
+    ('Tarjeta de débito', TRUE, 0.0000),
+    ('Tarjeta de crédito', TRUE, 3.0000)
 ON CONFLICT (descripcion) DO UPDATE
 SET activo = EXCLUDED.activo,
     recargo = EXCLUDED.recargo;
 
 INSERT INTO public.sub_conceptos (descripcion, activo)
 VALUES
-    ('DEMO · Indumentaria', TRUE),
-    ('DEMO · Materiales', TRUE),
-    ('DEMO · Eventos', TRUE),
-    ('DEMO · Administración', TRUE)
+    ('Indumentaria', TRUE),
+    ('Materiales de clase', TRUE),
+    ('Eventos y talleres', TRUE),
+    ('Trámites administrativos', TRUE)
 ON CONFLICT (descripcion) DO UPDATE SET activo = EXCLUDED.activo;
 
 CREATE TEMP TABLE _demo_concepts_desired (
@@ -334,14 +333,14 @@ CREATE TEMP TABLE _demo_concepts_desired (
 ) ON COMMIT DROP;
 
 INSERT INTO _demo_concepts_desired VALUES
-    (1, 'DEMO · Indumentaria', 'DEMO · Remera institucional', 12000.00),
-    (2, 'DEMO · Indumentaria', 'DEMO · Medias de danza', 8500.00),
-    (3, 'DEMO · Materiales', 'DEMO · Kit de práctica', 9500.00),
-    (4, 'DEMO · Materiales', 'DEMO · Cuaderno coreográfico', 6000.00),
-    (5, 'DEMO · Eventos', 'DEMO · Entrada muestra', 15000.00),
-    (6, 'DEMO · Eventos', 'DEMO · Taller especial', 18000.00),
-    (7, 'DEMO · Administración', 'DEMO · Certificado', 7000.00),
-    (8, 'DEMO · Administración', 'DEMO · Duplicado de credencial', 5000.00);
+    (1, 'Indumentaria', 'Remera institucional', 12000.00),
+    (2, 'Indumentaria', 'Medias de danza', 8500.00),
+    (3, 'Materiales de clase', 'Kit de práctica', 9500.00),
+    (4, 'Materiales de clase', 'Cuaderno coreográfico', 6000.00),
+    (5, 'Eventos y talleres', 'Entrada muestra anual', 15000.00),
+    (6, 'Eventos y talleres', 'Taller intensivo de fin de semana', 18000.00),
+    (7, 'Trámites administrativos', 'Certificado de alumno regular', 7000.00),
+    (8, 'Trámites administrativos', 'Duplicado de credencial', 5000.00);
 
 INSERT INTO public.conceptos (descripcion, precio, sub_concepto_id, activo)
 SELECT d.description, d.price, sc.id, TRUE
@@ -361,12 +360,12 @@ CREATE TEMP TABLE _demo_stocks_desired (
 ) ON COMMIT DROP;
 
 INSERT INTO _demo_stocks_desired VALUES
-    (1, 'DEMO · Botella reutilizable', 5000.00, 21, TRUE, 'DEMO-STOCK-001'),
-    (2, 'DEMO · Remera negra', 9000.00, 17, TRUE, 'DEMO-STOCK-002'),
-    (3, 'DEMO · Medias rosa', 6500.00, 19, TRUE, 'DEMO-STOCK-003'),
-    (4, 'DEMO · Bolso pequeño', 11000.00, 18, TRUE, 'DEMO-STOCK-004'),
-    (5, 'DEMO · Cuaderno', 4500.00, 19, TRUE, 'DEMO-STOCK-005'),
-    (6, 'DEMO · Entrada digital', 7500.00, 20, FALSE, 'DEMO-STOCK-006');
+    (1, 'Botella térmica institucional 500 ml', 5000.00, 21, TRUE, '7790000000012'),
+    (2, 'Remera negra con logo', 9000.00, 17, TRUE, '7790000000029'),
+    (3, 'Medias de ballet rosa', 6500.00, 19, TRUE, '7790000000036'),
+    (4, 'Bolso de danza compacto', 11000.00, 18, TRUE, '7790000000043'),
+    (5, 'Cuaderno coreográfico A5', 4500.00, 19, TRUE, '7790000000050'),
+    (6, 'Entrada digital muestra anual', 7500.00, 20, FALSE, '7790000000067');
 
 INSERT INTO public.stocks
     (nombre, precio, cantidad_actual, requiere_control_de_stock, codigo_barras, activo, version)
@@ -389,17 +388,13 @@ CREATE TEMP TABLE _demo_disciplines_desired (
     matricula numeric(19,2) NOT NULL
 ) ON COMMIT DROP;
 
-INSERT INTO _demo_disciplines_desired
-SELECT n,
-       CASE n WHEN 1 THEN 'DEMO · Ballet inicial' WHEN 2 THEN 'DEMO · Jazz infantil'
-              WHEN 3 THEN 'DEMO · Urbano teen' WHEN 4 THEN 'DEMO · Contemporáneo'
-              WHEN 5 THEN 'DEMO · Ritmos adultos' ELSE 'DEMO · Entrenamiento escénico' END,
-       CASE ((n - 1) % 3) WHEN 0 THEN 'DEMO · Sala Norte'
-                            WHEN 1 THEN 'DEMO · Sala Sur' ELSE 'DEMO · Estudio Central' END,
-       'DEMO · Profesor ' || lpad(n::text, 2, '0'),
-       40000.00 + (n - 1) * 1500.00,
-       36000.00
-FROM generate_series(1, 6) AS g(n);
+INSERT INTO _demo_disciplines_desired VALUES
+    (1, 'Ballet Inicial (4 a 6 años)', 'Sala Principal', 'Luciana', 40000.00, 36000.00),
+    (2, 'Jazz Infantil (7 a 10 años)', 'Estudio Infantil', 'Marcos', 41500.00, 36000.00),
+    (3, 'Danza Urbana Teen', 'Sala de Ensayo', 'Carolina', 43000.00, 36000.00),
+    (4, 'Danza Contemporánea', 'Sala Principal', 'Federico', 44500.00, 36000.00),
+    (5, 'Ritmos Latinos Adultos', 'Estudio Infantil', 'Paula', 46000.00, 36000.00),
+    (6, 'Entrenamiento Escénico', 'Sala de Ensayo', 'Gabriela', 47500.00, 36000.00);
 
 UPDATE public.disciplinas d
 SET salon_id = s.id,
@@ -445,32 +440,72 @@ WHERE x.seq <= 5
 ON CONFLICT (disciplina_id, dia_semana, horario_inicio) DO UPDATE
 SET duracion = EXCLUDED.duracion;
 
+CREATE TEMP TABLE _demo_students_desired (
+    seq integer PRIMARY KEY,
+    nombre varchar(100) NOT NULL,
+    apellido varchar(100) NOT NULL,
+    email varchar(150) NOT NULL,
+    documento varchar(30) NOT NULL UNIQUE,
+    responsable varchar(200)
+) ON COMMIT DROP;
+
+INSERT INTO _demo_students_desired VALUES
+    (1, 'Sofía', 'Benítez', 'laura.benitez@correo.local', '49287134', 'Laura Benítez'),
+    (2, 'Mateo', 'Gómez', 'andrea.gomez@correo.local', '50164482', 'Andrea Gómez'),
+    (3, 'Valentina', 'Pérez', 'nicolas.perez@correo.local', '48793215', 'Nicolás Pérez'),
+    (4, 'Joaquín', 'Romero', 'cecilia.romero@correo.local', '51308647', 'Cecilia Romero'),
+    (5, 'Martina', 'Sosa', 'gabriel.sosa@correo.local', '47942563', 'Gabriel Sosa'),
+    (6, 'Thiago', 'Torres', 'mariana.torres@correo.local', '50617894', 'Mariana Torres'),
+    (7, 'Camila', 'Vega', 'pablo.vega@correo.local', '49580621', 'Pablo Vega'),
+    (8, 'Benjamín', 'Acosta', 'julieta.acosta@correo.local', '51843702', 'Julieta Acosta'),
+    (9, 'Emilia', 'Roldán', 'martin.roldan@correo.local', '48351976', 'Martín Roldán'),
+    (10, 'Bautista', 'Cabrera', 'carolina.cabrera@correo.local', '50926418', 'Carolina Cabrera'),
+    (11, 'Renata', 'Silva', 'diego.silva@correo.local', '49703185', 'Diego Silva'),
+    (12, 'Felipe', 'Medina', 'veronica.medina@correo.local', '52178406', 'Verónica Medina'),
+    (13, 'Olivia', 'Herrera', 'gonzalo.herrera@correo.local', '48620539', 'Gonzalo Herrera'),
+    (14, 'Santino', 'Navarro', 'romina.navarro@correo.local', '51240973', 'Romina Navarro'),
+    (15, 'Josefina', 'Arias', 'fernando.arias@correo.local', '49957302', 'Fernando Arias'),
+    (16, 'Bruno', 'Méndez', 'paula.mendez@correo.local', '52416087', 'Paula Méndez'),
+    (17, 'Delfina', 'Suárez', 'marcelo.suarez@correo.local', '49038246', 'Marcelo Suárez'),
+    (18, 'Lautaro', 'Molina', 'natalia.molina@correo.local', '50794128', 'Natalia Molina'),
+    (19, 'Lucía', 'Ferraro', 'lucia.ferraro@correo.local', '38274615', NULL),
+    (20, 'Agustín', 'Quiroga', 'agustin.quiroga@correo.local', '35619842', NULL),
+    (21, 'Milagros', 'Peralta', 'milagros.peralta@correo.local', '40128573', NULL),
+    (22, 'Tomás', 'Ibarra', 'tomas.ibarra@correo.local', '33876429', NULL),
+    (23, 'Julieta', 'Campos', 'julieta.campos@correo.local', '41903756', NULL),
+    (24, 'Franco', 'Núñez', 'franco.nunez@correo.local', '37451268', NULL),
+    (25, 'Micaela', 'Duarte', 'micaela.duarte@correo.local', '39264017', NULL),
+    (26, 'Nicolás', 'Figueroa', 'nicolas.figueroa@correo.local', '34718925', NULL),
+    (27, 'Florencia', 'Ponce', 'florencia.ponce@correo.local', '42803164', NULL),
+    (28, 'Santiago', 'Villalba', 'santiago.villalba@correo.local', '36592781', NULL);
+
 INSERT INTO public.alumnos
     (nombre, apellido, fecha_nacimiento, celular1, celular2, email, documento,
      fecha_incorporacion, fecha_de_baja, nombre_padres, autorizado_para_salir_solo,
      otras_notas, activo, version)
 SELECT
-    CASE ((n - 1) % 8) WHEN 0 THEN 'Sofía' WHEN 1 THEN 'Mateo' WHEN 2 THEN 'Valentina'
-         WHEN 3 THEN 'Joaquín' WHEN 4 THEN 'Martina' WHEN 5 THEN 'Thiago'
-         WHEN 6 THEN 'Camila' ELSE 'Benjamín' END || ' ' || lpad(n::text, 2, '0'),
-    CASE ((n - 1) % 7) WHEN 0 THEN 'Benítez' WHEN 1 THEN 'Gómez' WHEN 2 THEN 'Pérez'
-         WHEN 3 THEN 'Romero' WHEN 4 THEN 'Sosa' WHEN 5 THEN 'Torres' ELSE 'Vega' END,
+    student.nombre,
+    student.apellido,
     (SELECT anchor_date FROM _demo_config) -
-        CASE WHEN n <= 18 THEN interval '12 years' + n * interval '2 months'
-             ELSE interval '25 years' + n * interval '5 months' END,
-    '+54 11 4444-' || lpad((2000 + n)::text, 4, '0'),
+        CASE WHEN student.seq = 1 THEN interval '12 years'
+             WHEN student.seq <= 18 THEN interval '12 years' + student.seq * interval '2 months' + student.seq * interval '3 days'
+             ELSE interval '25 years' + student.seq * interval '5 months' + student.seq * interval '2 days' END,
+    '+54 9 11 5555-' || lpad((3000 + student.seq)::text, 4, '0'),
     NULL,
-    'alumno' || lpad(n::text, 3, '0') || '@gestudio-demo.invalid',
-    'DEMO-DNI-A' || lpad(n::text, 3, '0'),
-    (SELECT anchor_date FROM _demo_config) - (90 + n),
-    CASE WHEN n = 28 THEN (SELECT anchor_date - 15 FROM _demo_config) ELSE NULL END,
-    CASE WHEN n <= 18 THEN 'Familia demo ' || lpad(n::text, 2, '0') ELSE NULL END,
-    n > 10,
-    CASE WHEN n = 1 THEN '[DEMO:SEED_V1] anchor=' || (SELECT anchor_date::text FROM _demo_config)
-         ELSE '[DEMO:ALUMNO:' || lpad(n::text, 3, '0') || '] Datos completamente ficticios.' END,
-    n <> 28,
+    student.email,
+    student.documento,
+    (SELECT anchor_date FROM _demo_config) - (90 + student.seq),
+    CASE WHEN student.seq = 28 THEN (SELECT anchor_date - 15 FROM _demo_config) ELSE NULL END,
+    student.responsable,
+    student.seq > 10,
+    CASE WHEN student.seq = 1 THEN 'Ficha revisada por administración. Actualización de referencia: '
+              || (SELECT anchor_date::text FROM _demo_config) || '.'
+         WHEN student.seq % 3 = 0 THEN 'Autorización de retiro y contactos de emergencia verificados.'
+         WHEN student.seq % 3 = 1 THEN 'Participa regularmente de muestras y actividades institucionales.'
+         ELSE 'Legajo completo; sin observaciones administrativas pendientes.' END,
+    student.seq <> 28,
     0
-FROM generate_series(1, 28) AS g(n)
+FROM _demo_students_desired student
 ON CONFLICT (documento) WHERE documento IS NOT NULL DO UPDATE
 SET nombre = EXCLUDED.nombre,
     apellido = EXCLUDED.apellido,
@@ -487,22 +522,24 @@ SET nombre = EXCLUDED.nombre,
 
 CREATE TEMP TABLE _demo_enrollments_desired ON COMMIT DROP AS
 SELECT
-    n AS seq,
-    'DEMO-DNI-A' || lpad(n::text, 3, '0') AS document,
-    ((n - 1) % 6) + 1 AS discipline_seq,
+    student.seq,
+    student.documento AS document,
+    ((student.seq - 1) % 6) + 1 AS discipline_seq,
     'ACTIVA'::varchar(12) AS state,
     NULL::date AS end_date,
-    CASE WHEN n % 5 = 0 THEN 37000.00::numeric(19,2) ELSE NULL::numeric(19,2) END AS custom_cost
-FROM generate_series(1, 26) AS g(n)
+    CASE WHEN student.seq % 5 = 0 THEN 37000.00::numeric(19,2) ELSE NULL::numeric(19,2) END AS custom_cost
+FROM _demo_students_desired student
+WHERE student.seq <= 26
 UNION ALL
 SELECT
-    26 + n,
-    'DEMO-DNI-A' || lpad(n::text, 3, '0'),
-    (n % 6) + 1,
-    CASE WHEN n = 7 THEN 'INACTIVA' WHEN n = 8 THEN 'FINALIZADA' ELSE 'ACTIVA' END,
-    CASE WHEN n >= 7 THEN (SELECT anchor_date - 25 FROM _demo_config) ELSE NULL END,
+    26 + student.seq,
+    student.documento,
+    (student.seq % 6) + 1,
+    CASE WHEN student.seq = 7 THEN 'INACTIVA' WHEN student.seq = 8 THEN 'FINALIZADA' ELSE 'ACTIVA' END,
+    CASE WHEN student.seq >= 7 THEN (SELECT anchor_date - 25 FROM _demo_config) ELSE NULL END,
     NULL::numeric(19,2)
-FROM generate_series(1, 8) AS g(n);
+FROM _demo_students_desired student
+WHERE student.seq <= 8;
 
 UPDATE public.inscripciones i
 SET bonificacion_id = CASE WHEN x.seq % 3 = 0 THEN b.id ELSE NULL END,
@@ -514,7 +551,7 @@ FROM _demo_enrollments_desired x
 JOIN public.alumnos a ON a.documento = x.document
 JOIN _demo_disciplines_desired dd ON dd.seq = x.discipline_seq
 JOIN public.disciplinas d ON d.nombre = dd.nombre
-LEFT JOIN public.bonificaciones b ON b.descripcion = 'DEMO · Hermanos 10%'
+LEFT JOIN public.bonificaciones b ON b.descripcion = 'Descuento hermanos 10%'
 WHERE i.alumno_id = a.id
   AND i.disciplina_id = d.id;
 
@@ -532,7 +569,7 @@ FROM _demo_enrollments_desired x
 JOIN public.alumnos a ON a.documento = x.document
 JOIN _demo_disciplines_desired dd ON dd.seq = x.discipline_seq
 JOIN public.disciplinas d ON d.nombre = dd.nombre
-LEFT JOIN public.bonificaciones b ON b.descripcion = 'DEMO · Hermanos 10%'
+LEFT JOIN public.bonificaciones b ON b.descripcion = 'Descuento hermanos 10%'
 WHERE NOT EXISTS (
     SELECT 1 FROM public.inscripciones i
     WHERE i.alumno_id = a.id AND i.disciplina_id = d.id
@@ -548,8 +585,8 @@ SELECT d.id,
        dd.matricula,
        9000.00,
        5000.00,
-       CASE WHEN periods.current_rate THEN '[DEMO:TARIFA] Vigencia actual.'
-            ELSE '[DEMO:TARIFA] Vigencia histórica.' END,
+       CASE WHEN periods.current_rate THEN 'Actualización de aranceles del ciclo vigente.'
+            ELSE 'Arancel histórico conservado para trazabilidad.' END,
        u.id,
        (SELECT anchor_ts FROM _demo_config) + dd.seq * interval '1 second',
        0
@@ -577,8 +614,9 @@ SELECT i.id,
        i.disciplina_id,
        row_number() OVER (ORDER BY a.documento, d.nombre) AS seq
 FROM public.inscripciones i
-JOIN public.alumnos a ON a.id = i.alumno_id AND a.documento LIKE 'DEMO-DNI-%'
-JOIN public.disciplinas d ON d.id = i.disciplina_id AND d.nombre LIKE 'DEMO · %';
+JOIN public.alumnos a ON a.id = i.alumno_id AND a.email LIKE '%@correo.local'
+JOIN public.disciplinas d ON d.id = i.disciplina_id
+JOIN _demo_disciplines_desired dd ON dd.nombre = d.nombre;
 
 CREATE TEMP TABLE _demo_conditions_desired ON COMMIT DROP AS
 SELECT e.id AS enrollment_id,
@@ -588,10 +626,10 @@ SELECT e.id AS enrollment_id,
        CASE WHEN e.seq % 3 = 0 THEN b.descripcion ELSE NULL END AS bonus_description,
        CASE WHEN e.seq % 3 = 0 THEN b.porcentaje_descuento ELSE 0.0000 END AS bonus_percent,
        0.00::numeric(19,2) AS bonus_fixed,
-       '[DEMO:CONDICION] Condición histórica.'::varchar(500) AS reason,
+       'Condición económica histórica de la inscripción.'::varchar(500) AS reason,
        e.seq
 FROM _demo_enrollment_ids e
-LEFT JOIN public.bonificaciones b ON b.descripcion = 'DEMO · Hermanos 10%'
+LEFT JOIN public.bonificaciones b ON b.descripcion = 'Descuento hermanos 10%'
 UNION ALL
 SELECT e.id,
        (SELECT month_0 FROM _demo_config),
@@ -600,10 +638,10 @@ SELECT e.id,
        b.descripcion,
        b.porcentaje_descuento,
        b.valor_fijo,
-       '[DEMO:CONDICION] Cambio de condición actual.',
+       'Actualización de la condición económica vigente.',
        100 + e.seq
 FROM _demo_enrollment_ids e
-JOIN public.bonificaciones b ON b.descripcion = 'DEMO · Beca 25%'
+JOIN public.bonificaciones b ON b.descripcion = 'Beca institucional 25%'
 WHERE e.seq <= 6;
 
 INSERT INTO public.inscripcion_condiciones_economicas
@@ -670,12 +708,12 @@ SELECT x.enrollment_id,
        x.month_value,
        x.period_start,
        x.period_start + 9,
-       'DEMO · Cuota ' || to_char(x.period_start, 'MM/YYYY'),
+       'Cuota mensual ' || to_char(x.period_start, 'MM/YYYY'),
        'EMITIDA',
        0
 FROM _demo_monthly_desired x
-LEFT JOIN public.bonificaciones b ON b.descripcion = 'DEMO · Hermanos 10%'
-LEFT JOIN public.recargos r ON r.descripcion = 'DEMO · Mora 5%'
+LEFT JOIN public.bonificaciones b ON b.descripcion = 'Descuento hermanos 10%'
+LEFT JOIN public.recargos r ON r.descripcion = 'Mora por vencimiento 5%'
 ON CONFLICT (inscripcion_id, anio, mes) DO UPDATE
 SET bonificacion_id = EXCLUDED.bonificacion_id,
     recargo_id = EXCLUDED.recargo_id,
@@ -691,7 +729,8 @@ SELECT a.id,
        'EMITIDA',
        0
 FROM public.alumnos a
-WHERE a.documento BETWEEN 'DEMO-DNI-A001' AND 'DEMO-DNI-A026'
+JOIN _demo_students_desired student ON student.documento = a.documento
+WHERE student.seq <= 26
 ON CONFLICT (alumno_id, anio) DO UPDATE
 SET fecha_emision = EXCLUDED.fecha_emision,
     estado = EXCLUDED.estado;
@@ -701,7 +740,7 @@ SELECT d.id,
        extract(month FROM (SELECT month_1 FROM _demo_config))::integer,
        extract(year FROM (SELECT month_1 FROM _demo_config))::integer
 FROM public.disciplinas d
-WHERE d.nombre LIKE 'DEMO · %'
+JOIN _demo_disciplines_desired dd ON dd.nombre = d.nombre
 ON CONFLICT (disciplina_id, anio, mes) DO NOTHING;
 
 CREATE TEMP TABLE _demo_attendance_enrollments ON COMMIT DROP AS
@@ -720,7 +759,7 @@ INSERT INTO public.asistencias_alumno_mensual
     (inscripcion_id, asistencia_mensual_id, observacion, activo)
 SELECT e.enrollment_id,
        am.id,
-       '[DEMO:ASISTENCIA] Planilla ficticia del período anterior.',
+       'Planilla mensual revisada por secretaría.',
        TRUE
 FROM _demo_attendance_enrollments e
 JOIN public.asistencias_mensuales am
@@ -764,7 +803,8 @@ SELECT a.id,
        0
 FROM _demo_stocks_desired x
 JOIN public.stocks s ON s.codigo_barras = x.barcode
-JOIN public.alumnos a ON a.documento = 'DEMO-DNI-A' || lpad(x.seq::text, 3, '0')
+JOIN _demo_students_desired student ON student.seq = x.seq
+JOIN public.alumnos a ON a.documento = student.documento
 ON CONFLICT (idempotency_key) DO UPDATE
 SET alumno_id = EXCLUDED.alumno_id,
     stock_id = EXCLUDED.stock_id,
@@ -788,8 +828,9 @@ SELECT m.id AS monthly_id,
        row_number() OVER (ORDER BY a.documento, d.nombre, m.anio, m.mes) AS seq
 FROM public.mensualidades m
 JOIN public.inscripciones i ON i.id = m.inscripcion_id
-JOIN public.alumnos a ON a.id = i.alumno_id AND a.documento LIKE 'DEMO-DNI-%'
-JOIN public.disciplinas d ON d.id = i.disciplina_id AND d.nombre LIKE 'DEMO · %';
+JOIN public.alumnos a ON a.id = i.alumno_id AND a.email LIKE '%@correo.local'
+JOIN public.disciplinas d ON d.id = i.disciplina_id
+JOIN _demo_disciplines_desired dd ON dd.nombre = d.nombre;
 
 INSERT INTO public.cargos
     (alumno_id, tipo, descripcion, importe_original, fecha_emision, fecha_vencimiento,
@@ -797,7 +838,7 @@ INSERT INTO public.cargos
      idempotency_key, version, created_at)
 SELECT x.alumno_id,
        'MENSUALIDAD',
-       'DEMO · ' || x.discipline_name || ' ' || lpad(x.mes::text, 2, '0') || '/' || x.anio,
+       'Cuota ' || x.discipline_name || ' · ' || lpad(x.mes::text, 2, '0') || '/' || x.anio,
        CASE WHEN x.seq <= 10 THEN 24000.00 ELSE 40000.00 END,
        x.fecha_generacion,
        x.fecha_vencimiento,
@@ -824,7 +865,7 @@ INSERT INTO public.cargos
      idempotency_key, version, created_at)
 SELECT m.alumno_id,
        'MATRICULA',
-       'DEMO · Matrícula anual ' || m.anio,
+       'Matrícula anual ' || m.anio,
        36000.00,
        m.fecha_emision,
        m.fecha_emision + 5,
@@ -834,7 +875,7 @@ SELECT m.alumno_id,
        0,
        (SELECT anchor_ts FROM _demo_config) + (100 + row_number() OVER (ORDER BY a.documento)) * interval '1 second'
 FROM public.matriculas m
-JOIN public.alumnos a ON a.id = m.alumno_id AND a.documento LIKE 'DEMO-DNI-%'
+JOIN public.alumnos a ON a.id = m.alumno_id AND a.email LIKE '%@correo.local'
 ON CONFLICT (idempotency_key) DO UPDATE
 SET alumno_id = EXCLUDED.alumno_id,
     descripcion = EXCLUDED.descripcion,
@@ -851,7 +892,7 @@ INSERT INTO public.cargos
      idempotency_key, version, created_at)
 SELECT v.alumno_id,
        'VENTA_STOCK',
-       'DEMO · Venta de ' || s.nombre,
+       'Venta de ' || s.nombre,
        v.cantidad * v.precio_unitario,
        v.fecha,
        v.fecha + 10,
@@ -891,7 +932,8 @@ SELECT a.id,
 FROM _demo_concepts_desired x
 JOIN public.sub_conceptos sc ON sc.descripcion = x.sub_description
 JOIN public.conceptos c ON c.sub_concepto_id = sc.id AND c.descripcion = x.description
-JOIN public.alumnos a ON a.documento = 'DEMO-DNI-A' || lpad(x.seq::text, 3, '0')
+JOIN _demo_students_desired student ON student.seq = x.seq
+JOIN public.alumnos a ON a.documento = student.documento
 ON CONFLICT (idempotency_key) DO UPDATE
 SET alumno_id = EXCLUDED.alumno_id,
     descripcion = EXCLUDED.descripcion,
@@ -905,10 +947,12 @@ SET alumno_id = EXCLUDED.alumno_id,
 CREATE TEMP TABLE _demo_surcharge_origins ON COMMIT DROP AS
 SELECT c.id,
        c.alumno_id,
-       row_number() OVER (ORDER BY c.idempotency_key) AS seq
+       row_number() OVER (ORDER BY student.seq, c.idempotency_key) AS seq
 FROM public.cargos c
+JOIN public.alumnos a ON a.id = c.alumno_id
+JOIN _demo_students_desired student ON student.documento = a.documento
 WHERE c.idempotency_key LIKE 'demo-seed:v1:cargo:mensualidad:%'
-ORDER BY c.idempotency_key
+ORDER BY student.seq, c.idempotency_key
 LIMIT 5;
 
 INSERT INTO public.cargos
@@ -917,7 +961,7 @@ INSERT INTO public.cargos
      idempotency_key, version, created_at)
 SELECT x.alumno_id,
        'RECARGO',
-       'DEMO · Recargo vinculado ' || lpad(x.seq::text, 2, '0'),
+       'Recargo por vencimiento · operación ' || lpad(x.seq::text, 2, '0'),
        5000.00,
        (SELECT anchor_date - 2 FROM _demo_config),
        (SELECT anchor_date + 5 FROM _demo_config),
@@ -954,11 +998,11 @@ SELECT c.id,
        0.00,
        c.importe_original,
        1,
-       '[DEMO:LIQUIDACION] Snapshot sintético; no genera eventos productivos.',
+       'Liquidación consolidada al momento de emisión del cargo.',
        u.id,
        c.created_at
 FROM public.cargos c
-JOIN public.alumnos a ON a.id = c.alumno_id AND a.documento LIKE 'DEMO-DNI-%'
+JOIN public.alumnos a ON a.id = c.alumno_id AND a.email LIKE '%@correo.local'
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-administrador'
 ON CONFLICT (cargo_id) DO UPDATE
 SET periodo_desde = EXCLUDED.periodo_desde,
@@ -982,26 +1026,30 @@ WITH target_charges AS (
     SELECT c.id AS charge_id,
            c.alumno_id,
            a.documento,
+           student.seq AS student_seq,
            'M'::text AS source_kind,
            c.idempotency_key
     FROM public.cargos c
-    JOIN public.alumnos a ON a.id = c.alumno_id AND a.documento LIKE 'DEMO-DNI-%'
+    JOIN public.alumnos a ON a.id = c.alumno_id AND a.email LIKE '%@correo.local'
+    JOIN _demo_students_desired student ON student.documento = a.documento
     WHERE c.tipo = 'MENSUALIDAD'
       AND c.idempotency_key LIKE 'demo-seed:v1:cargo:mensualidad:%'
     UNION ALL
     SELECT c.id,
            c.alumno_id,
            a.documento,
+           student.seq,
            'R'::text,
            c.idempotency_key
     FROM public.cargos c
     JOIN public.alumnos a ON a.id = c.alumno_id
+    JOIN _demo_students_desired student ON student.documento = a.documento
     WHERE c.tipo = 'MATRICULA'
-      AND a.documento BETWEEN 'DEMO-DNI-A003' AND 'DEMO-DNI-A014'
+      AND a.documento IN (SELECT documento FROM _demo_students_desired WHERE seq BETWEEN 3 AND 14)
       AND c.idempotency_key LIKE 'demo-seed:v1:cargo:matricula:%'
 ), numbered AS (
     SELECT t.*,
-           row_number() OVER (ORDER BY t.documento, t.source_kind, t.idempotency_key) AS application_no,
+           row_number() OVER (ORDER BY t.student_seq, t.source_kind, t.idempotency_key) AS application_no,
            row_number() OVER (PARTITION BY t.alumno_id ORDER BY t.source_kind, t.idempotency_key) AS student_application_no
     FROM target_charges t
 ), grouped AS (
@@ -1010,7 +1058,7 @@ WITH target_charges AS (
     FROM numbered n
 ), payment_numbered AS (
     SELECT g.*,
-           dense_rank() OVER (ORDER BY g.documento, g.local_payment_no)::integer AS payment_no
+           dense_rank() OVER (ORDER BY g.student_seq, g.local_payment_no)::integer AS payment_no
     FROM grouped g
 )
 SELECT p.charge_id,
@@ -1060,19 +1108,19 @@ SELECT x.alumno_id,
        repeat(md5(x.idempotency_key), 2),
        CASE WHEN x.payment_no = 48 THEN 'demo-seed:v1:pago-reversa:048' ELSE NULL END,
        CASE WHEN x.payment_no = 48 THEN repeat(md5('demo-seed:v1:pago-reversa:048'), 2) ELSE NULL END,
-       CASE WHEN x.payment_no = 1 THEN '[DEMO:PAGO] Incluye excedente para crédito.'
+       CASE WHEN x.payment_no = 1 THEN 'Pago recibido con excedente acreditado a favor.'
             WHEN (SELECT count(*) FROM _demo_application_targets t WHERE t.payment_no = x.payment_no) = 2
-                THEN '[DEMO:PAGO] Distribuido entre dos cargos.'
-            ELSE '[DEMO:PAGO] Aplicado a un cargo.' END,
-       CASE WHEN x.payment_no = 48 THEN '[DEMO:PAGO] Anulación ficticia.' ELSE NULL END,
+                THEN 'Pago distribuido entre dos obligaciones pendientes.'
+            ELSE 'Pago aplicado a una obligación.' END,
+       CASE WHEN x.payment_no = 48 THEN 'Pago anulado por duplicación de la operación.' ELSE NULL END,
        CASE WHEN x.payment_no = 48 THEN (SELECT anchor_ts + interval '6 minutes' FROM _demo_config) ELSE NULL END,
        0,
        (SELECT anchor_ts FROM _demo_config) + (200 + x.payment_no) * interval '1 second'
 FROM _demo_payments_desired x
 JOIN _demo_stocks_desired ordinal ON ordinal.seq = ((x.payment_no - 1) % 4) + 1
 JOIN public.metodo_pagos mp ON mp.descripcion = CASE ordinal.seq
-    WHEN 1 THEN 'DEMO · Efectivo' WHEN 2 THEN 'DEMO · Transferencia'
-    WHEN 3 THEN 'DEMO · Débito' ELSE 'DEMO · Crédito' END
+    WHEN 1 THEN 'Efectivo' WHEN 2 THEN 'Transferencia bancaria'
+    WHEN 3 THEN 'Tarjeta de débito' ELSE 'Tarjeta de crédito' END
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-caja'
 ON CONFLICT (idempotency_key) DO UPDATE
 SET alumno_id = EXCLUDED.alumno_id,
@@ -1098,7 +1146,7 @@ SELECT p.id,
        t.applied_amount,
        CASE WHEN t.payment_no = 48 THEN 'REVERTIDA' ELSE 'APLICADA' END,
        p.fecha,
-       CASE WHEN t.payment_no = 48 THEN '[DEMO:PAGO] Aplicación revertida por anulación.' ELSE NULL END,
+       CASE WHEN t.payment_no = 48 THEN 'Aplicación revertida por anulación del pago.' ELSE NULL END,
        CASE WHEN t.payment_no = 48 THEN (SELECT anchor_ts + interval '6 minutes' FROM _demo_config) ELSE NULL END,
        0,
        (SELECT anchor_ts FROM _demo_config) + (260 + t.application_no) * interval '1 second'
@@ -1123,7 +1171,7 @@ SELECT c.id AS charge_id,
                     c.idempotency_key
        )::integer AS seq
 FROM public.cargos c
-JOIN public.alumnos a ON a.id = c.alumno_id AND a.documento = 'DEMO-DNI-A001'
+JOIN public.alumnos a ON a.id = c.alumno_id AND a.documento = '49287134'
 WHERE c.estado <> 'ANULADO'
   AND NOT EXISTS (SELECT 1 FROM _demo_application_targets t WHERE t.charge_id = c.id)
 ORDER BY seq
@@ -1148,12 +1196,12 @@ CREATE TEMP TABLE _demo_credit_originals (
 
 INSERT INTO _demo_credit_originals VALUES
     (1, 'GENERACION', 18000.00, 1, NULL, NULL),
-    (2, 'AJUSTE_CREDITO', 10000.00, NULL, NULL, '[DEMO:CREDITO] Ajuste positivo.'),
-    (3, 'AJUSTE_DEBITO', 2000.00, NULL, NULL, '[DEMO:CREDITO] Ajuste de débito.'),
+    (2, 'AJUSTE_CREDITO', 10000.00, NULL, NULL, 'Bonificación extraordinaria autorizada por dirección.'),
+    (3, 'AJUSTE_DEBITO', 2000.00, NULL, NULL, 'Corrección de saldo por diferencia administrativa.'),
     (4, 'CONSUMO', 5000.00, NULL, 1, NULL),
     (5, 'CONSUMO', 4000.00, NULL, 2, NULL),
-    (7, 'AJUSTE_CREDITO', 6000.00, NULL, NULL, '[DEMO:CREDITO] Segundo ajuste positivo.'),
-    (8, 'AJUSTE_DEBITO', 4000.00, NULL, NULL, '[DEMO:CREDITO] Segundo ajuste de débito.'),
+    (7, 'AJUSTE_CREDITO', 6000.00, NULL, NULL, 'Crédito reconocido por cancelación de taller.'),
+    (8, 'AJUSTE_DEBITO', 4000.00, NULL, NULL, 'Aplicación parcial de crédito a gestión administrativa.'),
     (9, 'CONSUMO', 2000.00, NULL, 3, NULL),
     (10, 'CONSUMO', 3000.00, NULL, 4, NULL);
 
@@ -1172,7 +1220,7 @@ SELECT a.id,
        x.reason,
        (SELECT anchor_ts FROM _demo_config) + (360 + x.seq) * interval '1 second'
 FROM _demo_credit_originals x
-JOIN public.alumnos a ON a.documento = 'DEMO-DNI-A001'
+JOIN public.alumnos a ON a.documento = '49287134'
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-caja'
 LEFT JOIN public.pagos p
   ON p.idempotency_key = 'demo-seed:v1:pago:' || lpad(x.payment_no::text, 3, '0')
@@ -1201,7 +1249,7 @@ SELECT original.alumno_id,
        u.id,
        reversal.key_value,
        repeat(md5(reversal.key_value), 2),
-       '[DEMO:CREDITO] Reversión de consumo.',
+       'Reversión de consumo de crédito por anulación.',
        (SELECT anchor_ts FROM _demo_config) + reversal.seq * interval '1 second'
 FROM (VALUES
     (6, 'demo-seed:v1:credito:006', 'demo-seed:v1:credito:005'),
@@ -1248,7 +1296,7 @@ WITH paid AS (
            COALESCE(paid.amount, 0) AS paid_amount,
            COALESCE(credit.amount, 0) AS credit_amount
     FROM public.cargos c
-    JOIN public.alumnos a ON a.id = c.alumno_id AND a.documento LIKE 'DEMO-DNI-%'
+    JOIN public.alumnos a ON a.id = c.alumno_id AND a.email LIKE '%@correo.local'
     LEFT JOIN paid ON paid.cargo_id = c.id
     LEFT JOIN credit ON credit.cargo_id = c.id
 )
@@ -1278,7 +1326,13 @@ INSERT INTO public.egresos
      motivo_anulacion, fecha_anulacion, version)
 SELECT (SELECT anchor_date - (8 - x.seq) FROM _demo_config),
        x.amount,
-       '[DEMO:EGRESO] Operación ficticia ' || lpad(x.seq::text, 2, '0') || '.',
+       CASE x.seq WHEN 1 THEN 'Honorarios de limpieza y mantenimiento.'
+                  WHEN 2 THEN 'Compra de insumos de librería.'
+                  WHEN 3 THEN 'Servicio mensual de internet.'
+                  WHEN 4 THEN 'Reparación de barra móvil.'
+                  WHEN 5 THEN 'Impresión de material para la muestra anual.'
+                  WHEN 6 THEN 'Reposición de elementos de botiquín.'
+                  ELSE 'Compra anulada por comprobante duplicado.' END,
        mp.id,
        x.state,
        u.id,
@@ -1286,12 +1340,12 @@ SELECT (SELECT anchor_date - (8 - x.seq) FROM _demo_config),
        repeat(md5(x.key_value), 2),
        CASE WHEN x.seq = 7 THEN 'demo-seed:v1:egreso-reversa:007' ELSE NULL END,
        CASE WHEN x.seq = 7 THEN repeat(md5('demo-seed:v1:egreso-reversa:007'), 2) ELSE NULL END,
-       CASE WHEN x.seq = 7 THEN '[DEMO:EGRESO] Anulación ficticia.' ELSE NULL END,
+       CASE WHEN x.seq = 7 THEN 'Anulación por comprobante cargado dos veces.' ELSE NULL END,
        CASE WHEN x.seq = 7 THEN (SELECT anchor_ts + interval '7 minutes' FROM _demo_config) ELSE NULL END,
        0
 FROM _demo_expenses_desired x
 JOIN public.metodo_pagos mp ON mp.descripcion = CASE WHEN x.seq % 2 = 0
-    THEN 'DEMO · Transferencia' ELSE 'DEMO · Efectivo' END
+    THEN 'Transferencia bancaria' ELSE 'Efectivo' END
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-administrador'
 ON CONFLICT (idempotency_key) DO UPDATE
 SET fecha = EXCLUDED.fecha,
@@ -1347,7 +1401,7 @@ SELECT 'REVERSO',
        original.id,
        u.id,
        'demo-seed:v1:caja:reversa-pago:048',
-       '[DEMO:CAJA] Reversión del pago anulado.',
+       'Reversión automática del pago anulado.',
        (SELECT anchor_ts + interval '7 minutes' FROM _demo_config)
 FROM public.movimientos_caja original
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-caja'
@@ -1405,7 +1459,7 @@ SELECT 'REVERSO',
        original.id,
        u.id,
        'demo-seed:v1:caja:reversa-egreso:007',
-       '[DEMO:CAJA] Reversión del egreso anulado.',
+       'Reversión automática del egreso anulado.',
        (SELECT anchor_ts + interval '8 minutes' FROM _demo_config)
 FROM public.movimientos_caja original
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-administrador'
@@ -1434,10 +1488,11 @@ SELECT CASE WHEN n <= 3 THEN 'AJUSTE_INGRESO' ELSE 'AJUSTE_EGRESO' END,
        NULL,
        u.id,
        'demo-seed:v1:caja:ajuste:' || lpad(n::text, 3, '0'),
-       '[DEMO:CAJA] Ajuste manual ficticio.',
+       CASE WHEN n <= 3 THEN 'Ajuste positivo por diferencia de apertura.'
+            ELSE 'Ajuste negativo por diferencia de cierre.' END,
        (SELECT anchor_ts FROM _demo_config) + (480 + n) * interval '1 second'
 FROM generate_series(1, 4) AS g(n)
-JOIN public.metodo_pagos mp ON mp.descripcion = 'DEMO · Efectivo'
+JOIN public.metodo_pagos mp ON mp.descripcion = 'Efectivo'
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-administrador'
 ON CONFLICT (idempotency_key) DO UPDATE
 SET tipo = EXCLUDED.tipo,
@@ -1462,7 +1517,7 @@ SELECT s.id,
        NULL,
        u.id,
        'demo-seed:v1:stock:ingreso:' || lpad(x.seq::text, 3, '0'),
-       '[DEMO:STOCK] Existencia inicial.',
+       'Ingreso de existencia inicial del período.',
        (SELECT anchor_ts FROM _demo_config) + (500 + x.seq) * interval '1 second'
 FROM _demo_stocks_desired x
 JOIN public.stocks s ON s.codigo_barras = x.barcode
@@ -1516,8 +1571,8 @@ SELECT s.id,
        adjustment.reason,
        (SELECT anchor_ts FROM _demo_config) + adjustment.seq * interval '1 second'
 FROM (VALUES
-    (520, 'DEMO-STOCK-001', 'AJUSTE_POSITIVO', 2, 'demo-seed:v1:stock:ajuste-positivo:001', '[DEMO:STOCK] Ajuste positivo.'),
-    (521, 'DEMO-STOCK-002', 'AJUSTE_NEGATIVO', 1, 'demo-seed:v1:stock:ajuste-negativo:002', '[DEMO:STOCK] Ajuste negativo.')
+    (520, '7790000000012', 'AJUSTE_POSITIVO', 2, 'demo-seed:v1:stock:ajuste-positivo:001', 'Ajuste positivo por recuento físico.'),
+    (521, '7790000000029', 'AJUSTE_NEGATIVO', 1, 'demo-seed:v1:stock:ajuste-negativo:002', 'Ajuste negativo por producto deteriorado.')
 ) AS adjustment(seq, barcode, movement_type, quantity, key_value, reason)
 JOIN public.stocks s ON s.codigo_barras = adjustment.barcode
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-administrador'
@@ -1541,7 +1596,7 @@ SELECT original.stock_id,
        original.id,
        u.id,
        'demo-seed:v1:stock:reversa-venta:006',
-       '[DEMO:STOCK] Restitución por venta anulada.',
+       'Restitución de unidades por venta anulada.',
        (SELECT anchor_ts + interval '9 minutes' FROM _demo_config)
 FROM public.movimientos_stock original
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-administrador'
@@ -1616,57 +1671,60 @@ BEGIN
     SELECT jsonb_build_object(
         'usuarios', (SELECT count(*) FROM public.usuarios WHERE lower(nombre_usuario) LIKE 'demo-%'),
         'usuario_roles', (SELECT count(*) FROM public.usuario_roles ur JOIN public.usuarios u ON u.id = ur.usuario_id WHERE lower(u.nombre_usuario) LIKE 'demo-%'),
-        'salones', (SELECT count(*) FROM public.salones WHERE nombre LIKE 'DEMO · %'),
-        'profesores', (SELECT count(*) FROM public.profesores WHERE nombre LIKE 'DEMO · Profesor %'),
-        'observaciones_profesores', (SELECT count(*) FROM public.observaciones_profesores op JOIN public.profesores p ON p.id = op.profesor_id WHERE p.nombre LIKE 'DEMO · Profesor %'),
-        'bonificaciones', (SELECT count(*) FROM public.bonificaciones WHERE descripcion LIKE 'DEMO · %'),
-        'recargos', (SELECT count(*) FROM public.recargos WHERE descripcion LIKE 'DEMO · %'),
-        'metodo_pagos', (SELECT count(*) FROM public.metodo_pagos WHERE descripcion LIKE 'DEMO · %'),
-        'sub_conceptos', (SELECT count(*) FROM public.sub_conceptos WHERE descripcion LIKE 'DEMO · %'),
-        'conceptos', (SELECT count(*) FROM public.conceptos WHERE descripcion LIKE 'DEMO · %'),
-        'stocks', (SELECT count(*) FROM public.stocks WHERE codigo_barras LIKE 'DEMO-STOCK-%'),
-        'disciplinas', (SELECT count(*) FROM public.disciplinas WHERE nombre LIKE 'DEMO · %'),
+        'salones', (SELECT count(*) FROM public.salones WHERE nombre IN ('Sala Principal', 'Estudio Infantil', 'Sala de Ensayo')),
+        'profesores', (SELECT count(*) FROM public.profesores p JOIN _demo_professors_desired d ON d.nombre = p.nombre),
+        'observaciones_profesores', (SELECT count(*) FROM public.observaciones_profesores op JOIN public.profesores p ON p.id = op.profesor_id JOIN _demo_professors_desired d ON d.nombre = p.nombre),
+        'bonificaciones', (SELECT count(*) FROM public.bonificaciones WHERE descripcion IN ('Descuento hermanos 10%', 'Beca institucional 25%', 'Convenio familiar', 'Promoción apertura 2025')),
+        'recargos', (SELECT count(*) FROM public.recargos WHERE descripcion IN ('Mora por vencimiento 5%', 'Gastos administrativos', 'Recargo extraordinario 2025')),
+        'metodo_pagos', (SELECT count(*) FROM public.metodo_pagos WHERE descripcion IN ('Efectivo', 'Transferencia bancaria', 'Tarjeta de débito', 'Tarjeta de crédito')),
+        'sub_conceptos', (SELECT count(*) FROM public.sub_conceptos WHERE descripcion IN ('Indumentaria', 'Materiales de clase', 'Eventos y talleres', 'Trámites administrativos')),
+        'conceptos', (SELECT count(*) FROM public.conceptos c JOIN _demo_concepts_desired d ON d.description = c.descripcion),
+        'stocks', (SELECT count(*) FROM public.stocks s JOIN _demo_stocks_desired d ON d.barcode = s.codigo_barras),
+        'disciplinas', (SELECT count(*) FROM public.disciplinas d JOIN _demo_disciplines_desired desired ON desired.nombre = d.nombre),
         'disciplina_horarios', (
             SELECT count(*) FROM public.disciplina_horarios h
-            JOIN public.disciplinas d ON d.id = h.disciplina_id WHERE d.nombre LIKE 'DEMO · %'
+            JOIN public.disciplinas d ON d.id = h.disciplina_id
+            JOIN _demo_disciplines_desired desired ON desired.nombre = d.nombre
         ),
-        'alumnos', (SELECT count(*) FROM public.alumnos WHERE documento LIKE 'DEMO-DNI-%'),
+        'alumnos', (SELECT count(*) FROM public.alumnos WHERE email LIKE '%@correo.local'),
         'inscripciones', (
             SELECT count(*) FROM public.inscripciones i
-            JOIN public.alumnos a ON a.id = i.alumno_id WHERE a.documento LIKE 'DEMO-DNI-%'
+            JOIN public.alumnos a ON a.id = i.alumno_id WHERE a.email LIKE '%@correo.local'
         ),
         'disciplina_tarifas', (
             SELECT count(*) FROM public.disciplina_tarifas t
-            JOIN public.disciplinas d ON d.id = t.disciplina_id WHERE d.nombre LIKE 'DEMO · %'
+            JOIN public.disciplinas d ON d.id = t.disciplina_id
+            JOIN _demo_disciplines_desired desired ON desired.nombre = d.nombre
         ),
         'inscripcion_condiciones_economicas', (
             SELECT count(*) FROM public.inscripcion_condiciones_economicas c
             JOIN public.inscripciones i ON i.id = c.inscripcion_id
-            JOIN public.alumnos a ON a.id = i.alumno_id WHERE a.documento LIKE 'DEMO-DNI-%'
+            JOIN public.alumnos a ON a.id = i.alumno_id WHERE a.email LIKE '%@correo.local'
         ),
         'mensualidades', (
             SELECT count(*) FROM public.mensualidades m
             JOIN public.inscripciones i ON i.id = m.inscripcion_id
-            JOIN public.alumnos a ON a.id = i.alumno_id WHERE a.documento LIKE 'DEMO-DNI-%'
+            JOIN public.alumnos a ON a.id = i.alumno_id WHERE a.email LIKE '%@correo.local'
         ),
         'matriculas', (
             SELECT count(*) FROM public.matriculas m
-            JOIN public.alumnos a ON a.id = m.alumno_id WHERE a.documento LIKE 'DEMO-DNI-%'
+            JOIN public.alumnos a ON a.id = m.alumno_id WHERE a.email LIKE '%@correo.local'
         ),
         'asistencias_mensuales', (
             SELECT count(*) FROM public.asistencias_mensuales am
-            JOIN public.disciplinas d ON d.id = am.disciplina_id WHERE d.nombre LIKE 'DEMO · %'
+            JOIN public.disciplinas d ON d.id = am.disciplina_id
+            JOIN _demo_disciplines_desired desired ON desired.nombre = d.nombre
         ),
         'asistencias_alumno_mensual', (
             SELECT count(*) FROM public.asistencias_alumno_mensual aam
             JOIN public.inscripciones i ON i.id = aam.inscripcion_id
-            JOIN public.alumnos a ON a.id = i.alumno_id WHERE a.documento LIKE 'DEMO-DNI-%'
+            JOIN public.alumnos a ON a.id = i.alumno_id WHERE a.email LIKE '%@correo.local'
         ),
         'asistencias_diarias', (
             SELECT count(*) FROM public.asistencias_diarias ad
             JOIN public.asistencias_alumno_mensual aam ON aam.id = ad.asistencia_alumno_mensual_id
             JOIN public.inscripciones i ON i.id = aam.inscripcion_id
-            JOIN public.alumnos a ON a.id = i.alumno_id WHERE a.documento LIKE 'DEMO-DNI-%'
+            JOIN public.alumnos a ON a.id = i.alumno_id WHERE a.email LIKE '%@correo.local'
         ),
         'ventas_stock', (SELECT count(*) FROM public.ventas_stock WHERE idempotency_key LIKE 'demo-seed:v1:%'),
         'cargos', (SELECT count(*) FROM public.cargos WHERE idempotency_key LIKE 'demo-seed:v1:%'),
@@ -1803,7 +1861,7 @@ BEGIN
         )
         SELECT 1
         FROM public.cargos c
-        JOIN public.alumnos a ON a.id = c.alumno_id AND a.documento LIKE 'DEMO-DNI-%'
+        JOIN public.alumnos a ON a.id = c.alumno_id AND a.email LIKE '%@correo.local'
         LEFT JOIN paid ON paid.cargo_id = c.id
         LEFT JOIN credit ON credit.cargo_id = c.id
         WHERE COALESCE(paid.amount, 0) + COALESCE(credit.amount, 0) > c.importe_original
@@ -1862,7 +1920,7 @@ BEGIN
         SELECT 1
         FROM public.stocks s
         JOIN book ON book.stock_id = s.id
-        WHERE s.codigo_barras LIKE 'DEMO-STOCK-%'
+        WHERE s.codigo_barras IN (SELECT barcode FROM _demo_stocks_desired)
           AND s.requiere_control_de_stock
           AND (s.cantidad_actual < 0 OR s.cantidad_actual <> book.quantity)
     ) THEN

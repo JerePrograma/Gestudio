@@ -440,15 +440,16 @@ Los datos se reconocen mediante claves naturales reservadas:
 | Tipo | Convención |
 |---|---|
 | Usuarios | `demo-*` |
-| Correos | `*@gestudio-demo.invalid` |
-| Documentos | `DEMO-DNI-*` |
-| Catálogos visibles | `DEMO · *` |
-| Códigos de stock | `DEMO-STOCK-*` |
+| Correos | `*@correo.local` |
+| Alumnos | padrón exacto definido en `_demo_students_desired` |
+| Catálogos visibles | nombres operativos exactos, sin prefijos técnicos |
+| Códigos de stock | EAN ficticios `7790000000012` a `7790000000067` |
 | Idempotencia | `demo-seed:v1:*` |
-| Motivos internos | `[DEMO:*]` |
 | Storage keys | `demo/recibos/*` |
 
-El seed no utiliza IDs rígidos como identidad del dataset y no mueve secuencias a rangos artificiales.
+Los nombres, teléfonos, documentos y correos son completamente ficticios, pero
+mantienen un formato operativo realista. El seed no utiliza IDs rígidos como
+identidad del dataset y no mueve secuencias a rangos artificiales.
 
 ---
 
