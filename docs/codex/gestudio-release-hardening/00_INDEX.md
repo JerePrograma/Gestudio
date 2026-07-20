@@ -13,16 +13,16 @@
 | Flyway | V1-V7 integradas e inmutables |
 | Demo automatizada | PASS |
 | Demo humana | pendiente |
-| Integración Jere Platform | emisor source-owned integrado; end-to-end bloqueado externamente |
+| Integración Jere Platform | source integrada; end-to-end bloqueado externamente |
 | Backup técnico | PASS |
 | Restore aislado | PASS |
-| Rollback | siguiente gate operativo |
-| Observabilidad | pendiente |
+| Rollback backend | PASS técnico |
+| Observabilidad | siguiente gate operativo |
 | GATE-2 UX | abierto |
 | Staging | NO-GO |
 | Producción | NO-GO |
 
-La fuente operativa vigente es [12_ESTADO_ACTUAL_Y_BACKLOG.md](12_ESTADO_ACTUAL_Y_BACKLOG.md). Los documentos anteriores conservan evidencia histórica, pero no deben prevalecer sobre el estado unificado.
+La fuente operativa vigente es [12_ESTADO_ACTUAL_Y_BACKLOG.md](12_ESTADO_ACTUAL_Y_BACKLOG.md).
 
 ## Fuentes canónicas
 
@@ -36,76 +36,57 @@ La fuente operativa vigente es [12_ESTADO_ACTUAL_Y_BACKLOG.md](12_ESTADO_ACTUAL_
 8. [Plan de pruebas](08_PLAN_DE_PRUEBAS.md)
 9. [Bitácora histórica](09_BITACORA_IMPLEMENTACION.md)
 10. [Decisiones y bloqueos](10_DECISIONES_Y_BLOQUEOS.md)
-11. [Checklist de release vigente](11_CHECKLIST_RELEASE.md)
-12. [Estado actual y backlog unificado](12_ESTADO_ACTUAL_Y_BACKLOG.md)
+11. [Checklist vigente](11_CHECKLIST_RELEASE.md)
+12. [Estado y backlog](12_ESTADO_ACTUAL_Y_BACKLOG.md)
 13. [Bitácora de continuidad](13_BITACORA_CONTINUIDAD.md)
-14. [Auditoría técnica de GATE-1B](14_AUDITORIA_TECNICA_E1B.md)
-15. [Cierre de GATE-1B](15_CIERRE_GATE_1B_2026-07-20.md)
+14. [Auditoría GATE-1B](14_AUDITORIA_TECNICA_E1B.md)
+15. [Cierre GATE-1B](15_CIERRE_GATE_1B_2026-07-20.md)
 16. [Cierre V7, backup y restore](16_CIERRE_BACKUP_RESTORE_Y_V7_2026-07-20.md)
+17. [Cierre rollback forward-compatible](17_CIERRE_ROLLBACK_FORWARD_COMPATIBLE_2026-07-20.md)
 
 ## Runbooks
 
 - [Puesta en marcha y flujo de uso](../../operations/local-runbook.md)
 - [Backup y restore](../../operations/backup-restore.md)
+- [Rollback de aplicación](../../operations/rollback.md)
 - [Desarrollo local](../../development/local-development.md)
 - [Demo persistente](../../testing/demo-local.md)
 - [Dataset demo](../../testing/demo-seed.md)
-- [Integración Jere Platform V1](../../integrations/jere-platform-student-export-v1.md)
-- [Estrategia comercial](../../comercial/estrategia-comercial.md)
-
-## Progreso por etapa
-
-| Etapa | Estado | Próxima condición |
-|---|---|---|
-| GATE-0 — baseline | CERRADO | mantener reproducibilidad |
-| GATE-1 — RBAC | CERRADO | no reabrir sin regresión |
-| GATE-1B — finanzas | CERRADO TÉCNICAMENTE | recorridos humanos y UX |
-| V7 — exportación firmada | INTEGRADA | receptor multipágina externo |
-| Demo automatizada | PASS | recorrido humano por cinco roles |
-| Backup/restore | PASS TÉCNICO | política de custodia, RPO/RTO y responsables |
-| Rollback | ABIERTO | drill forward-compatible |
-| Observabilidad | ABIERTO | health, métricas, logs y alertas |
-| GATE-2 — UX | PARCIAL | inventario y recorridos exhaustivos |
-| Staging | BLOQUEADO | ambiente y gates operativos |
-| Producción | NO AUTORIZADA | todos los gates y decisión independiente |
+- [Integración Jere Platform](../../integrations/jere-platform-student-export-v1.md)
 
 ## Evidencia vigente
 
-- backend: 162/162 PASS después de V7;
+- backend: 162/162 PASS;
 - frontend: 142/142 PASS;
-- lint y build: PASS;
-- imágenes backend/frontend: PASS;
-- `Scope All`: PASS;
-- smoke V1-V7: PASS;
-- seed doble: PASS;
-- cinco logins demo y matrices RBAC: PASS;
-- backup/restore descartable: PASS;
-- recursos Docker residuales en gates: ninguno.
+- lint/build/imágenes: PASS;
+- Scope All, smoke V1-V7 y seed doble: PASS;
+- backup/restore: PASS;
+- rollback actual → anterior compatible → actual: PASS;
+- datos y Flyway V7 preservados;
+- recursos residuales: ninguno.
 
 ## Reglas operativas
 
-- V1-V7 son inmutables; toda corrección es forward-only.
-- No ejecutar down migrations como rollback.
-- `PROFESOR` permanece inactivo y no asignable.
-- 401, 403 y 409 conservan semánticas distintas.
+- V1-V7 son inmutables y forward-only.
+- Un artefacto rollback debe contener exactamente las migraciones aplicadas.
+- No usar tags mutables como única referencia operativa.
+- `PROFESOR` permanece inactivo.
+- 401, 403 y 409 mantienen semánticas distintas.
 - STOMP permanece retirado.
-- Los campos financieros legacy no son fuentes operativas.
-- El emisor V7 permanece deshabilitado por defecto.
-- Los backups, dumps, recibos y secretos no se versionan.
-- Una suite verde no autoriza staging ni producción.
-- No se usa una base real para pruebas destructivas.
+- campos financieros legacy fuera de operación.
+- emisor V7 apagado por defecto.
+- backups, dumps, recibos y secretos fuera de Git.
+- un gate verde no autoriza staging ni producción.
 
-## Orden de ejecución vigente
+## Orden siguiente
 
-1. integrar cierre de backup/restore;
-2. probar rollback forward-compatible conservando V7;
-3. volver al artefacto actual y verificar datos;
-4. cerrar observabilidad mínima;
-5. completar recorridos humanos y GATE-2;
-6. definir política de backup, secretos y responsables;
-7. obtener staging;
-8. repetir todos los gates en staging;
-9. evaluar producción sólo con autorización explícita.
+1. integrar cierre de rollback;
+2. cerrar observabilidad mínima;
+3. completar GATE-2 y recorridos humanos;
+4. definir políticas de backup, artefactos y secretos;
+5. obtener staging;
+6. repetir gates en staging;
+7. evaluar producción sólo con autorización independiente.
 
 ## Decisión
 
