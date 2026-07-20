@@ -259,3 +259,13 @@ El cambio de cualquier decisión debe actualizar este documento,
 [12_ESTADO_ACTUAL_Y_BACKLOG.md](./12_ESTADO_ACTUAL_Y_BACKLOG.md),
 [11_CHECKLIST_RELEASE.md](./11_CHECKLIST_RELEASE.md) y
 [13_BITACORA_CONTINUIDAD.md](./13_BITACORA_CONTINUIDAD.md).
+
+<!-- GATE1B-DECISIONES-2026-07-20 -->
+## Decisiones incorporadas — 20 de julio de 2026
+
+1. **Rama/PR excepcional**: se autorizó `agent/gate-1b-liquidacion-vigencia` y PR `#13` porque el entorno local no podía clonar GitHub ni ejecutar Docker/PowerShell. `main` quedó protegido hasta obtener evidencia.
+2. **Desempate de matrícula**: menor ID de inscripción después de comparar `importeFinal` descendente.
+3. **Compatibilidad API**: campos legacy permanecen temporalmente para deserialización, pero todo valor no nulo se rechaza; no hay pérdida silenciosa de intención.
+4. **Disciplina nueva**: se crea la ficha y se redirige a Tarifas para cargar una vigencia explícita; los importes legacy no se presentan como fuente efectiva.
+5. **Sin migración nueva**: V1-V6 cubren el snapshot requerido; no existe necesidad material para V7.
+6. **NO-GO sostenido**: cierre de GATE-1B no habilita demo comercial, staging ni producción.

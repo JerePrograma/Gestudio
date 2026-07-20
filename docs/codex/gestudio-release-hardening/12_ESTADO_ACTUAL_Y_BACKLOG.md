@@ -569,3 +569,19 @@ Además:
 Está en condiciones de continuar trabajo técnico y preparar una demo interna,
 pero no de afirmar disponibilidad productiva. La próxima tarea de código es
 `E1B-001`; la próxima tarea de evidencia es `DEMO-VAL-001`.
+
+<!-- GATE1B-ESTADO-2026-07-20 -->
+## Estado supersedente al 20 de julio de 2026
+
+| Gate | Estado | Evidencia |
+|---|---|---|
+| GATE-0 | CERRADO | baseline y documentación |
+| GATE-1 | CERRADO / revalidado | RBAC, 401/403/409, backend fail-closed, frontend alineado |
+| GATE-1B | CERRADO TÉCNICAMENTE | 149 backend + 142 frontend, Scope All, smoke y seed PASS |
+| GATE-2 | ABIERTO | UX crítica y recorrido humano pendientes |
+| Demo interna automatizada | PASS | seed doble, 5 logins, RBAC e integridad |
+| Demo comercial | NO-GO | falta recorrido humano y GATE-2 |
+| Staging | NO-GO | backup/restore, rollback y observabilidad pendientes |
+| Producción | NO-GO | no autorizada |
+
+Finalizado: E1B-001 a E1B-010. Pendientes P1: recorridos humanos por rol, GATE-2, backup/restore, rollback, observabilidad y staging. Pendientes P2: reconciliación para retiro físico futuro de columnas legacy, serialización estable de `PageImpl` y agente Mockito para futuros JDK.
