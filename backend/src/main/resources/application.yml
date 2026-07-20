@@ -68,6 +68,12 @@ app:
     username: ${APP_BOOTSTRAP_ADMIN_USERNAME:}
     password: ${APP_BOOTSTRAP_ADMIN_PASSWORD:}
     reset-existing-password: ${APP_BOOTSTRAP_ADMIN_RESET_EXISTING_PASSWORD:false}
+  jere-platform-student-export:
+    enabled: ${APP_JERE_PLATFORM_STUDENT_EXPORT_ENABLED:false}
+    organization-id: ${APP_JERE_PLATFORM_STUDENT_EXPORT_ORGANIZATION_ID:}
+    tenant-id: ${APP_JERE_PLATFORM_STUDENT_EXPORT_TENANT_ID:}
+    current-secret: ${APP_JERE_PLATFORM_STUDENT_EXPORT_CURRENT_SECRET:}
+    page-size: ${APP_JERE_PLATFORM_STUDENT_EXPORT_PAGE_SIZE:1000}
 
 logging:
   level:

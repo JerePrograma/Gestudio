@@ -44,6 +44,11 @@ Los archivos versionados `.env.example` y `.env.local.example` contienen plantil
 | `APP_BOOTSTRAP_ADMIN_RESET_EXISTING_PASSWORD` | sólo `dev` | no | `false`; restablece una vez el BCrypt del `ADMINISTRADOR` indicado e invalida sus sesiones. |
 | `SERVER_PORT` | todos | no | `8080` |
 | `LOGGING_LEVEL_ROOT` | todos | no | `INFO` |
+| `APP_JERE_PLATFORM_STUDENT_EXPORT_ENABLED` | integración | no | `false`; habilita el emisor sólo con mapping y secreto válidos. |
+| `APP_JERE_PLATFORM_STUDENT_EXPORT_ORGANIZATION_ID` | integración habilitada | sí | identificador interno estable y sanitizado del deployment/academia. |
+| `APP_JERE_PLATFORM_STUDENT_EXPORT_TENANT_ID` | integración habilitada | sí | UUID externo explícito de Jere Platform; nunca se deriva por nombre. |
+| `APP_JERE_PLATFORM_STUDENT_EXPORT_CURRENT_SECRET` | integración habilitada | sí, secreta | secreto independiente de al menos 32 bytes UTF-8, suministrado por el secret manager. |
+| `APP_JERE_PLATFORM_STUDENT_EXPORT_PAGE_SIZE` | integración | no | `1000`; rango válido 1..1000. |
 
 ## Frontend
 
@@ -104,6 +109,11 @@ se recomienda el override de JVM para producción.
 | `FRONTEND_PORT` | `8081` |
 
 No configures SMTP/IMAP en Codex: el perfil `dev` usa email no-op.
+
+El secreto de exportación no aparece en `.env.example` ni en esta tabla como
+valor de ejemplo. No debe reutilizar JWT, credenciales de base ni otros secretos.
+La rotación y el procedimiento local están documentados en
+`docs/integrations/jere-platform-student-export-v1.md`.
 
 ## Bootstrap y smoke
 

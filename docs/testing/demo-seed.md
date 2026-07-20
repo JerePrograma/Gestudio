@@ -10,8 +10,8 @@
 | Fecha de auditoría | 2026-07-15 |
 | Seed manual | `scripts/gestudio_demo_seed_full.sql` |
 | Validador integral | `scripts/validate-demo-seed.ps1` |
-| Última versión Flyway auditada | `6` |
-| Migración productiva más reciente auditada | `V6__rbac_permission_catalog_and_base_roles.sql` |
+| Última versión Flyway auditada | `7` |
+| Migración productiva más reciente auditada | `V7__jere_platform_student_source_exports.sql` |
 | Estado | Seed reconstruido y validación automatizada disponible |
 
 Este documento describe el mecanismo soportado para construir y validar un dataset comercial ficticio de Gestudio sobre una base PostgreSQL descartable.
@@ -128,7 +128,7 @@ La guía fue preparada contra:
 Si el HEAD es posterior, debe verificarse que:
 
 - `scripts/gestudio_demo_seed_full.sql` siga siendo compatible;
-- la última migración productiva continúe incluyendo V6;
+- la última migración productiva continúe incluyendo V7;
 - no exista una migración Flyway de demostración;
 - las entidades y endpoints utilizados por el validador no hayan cambiado.
 
@@ -180,7 +180,7 @@ El script:
 6. crea PostgreSQL con credenciales aleatorias;
 7. inicia el backend real;
 8. deja que Flyway aplique las migraciones;
-9. exige V6 exitosa y ninguna migración demo;
+9. exige V7 exitosa, V6 presente y ninguna migración demo;
 10. ejecuta Hibernate con `ddl-auto=validate`;
 11. genera cinco passwords aleatorias en memoria;
 12. genera cinco hashes BCrypt con el codificador real del backend;
@@ -701,7 +701,7 @@ Además de las validaciones SQL, `validate-demo-seed.ps1` comprueba:
 - backend iniciado con Flyway y Hibernate validate;
 - `flyway_schema_history` correcto;
 - checksums presentes;
-- V6 productiva presente;
+- cadena productiva V1-V7 presente, incluida V6 RBAC;
 - ninguna migración demo;
 - login de los cinco usuarios;
 - 32 permisos en el perfil técnico;
@@ -941,3 +941,8 @@ backend/src/main/resources/db/migration/V6__rbac_permission_catalog_and_base_rol
 ```
 
 El informe de auditoría y evidencia final se mantiene separado de esta guía operativa.
+
+
+## Actualización operativa 2026-07-20
+
+El gate actual exige Flyway V1-V7. V6 continúa siendo la autoridad del catálogo RBAC y V7 agrega únicamente snapshots firmados de integración, deshabilitados por defecto. El seed no inserta datos en las tablas V7 y verifica que existan antes de operar.

@@ -129,6 +129,7 @@ class SecurityHttpIntegrationTest {
     @MockitoBean private gestudio.servicios.stock.StockServicio stockServicio;
     @MockitoBean private gestudio.tarifas.application.CondicionEconomicaServicio condicionEconomicaServicio;
     @MockitoBean private gestudio.tarifas.application.TarifaDisciplinaServicio tarifaDisciplinaServicio;
+    @MockitoBean private gestudio.integraciones.jereplatform.application.StudentSourceExportService studentSourceExportService;
     @MockitoBean private gestudio.repositorios.ConceptoRepositorio conceptoRepositorio;
     @MockitoBean private gestudio.dto.concepto.ConceptoMapper conceptoMapper;
 
@@ -162,6 +163,19 @@ class SecurityHttpIntegrationTest {
         when(cargoServicio.listarPendientes(anyLong(), any())).thenReturn(Page.empty());
         when(pagoServicio.listarPagosPorAlumno(anyLong(), any())).thenReturn(Page.empty());
         when(stockServicio.listarStocks(any())).thenReturn(Page.empty());
+        var exportPage = new gestudio.integraciones.jereplatform.application.SignedStudentSourceExportPage(
+                UUID.fromString("00000000-0000-0000-0000-000000000001"),
+                1,
+                1,
+                null,
+                0,
+                "{}".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                "sha256=" + "00".repeat(32),
+                UUID.fromString("00000000-0000-0000-0000-000000000002")
+        );
+        when(studentSourceExportService.createSnapshot(any(Usuario.class))).thenReturn(exportPage);
+        when(studentSourceExportService.page(anyString(), nullable(String.class), any(Usuario.class)))
+                .thenReturn(exportPage);
 
         var subConcepto = new gestudio.entidades.SubConcepto(1L, "Test", true);
         when(subConceptoServicio.findByDescripcionIgnoreCase(anyString())).thenReturn(subConcepto);
@@ -527,7 +541,7 @@ class SecurityHttpIntegrationTest {
         List<DiscoveredEndpoint> endpoints = discoverEndpoints();
         List<String> mismatches = new ArrayList<>();
 
-        assertThat(endpoints).hasSize(144);
+        assertThat(endpoints).hasSize(146);
 
         for (DiscoveredEndpoint endpoint : endpoints) {
             if (endpoint.path().startsWith("/api/login")
@@ -939,6 +953,9 @@ class SecurityHttpIntegrationTest {
                     : EndpointPolicy.required(PERM_REPORTES_EXPORTAR);
         }
         if (path.startsWith("/api/notificaciones")) return EndpointPolicy.required(PERM_ALUMNOS_LEER);
+        if (path.startsWith("/api/integraciones/jere-platform/estudiantes")) {
+            return EndpointPolicy.required(PERM_CONFIG_ADMIN, PERM_REPORTES_EXPORTAR);
+        }
         if (isConfigurationPath(path)) {
             return readOrWrite(method, PERM_CONFIG_LEER, PERM_CONFIG_ADMIN);
         }

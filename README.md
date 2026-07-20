@@ -4,10 +4,10 @@ Monorepo de gestión para alumnos, inscripciones, disciplinas, asistencias, mens
 
 ## Estado
 
-El producto está en etapa pre-productiva. Seguridad/RBAC y Flyway V1-V6 están
-integrados; la liquidación financiera por vigencia, la demo interna, staging,
-backup/restore y rollback permanecen abiertos. No debe interpretarse el estado
-del repositorio como autorización de producción.
+El producto está en etapa pre-productiva. Seguridad/RBAC, liquidación financiera
+por vigencia, Flyway V1-V7 y la demo interna automatizada están integrados.
+GATE-2, recorridos humanos, backup/restore, rollback, observabilidad, staging y
+producción permanecen abiertos; el repositorio no constituye autorización de despliegue.
 
 Estado y backlog vigentes:
 
@@ -23,9 +23,15 @@ Estado y backlog vigentes:
 - Desarrollo local: Windows PowerShell y Docker Compose.
 
 Flyway parte de `V1__canonical_schema.sql` y aplica las migraciones forward-only
-V2-V6. V5 incorpora las estructuras RBAC y el backfill de roles múltiples; V6
-incorpora el catálogo y las matrices productivas. V1-V6 no deben editarse. No
+V2-V7. V5 incorpora las estructuras RBAC y el backfill de roles múltiples; V6
+incorpora el catálogo y las matrices productivas. V1-V7 no deben editarse. No
 existe una ruta de upgrade desde el historial retirado V1-V060.
+
+V7 agrega el emisor administrativo, inmutable y firmado de referencias mínimas
+`GESTUDIO_STUDENT` para Jere Platform. Gestudio conserva la propiedad del perfil
+de estudiante; la plataforma recibe únicamente ID, nombre de visualización y
+estado activo. La integración está deshabilitada y falla cerrada hasta configurar
+un tenant mapping explícito y un secreto independiente.
 
 La autorización usa permisos efectivos calculados en backend. El contrato de
 sesión devuelve `roles[]` y `permisos[]`; el refresh token vive sólo en una
@@ -87,10 +93,9 @@ Los pagos usan cargos y aplicaciones explícitas, ledgers compensatorios e
 idempotency keys con request hash. La generación, almacenamiento y entrega de
 recibos se procesa fuera de la transacción financiera mediante `ReciboPendiente`.
 
-La etapa pendiente de liquidación por vigencia debe conectar tarifas y
-condiciones históricas con `cargo_liquidaciones` y retirar del cálculo los
-campos legacy. Ver
-[Etapa 1B](docs/codex/gestudio-release-hardening/04_ETAPA_1B_LIQUIDACION_FINANCIERA.md).
+La liquidación por vigencia está integrada: mensualidades y matrículas resuelven
+tarifas históricas y condiciones efectivas, persisten `cargo_liquidaciones` de
+forma atómica y rechazan fuentes legacy. Ver [cierre de GATE-1B](docs/codex/gestudio-release-hardening/15_CIERRE_GATE_1B_2026-07-20.md).
 
 ## Documentación
 
@@ -99,6 +104,7 @@ campos legacy. Ver
 - [Desarrollo local](docs/development/local-development.md)
 - [Variables de entorno](docs/development/environment-variables.md)
 - [Auditoría del entorno](docs/development/environment-audit.md)
+- [Emisor Jere Platform v1](docs/integrations/jere-platform-student-export-v1.md)
 
 No uses `.env.example` como configuración de producción. Los secretos reales
 deben permanecer fuera de Git, imágenes, artefactos y logs.

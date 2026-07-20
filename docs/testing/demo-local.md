@@ -11,7 +11,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass `
 ```
 
 `Start` construye las imágenes, levanta el proyecto Compose aislado
-`gestudio-demo-local`, aplica Flyway V1-V6 sobre PostgreSQL vacío cuando
+`gestudio-demo-local`, aplica Flyway V1-V7 sobre PostgreSQL vacío cuando
 corresponde, solicita las cinco contraseñas como `SecureString`, aplica dos
 veces el seed manual y valida frontend, CORS, cookie, login, RBAC e integridad.
 La demo continúa ejecutándose al terminar el script.
@@ -66,7 +66,7 @@ host-only `gestudio_demo_refresh`, con `Secure=false`, `SameSite=Strict` y
 
 ## Seed sobre PostgreSQL local nativo
 
-Para poblar una base local vacía que ya tenga Flyway V1-V6, sin depender de
+Para poblar una base local vacía que ya tenga Flyway V1-V7, sin depender de
 Docker ni de `psql` en `PATH`:
 
 ```powershell
@@ -78,6 +78,6 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass `
 La acción localiza `psql.exe` en la instalación de PostgreSQL, solicita la
 contraseña de la base y las cinco contraseñas demo, genera BCrypt y aplica el
 mismo `gestudio_demo_seed_full.sql`. Falla antes de escribir si encuentra datos
-ajenos a los catálogos productivos de V1-V6. Los parámetros opcionales son
+ajenos a los catálogos productivos de V1-V7. Los parámetros opcionales son
 `-DatabaseHost`, `-DatabasePort`, `-DatabaseName`, `-DatabaseUser` y
 `-PsqlPath`.

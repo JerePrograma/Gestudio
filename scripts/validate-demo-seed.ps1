@@ -1351,6 +1351,7 @@ try {
 
     $history = Invoke-Sql -Query "SELECT installed_rank, COALESCE(version,''), description, type, script, COALESCE(checksum::text,''), success FROM flyway_schema_history ORDER BY installed_rank;"
     Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM flyway_schema_history WHERE script='V6__rbac_permission_catalog_and_base_roles.sql' AND success") -Expected "1" -Message "La V6 productiva no fue aplicada"
+    Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM flyway_schema_history WHERE script='V7__jere_platform_student_source_exports.sql' AND success") -Expected "1" -Message "La V7 productiva no fue aplicada"
     Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM flyway_schema_history WHERE NOT success") -Expected "0" -Message "Flyway contiene migraciones fallidas"
     Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM flyway_schema_history WHERE lower(script) LIKE '%demo%seed%'") -Expected "0" -Message "Se detectó una migración Flyway demo"
 
@@ -1361,7 +1362,7 @@ try {
     foreach ($migration in $localMigrations) {
         Assert-True -Condition ($historyScripts -contains $migration.Name) -Message "Flyway no aplicó $($migration.Name)"
     }
-    Add-Result -Stage "Historial Flyway" -Result "PASS" -Detail "$($localMigrations.Count) migraciones reales; V6 productiva presente; ninguna demo"
+    Add-Result -Stage "Historial Flyway" -Result "PASS" -Detail "$($localMigrations.Count) migraciones reales; V6/V7 productivas presentes; ninguna demo"
     Write-Host "[INFO] flyway_schema_history:`n$history"
 
     $rbacBefore = Get-RbacSnapshot
