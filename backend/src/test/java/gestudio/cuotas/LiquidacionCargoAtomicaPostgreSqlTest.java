@@ -38,7 +38,7 @@ class LiquidacionCargoAtomicaPostgreSqlTest extends PostgreSqlIntegrationTest {
 
         assertThat(segunda.id()).isEqualTo(primera.id());
         assertThat(segunda.cargoId()).isEqualTo(primera.cargoId());
-        assertThat(segunda.importe()).isEqualTo("100.00");
+        assertThat(segunda.importeOriginal()).isEqualTo("100.00");
         assertThat(jdbc.queryForObject(
                 "SELECT count(*) FROM cargo_liquidaciones WHERE cargo_id = ?",
                 Integer.class, primera.cargoId())).isOne();
@@ -81,7 +81,7 @@ class LiquidacionCargoAtomicaPostgreSqlTest extends PostgreSqlIntegrationTest {
             assertThatThrownBy(() -> mensualidades.crearMensualidad(
                     new MensualidadRegistroRequest(fixture.inscripcionId(), 2026, 4, null, null)))
                     .isInstanceOf(RuntimeException.class)
-                    .hasRootCauseMessage("fallo de snapshot inducido por test");
+                    .hasStackTraceContaining("fallo de snapshot inducido por test");
         } finally {
             retirarFalloSnapshot();
         }
