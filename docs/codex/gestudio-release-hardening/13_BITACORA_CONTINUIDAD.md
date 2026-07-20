@@ -160,3 +160,18 @@ recursos residuales y decisión de gate.
 - documento de evidencia detallada: `15_CIERRE_GATE_1B_2026-07-20.md`.
 - riesgo residual: recorridos humanos, GATE-2, backup/restore, rollback, observabilidad, staging y producción.
 - decisión global: GATE-1B PASS técnico; GATE-2 abierto; demo comercial/staging/producción NO-GO.
+
+## 2026-07-20 — Integración final de GATE-1B en `main`
+
+- PR `#13` fusionado mediante merge commit para preservar los commits temáticos.
+- merge SHA: `23546e025177ff810944808d468a60b91cf621eb`.
+- HEAD validado previo al merge: `37168b05426e6704d911d0685484443fbfabc4de`.
+- workflows sobre el HEAD validado: `GATE-1B validation` PASS y `CI Gestudio` PASS.
+- Backend final: 149/149 tests, `clean verify` PASS, exit code 0, total Maven `01:02 min`.
+- Frontend final: 142/142 tests, lint PASS, build PASS, exit code 0.
+- Scope All: backend, frontend y `docker compose config --quiet` PASS, exit code 0.
+- smoke final: 20/20 pasos, 0 fallos, `00:03:08`, exit code 0.
+- seed final: primera y segunda aplicación PASS con snapshot idéntico, 5/5 logins, `138.6 s`, exit code 0.
+- recursos Docker residuales de smoke y seed: ninguno.
+- revisiones e hilos pendientes del PR al fusionar: ninguno.
+- no se desplegó; no se usaron bases reales; staging y producción continúan `NO-GO`.
