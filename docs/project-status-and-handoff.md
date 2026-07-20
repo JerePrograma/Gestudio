@@ -1,81 +1,110 @@
 # Estado del proyecto y handoff
 
-## Snapshot activo
+> Fecha: 20 de julio de 2026  
+> Rama operativa: `main`  
+> Estado externo: **NO-GO para demo comercial, staging y producción**
+
+Git y GitHub son autoridad si este documento queda desactualizado. El estado funcional vigente está en `docs/codex/gestudio-release-hardening/12_ESTADO_ACTUAL_Y_BACKLOG.md`.
+
+## Snapshot
 
 | Campo | Valor |
 |---|---|
-| Fecha | 2026-07-20 |
-| Main inicial | `15481e38f0cf714607d0f7d5c3279a46315d7b5d` |
-| Main integrado | `ef4f9c31dab9a3dfce43f913177089f80ae0205a` |
-| Rama activa | `feature/signed-student-source-export-v1` |
-| Issue | #14 |
-| PR | #15, draft |
-| Implementación | `4c88635e76d7814b91e1a8baacf7a9db3a8ca81d` |
-| Merge de main | `a1c27dd082d8078acf6d631cbf36ba20a661fd24` |
-| Head publicado | `b4063800aff8b90378397ccc090d22d3448cc0d2` |
-| CI | runs `29765652183`/`29765652777`: backend/frontend PASS; smoke y seed FAIL por expectativa obsoleta V1-V6, corregida y validada localmente; nuevo head pendiente |
-| Integración plataforma | issues Jere Platform #51/#59; contrato `bebfe716780a1ea42cc65be6441af9cc5dfe5bae` |
+| Baseline inicial de la continuidad | `15481e38f0cf714607d0f7d5c3279a46315d7b5d` |
+| Merge GATE-1B | `23546e025177ff810944808d468a60b91cf621eb` |
+| Registro final GATE-1B | `ef4f9c31dab9a3dfce43f913177089f80ae0205a` |
+| Merge integración V7 | `e1afec960ddeb72d61932a1eb1f4a83a65899540` |
+| Scripts de recuperación en main | `b10ce3c0d6b218423fe513ed1c328d1d3abeb790` |
+| PR de cierre operativo | `#18` |
+| Siguiente gate | rollback forward-compatible |
 
-Git y GitHub son autoridad si este snapshot queda desactualizado.
+## Capacidades integradas
 
-## Capacidad
+| Área | Estado |
+|---|---|
+| RBAC y 32 permisos | integrado y probado |
+| Liquidación por vigencia | integrado y probado |
+| Flyway V1-V7 | integrado y probado |
+| Demo automatizada | PASS |
+| Emisor firmado de estudiantes | integrado, deshabilitado por defecto |
+| Backup PostgreSQL/recibos | implementado y probado |
+| Restore aislado | implementado y probado |
+| Runbook local | publicado |
+| Demo humana | pendiente |
+| Rollback | pendiente |
+| Observabilidad | pendiente |
+| Staging/producción | no autorizados |
 
-| Área | Estado | Evidencia |
-|---|---|---|
-| Tenant mapping explícito | IMPLEMENTADO | configuración fail-closed y tests negativos |
-| Lectura mínima de estudiantes | IMPLEMENTADO | ID, nombre, apellido y activo, orden por ID |
-| Snapshot materializado | IMPLEMENTADO | Flyway V7, payload y firma inmutables |
-| Serialización/HMAC | IMPLEMENTADO | bytes únicos UTF-8 y HMAC-SHA256 |
-| Transporte administrativo | IMPLEMENTADO | POST/GET internos, `no-store` |
-| Autorización/auditoría | IMPLEMENTADO | dos permisos efectivos y auditoría sanitizada |
-| Conformidad offline | IMPLEMENTADO | copia controlada del schema v1 y pruebas |
-| Smoke cruzado | VALIDADO LOCALMENTE | artefactos runtime old/new consumidos por receptor PostgreSQL |
-| Deployment productivo | PENDIENTE | no existe evidencia de infraestructura |
-| Scalaris | BLOQUEADO | tenant mapping no definido |
+## Evidencia vigente
 
-## Archivos y migración
+- backend: 162/162 PASS;
+- frontend: 142/142 PASS;
+- lint/build: PASS;
+- imágenes: PASS;
+- Scope All: PASS;
+- smoke V1-V7: PASS;
+- seed doble V1-V7: PASS;
+- backup/restore drill: 9 pasos PASS, 0 fallos, `00:02:17`;
+- recursos Docker residuales: ninguno.
 
-- `backend/src/main/java/gestudio/integraciones/jereplatform/`: contrato,
-  aplicación, transporte, firma y persistencia.
-- `backend/src/main/resources/db/migration/V7__jere_platform_student_source_exports.sql`:
-  snapshots y páginas append-only.
-- `backend/src/test/java/gestudio/integraciones/jereplatform/`: mapping,
-  criptografía, contrato y PostgreSQL.
-- `docs/integrations/jere-platform-student-export-v1.md`: operación y recovery.
+## Integración Jere Platform
 
-V1-V7 son forward-only. Un error operacional se corrige con un checkpoint nuevo;
-un error de schema requiere una migración posterior, nunca editar V7 fusionada.
+Gestudio materializa referencias mínimas `GESTUDIO_STUDENT` con:
 
-## Validación ejecutada
+- ID;
+- nombre de visualización;
+- activo;
+- snapshots/páginas inmutables;
+- SHA-256 y HMAC-SHA256;
+- mapping explícito de tenant;
+- secreto externo;
+- permisos administrativos dobles.
 
-| Control | Estado | Evidencia |
-|---|---|---|
-| Compilación backend | PASS | `mvn -B -f backend/pom.xml -DskipTests compile` |
-| Tests unitarios focales | PASS | 7/7, incluidos límites 1.000/1 MB |
-| PostgreSQL focal | PASS | 6/6, incluida generación de artefactos runtime |
-| Smoke cruzado | PASS | secretos old/new runtime, receptor V8, import/replay/rotación/negativos |
-| Suite completa previa al avance de main | PASS | `mvn -B -f backend/pom.xml clean verify`: 142/142 |
-| Suite completa tras integrar main | PASS | `mvn -B -f backend/pom.xml clean verify`: 162/162; la fixture del scheduler ahora aísla las inscripciones activas heredadas del contenedor compartido |
-| Frontend | PASS | `npm ci`, lint, 22 archivos/142 tests y build |
-| Smoke local | PASS | `scripts/smoke-local.ps1`: 20/20, Flyway V1-V7, RBAC, restart e integridad |
-| Seed demo | PASS | `scripts/validate-demo-seed.ps1 -SkipBackendBuild`: PostgreSQL efímero, V1-V7, RBAC, HTTP, segunda aplicación idéntica y limpieza |
-| Parser demo local | PASS | parser nativo PowerShell sin errores |
-| CI del head | PENDIENTE | PR #15; publicar las correcciones y validar el SHA nuevo |
+La función está deshabilitada por defecto y no realiza transporte automático. El receptor multipágina sigue bloqueado por `JerePrograma/jere-platform#59`; no declarar operación end-to-end.
 
-## Riesgos y próxima acción
+## Recuperación
 
-1. Publicar las correcciones de los gates operacionales; validar CI del SHA nuevo
-   y revisar comentarios.
-2. No volver a fijar en scripts operacionales una cantidad histórica de
-   migraciones sin actualizar el gate junto con una migración nueva.
-3. Mantener la copia offline del contrato sincronizada con el SHA y checksum de
-   procedencia ante cualquier cambio posterior.
-4. No afirmar deployment: el estado máximo de esta misión es validado localmente.
+Runbooks:
 
+- `docs/operations/backup-restore.md`;
+- `docs/operations/local-runbook.md`.
 
-## Reconciliación de release gates
+Scripts:
 
-- GATE-1B permanece cerrado e integrado en `main` desde `ef4f9c31dab9a3dfce43f913177089f80ae0205a`.
-- El emisor V7 no habilita despliegue ni transporte automático.
-- La integración multi-página sigue bloqueada externamente por `JerePrograma/jere-platform#59`; Gestudio sólo materializa y expone artefactos administrativos con la función deshabilitada por defecto.
-- Smoke, seed, documentación y scripts deben validar V1-V7 antes de fusionar PR #15.
+- `scripts/ops/backup-postgres.ps1`;
+- `scripts/ops/restore-postgres.ps1`;
+- `scripts/ops/verify-backup-restore.ps1`.
+
+El restore seguro se prueba primero en una base alternativa. V1-V7 permanecen forward-only y no se ejecutan down migrations.
+
+## Siguiente trabajo exacto
+
+1. fusionar PR `#18` después de los workflows finales;
+2. construir un artefacto de rollback que conserve V1-V7;
+3. arrancar versión actual y crear datos sintéticos;
+4. cambiar al artefacto rollback sin tocar la base;
+5. verificar health, datos y Flyway V7;
+6. volver al artefacto actual;
+7. verificar nuevamente health y datos;
+8. limpiar infraestructura descartable;
+9. documentar resultados;
+10. continuar con observabilidad mínima.
+
+## Riesgos abiertos
+
+- rollback no ensayado;
+- observabilidad y alertas ausentes;
+- GATE-2 y recorridos humanos incompletos;
+- política real de backup sin destino, cifrado, retención ni RPO/RTO;
+- ambiente staging inexistente;
+- producción no autorizada.
+
+## Restricciones
+
+- no usar bases reales para drills;
+- no editar V1-V7;
+- no habilitar Profesor;
+- no reintroducir STOMP;
+- no habilitar Observaciones;
+- no activar el emisor V7 como integración productiva;
+- no desplegar.
