@@ -6,15 +6,13 @@
 |---|---|
 | Fecha | 2026-07-20 |
 | Main inicial | `15481e38f0cf714607d0f7d5c3279a46315d7b5d` |
-| Main integrado | `ef4f9c31dab9a3dfce43f913177089f80ae0205a` |
-| Rama activa | `feature/signed-student-source-export-v1` |
-| Issue | #14 |
-| PR | #15, draft |
-| Implementación | `4c88635e76d7814b91e1a8baacf7a9db3a8ca81d` |
-| Merge de main | `a1c27dd082d8078acf6d631cbf36ba20a661fd24` |
-| Head publicado | `b4063800aff8b90378397ccc090d22d3448cc0d2` |
-| CI | runs `29765652183`/`29765652777`: backend/frontend PASS; smoke y seed FAIL por expectativa obsoleta V1-V6, corregida y validada localmente; nuevo head pendiente |
-| Integración plataforma | issues Jere Platform #51/#59; contrato `bebfe716780a1ea42cc65be6441af9cc5dfe5bae` |
+| Main previo al emisor | `ef4f9c31dab9a3dfce43f913177089f80ae0205a` |
+| Main posterior al emisor | `e1afec960ddeb72d61932a1eb1f4a83a65899540` |
+| Rama documental | `agent/record-student-emitter-merge` |
+| Issues | #14 cerrado por el emisor; #16 continuidad post-merge |
+| Entrega | PR #15, head `0650d18599da173a3443f73e979f2842ab1357ea`, merge `e1afec960ddeb72d61932a1eb1f4a83a65899540` |
+| CI exacta | runs `29767996880` y `29767996913`, PASS |
+| Integración plataforma | Jere Platform PR #60, CI `29765655168`, merge `22b1d2bd02d2a7b3d3dd415b26f56761285611a2`; issue coordinador #51 continúa abierto |
 
 Git y GitHub son autoridad si este snapshot queda desactualizado.
 
@@ -29,7 +27,7 @@ Git y GitHub son autoridad si este snapshot queda desactualizado.
 | Transporte administrativo | IMPLEMENTADO | POST/GET internos, `no-store` |
 | Autorización/auditoría | IMPLEMENTADO | dos permisos efectivos y auditoría sanitizada |
 | Conformidad offline | IMPLEMENTADO | copia controlada del schema v1 y pruebas |
-| Smoke cruzado | VALIDADO LOCALMENTE | artefactos runtime old/new consumidos por receptor PostgreSQL |
+| Smoke cruzado | VALIDADO LOCALMENTE Y EN CI POR REPOSITORIO | artefactos runtime old/new consumidos por receptor PostgreSQL; ambos heads con CI verde |
 | Deployment productivo | PENDIENTE | no existe evidencia de infraestructura |
 | Scalaris | BLOQUEADO | tenant mapping no definido |
 
@@ -60,12 +58,12 @@ un error de schema requiere una migración posterior, nunca editar V7 fusionada.
 | Smoke local | PASS | `scripts/smoke-local.ps1`: 20/20, Flyway V1-V7, RBAC, restart e integridad |
 | Seed demo | PASS | `scripts/validate-demo-seed.ps1 -SkipBackendBuild`: PostgreSQL efímero, V1-V7, RBAC, HTTP, segunda aplicación idéntica y limpieza |
 | Parser demo local | PASS | parser nativo PowerShell sin errores |
-| CI del head | PENDIENTE | PR #15; publicar las correcciones y validar el SHA nuevo |
+| CI del head | PASS | `29767996880`: validate, imágenes y smoke; `29767996913`: alcance, smoke local, seed demo y entorno; GitGuardian PASS |
 
 ## Riesgos y próxima acción
 
-1. Publicar las correcciones de los gates operacionales; validar CI del SHA nuevo
-   y revisar comentarios.
+1. Mantener el emisor deshabilitado hasta contar con configuración, secretos y
+   operación de despliegue verificables; el merge no es evidencia de producción.
 2. No volver a fijar en scripts operacionales una cantidad histórica de
    migraciones sin actualizar el gate junto con una migración nueva.
 3. Mantener la copia offline del contrato sincronizada con el SHA y checksum de
@@ -77,5 +75,5 @@ un error de schema requiere una migración posterior, nunca editar V7 fusionada.
 
 - GATE-1B permanece cerrado e integrado en `main` desde `ef4f9c31dab9a3dfce43f913177089f80ae0205a`.
 - El emisor V7 no habilita despliegue ni transporte automático.
-- La integración multi-página sigue bloqueada externamente por `JerePrograma/jere-platform#59`; Gestudio sólo materializa y expone artefactos administrativos con la función deshabilitada por defecto.
-- Smoke, seed, documentación y scripts deben validar V1-V7 antes de fusionar PR #15.
+- El receptor multi-página quedó integrado por `JerePrograma/jere-platform#60`; Gestudio sólo materializa y expone artefactos administrativos con la función deshabilitada por defecto.
+- Smoke, seed, documentación y scripts validan V1-V7 en los runs exactos `29767996880` y `29767996913`.
