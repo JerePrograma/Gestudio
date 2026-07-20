@@ -6,66 +6,144 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: gate-1b-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  patch-operational-scripts-once:
-    name: Patch operational scripts once
-    if: github.event_name == 'pull_request'
+  environment:
+    name: Environment evidence
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - name: Checkout head branch
+      - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Configure Java 21
+        uses: actions/setup-java@v4
         with:
-          ref: agent/gate-1b-liquidacion-vigencia
-          fetch-depth: 0
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: backend/pom.xml
 
-      - name: Patch scripts deterministically
-        shell: python
-        run: |
-          from pathlib import Path
+      - name: Configure Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.14.0"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
-          smoke = Path("scripts/smoke-local.ps1")
-          smoke_source = smoke.read_text(encoding="utf-8-sig")
-          smoke_source = smoke_source.replace(
-              '[datetime]::new($tarifaBusinessNow.Year, $tarifaBusinessNow.Month, 1)',
-              '[datetime]::new($tarifaBusinessNow.Year, 1, 1)',
-              1
-          )
-          smoke.write_text(smoke_source, encoding="utf-8")
-
-          demo = Path("scripts/validate-demo-seed.ps1")
-          demo_source = demo.read_text(encoding="utf-8-sig")
-          wrapper_marker = '    if (-not $IgnoreDeadline) { Assert-Deadline }'
-          wrapper_code = '''
-          if (-not $script:isWindowsHost -and [IO.Path]::GetFileName($FilePath) -eq "mvnw") {
-              $Arguments = @($FilePath) + $Arguments
-              $FilePath = "bash"
-          }'''
-          if 'GetFileName($FilePath) -eq "mvnw"' not in demo_source:
-              marker_index = demo_source.index(wrapper_marker) + len(wrapper_marker)
-              demo_source = demo_source[:marker_index] + wrapper_code + demo_source[marker_index:]
-          if '"-DskipTests"' not in demo_source:
-              raise SystemExit("No se encontró -DskipTests en Build-Backend")
-          demo_source = demo_source.replace('"-DskipTests", ', '', 1)
-          demo.write_text(demo_source, encoding="utf-8")
-
-      - name: Commit script fixes
+      - name: Capture versions and Git state
         shell: bash
         run: |
-          if git diff --quiet -- scripts/smoke-local.ps1 scripts/validate-demo-seed.ps1; then
-            exit 0
-          fi
-          git diff --check
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add scripts/smoke-local.ps1 scripts/validate-demo-seed.ps1
-          git commit -m "fix(testing): ejecuta seed y smoke con vigencias efectivas"
-          git push origin HEAD:agent/gate-1b-liquidacion-vigencia
+          set -euo pipefail
+          {
+            echo "UTC=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+            echo "America/Argentina/Buenos_Aires=$(TZ=America/Argentina/Buenos_Aires date '+%Y-%m-%dT%H:%M:%S%z')"
+            echo "GITHUB_SHA=$GITHUB_SHA"
+            echo "GITHUB_HEAD_REF=$GITHUB_HEAD_REF"
+            echo "--- git status --short --branch"
+            git status --short --branch
+            echo "--- git rev-parse HEAD"
+            git rev-parse HEAD
+            echo "--- git diff --check"
+            git diff --check
+            echo "--- git"
+            git --version
+            echo "--- java"
+            java -version 2>&1
+            echo "--- javac"
+            javac -version 2>&1
+            echo "--- Maven Wrapper"
+            (cd backend && bash ./mvnw -version)
+            echo "--- node"
+            node --version
+            echo "--- npm"
+            npm --version
+            echo "--- docker"
+            docker --version
+            echo "--- docker compose"
+            docker compose version
+            echo "--- PowerShell"
+            pwsh --version
+          } | tee environment.log
+
+      - name: Publish environment evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: environment-evidence
+          path: environment.log
+          if-no-files-found: error
+
+  validate-backend:
+    name: Scope Backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+
+      - name: Validate backend
+        shell: pwsh
+        run: |
+          & pwsh -NoProfile -File ./scripts/codex/validate.ps1 -Scope Backend 2>&1 | Tee-Object -FilePath validation-backend.log
+          exit $LASTEXITCODE
+
+      - name: Publish backend evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-evidence
+          path: |
+            validation-backend.log
+            backend/target/surefire-reports
+            backend/target/failsafe-reports
+            backend/target/site/jacoco
+          if-no-files-found: error
+
+  validate-frontend:
+    name: Scope Frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.14.0"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Validate frontend
+        shell: pwsh
+        run: |
+          & pwsh -NoProfile -File ./scripts/codex/validate.ps1 -Scope Frontend 2>&1 | Tee-Object -FilePath validation-frontend.log
+          exit $LASTEXITCODE
+
+      - name: Publish frontend evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-evidence
+          path: validation-frontend.log
+          if-no-files-found: error
 
   validate-all:
     name: Scope All
@@ -97,27 +175,20 @@ jobs:
       - name: Validate backend, frontend and Compose
         shell: pwsh
         run: |
-          & pwsh -NoProfile -File ./scripts/codex/validate.ps1 -Scope All 2>&1 | Tee-Object -FilePath validation.log
+          & pwsh -NoProfile -File ./scripts/codex/validate.ps1 -Scope All 2>&1 | Tee-Object -FilePath validation-all.log
           exit $LASTEXITCODE
 
-      - name: Publish validation log
+      - name: Publish all-scope evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: validation-log
-          path: validation.log
-          if-no-files-found: error
-
-      - name: Publish backend test reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: backend-test-reports
+          name: all-scope-evidence
           path: |
+            validation-all.log
             backend/target/surefire-reports
             backend/target/failsafe-reports
             backend/target/site/jacoco
-          if-no-files-found: ignore
+          if-no-files-found: error
 
   smoke-local:
     name: Smoke local
