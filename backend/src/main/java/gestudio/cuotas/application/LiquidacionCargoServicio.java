@@ -18,6 +18,31 @@ public class LiquidacionCargoServicio {
         this.jdbc = jdbc;
     }
 
+    public boolean existe(Long cargoId) {
+        return Boolean.TRUE.equals(jdbc.queryForObject(
+                "SELECT EXISTS(SELECT 1 FROM cargo_liquidaciones WHERE cargo_id = ?)",
+                Boolean.class,
+                cargoId
+        ));
+    }
+
+    public void registrar(Cargo cargo, ResultadoLiquidacion resultado, Usuario actor) {
+        registrar(
+                cargo,
+                resultado.fechaEfectiva(),
+                resultado.tarifa(),
+                resultado.condicion().orElse(null),
+                resultado.origen().name(),
+                resultado.importeBase(),
+                resultado.descuentoPorcentaje(),
+                resultado.descuentoImporte(),
+                resultado.importeFinal(),
+                resultado.formulaVersion(),
+                resultado.observaciones(),
+                actor
+        );
+    }
+
     public void registrar(Cargo cargo, LocalDate periodoDesde, TarifaDisciplina tarifa,
                           CondicionEconomicaInscripcion condicion, String origenPrecio,
                           BigDecimal importeBase, BigDecimal descuentoPorcentaje,
