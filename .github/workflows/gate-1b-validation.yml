@@ -43,7 +43,7 @@ jobs:
       - name: Validate backend, frontend and Compose
         shell: pwsh
         run: |
-          ./scripts/codex/validate.ps1 -Scope All 2>&1 | Tee-Object -FilePath validation.log
+          & pwsh -NoProfile -File ./scripts/codex/validate.ps1 -Scope All 2>&1 | Tee-Object -FilePath validation.log
           exit $LASTEXITCODE
 
       - name: Publish validation log
@@ -52,7 +52,7 @@ jobs:
         with:
           name: validation-log
           path: validation.log
-          if-no-files-found: ignore
+          if-no-files-found: error
 
       - name: Publish backend test reports
         if: always()
@@ -77,7 +77,7 @@ jobs:
       - name: Execute canonical smoke
         shell: pwsh
         run: |
-          ./scripts/smoke-local.ps1 2>&1 | Tee-Object -FilePath smoke-local.log
+          & pwsh -NoProfile -File ./scripts/smoke-local.ps1 2>&1 | Tee-Object -FilePath smoke-local.log
           exit $LASTEXITCODE
 
       - name: Capture residual Docker resources
@@ -95,7 +95,7 @@ jobs:
           path: |
             smoke-local.log
             smoke-docker-resources.log
-          if-no-files-found: ignore
+          if-no-files-found: error
 
   validate-demo-seed:
     name: Demo seed
@@ -117,7 +117,7 @@ jobs:
       - name: Validate demo seed twice
         shell: pwsh
         run: |
-          ./scripts/validate-demo-seed.ps1 2>&1 | Tee-Object -FilePath demo-seed.log
+          & pwsh -NoProfile -File ./scripts/validate-demo-seed.ps1 2>&1 | Tee-Object -FilePath demo-seed.log
           exit $LASTEXITCODE
 
       - name: Capture residual Docker resources
@@ -135,4 +135,4 @@ jobs:
           path: |
             demo-seed.log
             demo-docker-resources.log
-          if-no-files-found: ignore
+          if-no-files-found: error
