@@ -4,7 +4,7 @@ Monorepo de gestión para alumnos, inscripciones, disciplinas, asistencias, mens
 
 ## Estado
 
-El producto está en etapa pre-productiva. Seguridad/RBAC y Flyway V1-V6 están
+El producto está en etapa pre-productiva. Seguridad/RBAC y Flyway V1-V7 están
 integrados; la liquidación financiera por vigencia, la demo interna, staging,
 backup/restore y rollback permanecen abiertos. No debe interpretarse el estado
 del repositorio como autorización de producción.
@@ -23,9 +23,15 @@ Estado y backlog vigentes:
 - Desarrollo local: Windows PowerShell y Docker Compose.
 
 Flyway parte de `V1__canonical_schema.sql` y aplica las migraciones forward-only
-V2-V6. V5 incorpora las estructuras RBAC y el backfill de roles múltiples; V6
-incorpora el catálogo y las matrices productivas. V1-V6 no deben editarse. No
+V2-V7. V5 incorpora las estructuras RBAC y el backfill de roles múltiples; V6
+incorpora el catálogo y las matrices productivas. V1-V7 no deben editarse. No
 existe una ruta de upgrade desde el historial retirado V1-V060.
+
+V7 agrega el emisor administrativo, inmutable y firmado de referencias mínimas
+`GESTUDIO_STUDENT` para Jere Platform. Gestudio conserva la propiedad del perfil
+de estudiante; la plataforma recibe únicamente ID, nombre de visualización y
+estado activo. La integración está deshabilitada y falla cerrada hasta configurar
+un tenant mapping explícito y un secreto independiente.
 
 La autorización usa permisos efectivos calculados en backend. El contrato de
 sesión devuelve `roles[]` y `permisos[]`; el refresh token vive sólo en una
@@ -99,6 +105,7 @@ campos legacy. Ver
 - [Desarrollo local](docs/development/local-development.md)
 - [Variables de entorno](docs/development/environment-variables.md)
 - [Auditoría del entorno](docs/development/environment-audit.md)
+- [Emisor Jere Platform v1](docs/integrations/jere-platform-student-export-v1.md)
 
 No uses `.env.example` como configuración de producción. Los secretos reales
 deben permanecer fuera de Git, imágenes, artefactos y logs.

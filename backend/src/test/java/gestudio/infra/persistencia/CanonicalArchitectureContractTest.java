@@ -52,7 +52,8 @@ class CanonicalArchitectureContractTest {
                             "V3__effective_dated_pricing.sql",
                             "V4__cargo_liquidations_and_events.sql",
                             "V5__base_roles_permissions_seed.sql",
-                            "V6__rbac_permission_catalog_and_base_roles.sql"
+                            "V6__rbac_permission_catalog_and_base_roles.sql",
+                            "V7__jere_platform_student_source_exports.sql"
                     );
         }
     }

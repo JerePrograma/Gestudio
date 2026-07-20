@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jereplatform.com/contracts/parties/source-export-v1.schema.json",
+  "title": "Jere Platform Party Source Export v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion",
+    "tenantId",
+    "sourceType",
+    "checkpoint",
+    "nextCursor",
+    "fullSnapshot",
+    "records"
+  ],
+  "properties": {
+    "contractVersion": {"const": 1},
+    "tenantId": {"type": "string", "format": "uuid"},
+    "sourceType": {
+      "type": "string",
+      "enum": ["GESTUDIO_STUDENT", "SCALARIS_THIRD_PARTY"]
+    },
+    "checkpoint": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "\\S"
+    },
+    "nextCursor": {
+      "oneOf": [
+        {"type": "string", "minLength": 1, "maxLength": 500, "pattern": "\\S"},
+        {"type": "null"}
+      ]
+    },
+    "pageNumber": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000
+    },
+    "pageCount": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000
+    },
+    "fullSnapshot": {"type": "boolean"},
+    "records": {
+      "type": "array",
+      "maxItems": 1000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sourceId", "displayName", "active"],
+        "properties": {
+          "sourceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160,
+            "pattern": "\\S"
+          },
+          "displayName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "\\S"
+          },
+          "active": {"type": "boolean"}
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"fullSnapshot": {"const": true}},
+        "required": ["fullSnapshot"]
+      },
+      "then": {
+        "properties": {"nextCursor": {"type": "null"}}
+      }
+    },
+    {
+      "if": {"required": ["pageNumber"]},
+      "then": {"required": ["pageCount"]}
+    },
+    {
+      "if": {"required": ["pageCount"]},
+      "then": {"required": ["pageNumber"]}
+    }
+  ]
+}

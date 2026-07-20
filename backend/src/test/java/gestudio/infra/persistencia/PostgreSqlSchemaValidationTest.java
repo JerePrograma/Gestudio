@@ -70,7 +70,8 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
             "sub_conceptos", "usuarios", "ventas_stock", "refresh_sessions",
             "bootstrap_ejecuciones", "auditoria_eventos", "disciplina_tarifas",
             "inscripcion_condiciones_economicas", "cargo_liquidaciones", "cargo_eventos",
-            "permisos", "usuario_roles", "rol_permisos"
+            "permisos", "usuario_roles", "rol_permisos",
+            "jere_platform_student_export_snapshots", "jere_platform_student_export_pages"
     );
 
     @Test
@@ -88,12 +89,12 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
                     .baselineOnMigrate(false)
                     .load();
 
-            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(6);
+            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(7);
 
             ValidateResult validation = flyway.validateWithResult();
 
             assertThat(flyway.info().current()).isNotNull();
-            assertThat(flyway.info().current().getVersion()).isEqualTo(MigrationVersion.fromVersion("6"));
+            assertThat(flyway.info().current().getVersion()).isEqualTo(MigrationVersion.fromVersion("7"));
             assertThat(validation.validationSuccessful)
                     .withFailMessage(validation.getAllErrorMessages())
                     .isTrue();
@@ -160,7 +161,13 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
                          AND c.column_name = kcu.column_name
                         WHERE tc.table_schema = 'public'
                           AND tc.constraint_type = 'PRIMARY KEY'
-                          AND tc.table_name NOT IN ('flyway_schema_history', 'refresh_sessions', 'bootstrap_ejecuciones')
+                          AND tc.table_name NOT IN (
+                              'flyway_schema_history',
+                              'refresh_sessions',
+                              'bootstrap_ejecuciones',
+                              'jere_platform_student_export_snapshots',
+                              'jere_platform_student_export_pages'
+                          )
                           AND c.data_type <> 'bigint'
                         """))
                         .as("toda PK es BIGINT")
@@ -296,7 +303,7 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
     }
 
     @Test
-    void v6ActualizaDesdeV5SinPerderIdentidadesAsignacionesNiDatosPersonalizados() throws Exception {
+    void migracionesPosterioresActualizanDesdeV5SinPerderIdentidadesAsignacionesNiDatosPersonalizados() throws Exception {
         String databaseName = "gestudio_rbac_v6_upgrade_" + UUID.randomUUID().toString().replace("-", "");
         String jdbcUrl = POSTGRESQL.getJdbcUrl().replace(POSTGRESQL.getDatabaseName(), databaseName);
 
@@ -397,11 +404,11 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
                         "SELECT id FROM permisos WHERE codigo = 'PERM_CUSTOM_LEER'");
             }
 
-            Flyway v6 = Flyway.configure()
+            Flyway latest = Flyway.configure()
                     .dataSource(jdbcUrl, POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
                     .load();
-            assertThat(v6.migrate().migrationsExecuted).isOne();
-            assertThat(v6.info().current().getVersion()).isEqualTo(MigrationVersion.fromVersion("6"));
+            assertThat(latest.migrate().migrationsExecuted).isEqualTo(2);
+            assertThat(latest.info().current().getVersion()).isEqualTo(MigrationVersion.fromVersion("7"));
 
             try (Connection connection = DriverManager.getConnection(
                     jdbcUrl,

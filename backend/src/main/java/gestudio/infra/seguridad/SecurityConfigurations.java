@@ -178,6 +178,9 @@ public class SecurityConfigurations {
                     req.requestMatchers(HttpMethod.GET, "/api/notificaciones/**")
                             .access(appAnd(PERM_ALUMNOS_LEER));
 
+                    req.requestMatchers("/api/integraciones/jere-platform/estudiantes/**")
+                            .access(appAndBoth(PERM_CONFIG_ADMIN, PERM_REPORTES_EXPORTAR));
+
                     String[] configuracion = {
                             "/api/metodos-pago/**",
                             "/api/conceptos/**",
