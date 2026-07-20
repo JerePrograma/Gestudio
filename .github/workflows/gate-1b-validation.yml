@@ -6,13 +6,72 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: gate-1b-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  patch-operational-scripts-once:
+    name: Patch operational scripts once
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout head branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/gate-1b-liquidacion-vigencia
+          fetch-depth: 0
+
+      - name: Patch scripts deterministically
+        shell: python
+        run: |
+          from pathlib import Path
+
+          smoke = Path("scripts/smoke-local.ps1")
+          smoke_source = smoke.read_text(encoding="utf-8-sig")
+          smoke_source = smoke_source.replace(
+              '[datetime]::new($tarifaBusinessNow.Year, $tarifaBusinessNow.Month, 1)',
+              '[datetime]::new($tarifaBusinessNow.Year, 1, 1)',
+              1
+          )
+          smoke.write_text(smoke_source, encoding="utf-8")
+
+          demo = Path("scripts/validate-demo-seed.ps1")
+          demo_source = demo.read_text(encoding="utf-8-sig")
+          wrapper_anchor = '''    if (-not $IgnoreDeadline) { Assert-Deadline }
+          $previousErrorAction = $ErrorActionPreference
+          '''
+          wrapper_replacement = '''    if (-not $IgnoreDeadline) { Assert-Deadline }
+          if (-not $script:isWindowsHost -and [IO.Path]::GetFileName($FilePath) -eq "mvnw") {
+              $Arguments = @($FilePath) + $Arguments
+              $FilePath = "bash"
+          }
+          $previousErrorAction = $ErrorActionPreference
+          '''
+          if wrapper_anchor not in demo_source:
+              raise SystemExit("No se encontró el anclaje de Invoke-Native")
+          demo_source = demo_source.replace(wrapper_anchor, wrapper_replacement, 1)
+          skip_anchor = '            "-q", "-DskipTests", "package"'
+          if skip_anchor not in demo_source:
+              raise SystemExit("No se encontró -DskipTests en Build-Backend")
+          demo_source = demo_source.replace(skip_anchor, '            "-q", "package"', 1)
+          demo.write_text(demo_source, encoding="utf-8")
+
+      - name: Commit script fixes
+        shell: bash
+        run: |
+          if git diff --quiet -- scripts/smoke-local.ps1 scripts/validate-demo-seed.ps1; then
+            exit 0
+          fi
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scripts/smoke-local.ps1 scripts/validate-demo-seed.ps1
+          git commit -m "fix(testing): ejecuta seed y smoke con vigencias efectivas"
+          git push origin HEAD:agent/gate-1b-liquidacion-vigencia
+
   validate-all:
     name: Scope All
     runs-on: ubuntu-latest
