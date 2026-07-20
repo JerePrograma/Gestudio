@@ -102,3 +102,18 @@ campos legacy. Ver
 
 No uses `.env.example` como configuración de producción. Los secretos reales
 deben permanecer fuera de Git, imágenes, artefactos y logs.
+
+<!-- GATE1B-VALIDACION-2026-07-20 -->
+## Validación de release hardening
+
+El validador canónico funciona en Windows y Linux con Java 21:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\validate.ps1 -Scope Backend
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\validate.ps1 -Scope Frontend
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\validate.ps1 -Scope All
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke-local.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\validate-demo-seed.ps1
+```
+
+No usar `-SkipTests`. Las pruebas PostgreSQL requieren Docker/Testcontainers. El estado de release y la evidencia de GATE-1B están en `docs/codex/gestudio-release-hardening/15_CIERRE_GATE_1B_2026-07-20.md`. Staging y producción permanecen en `NO-GO`.
