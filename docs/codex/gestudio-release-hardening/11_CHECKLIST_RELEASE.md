@@ -1,33 +1,29 @@
 # Checklist de release vigente
 
 > Fecha de corte: 20 de julio de 2026  
-> Estado global: **NO-GO para staging y producción**
+> Estado global: **NO-GO para demo comercial, staging y producción**
 
-Sólo se marca lo demostrado con ejecución o evidencia verificable. Este archivo reemplaza los checklist operativos anteriores; la historia permanece en la bitácora.
+Sólo se marca lo demostrado con ejecución o evidencia verificable.
 
 ## Código y entorno
 
-- [x] Java 21 verificado.
-- [x] Maven Wrapper reproducible.
-- [x] Node 22.14.0 y npm 10.x verificados.
-- [x] Docker Engine y Compose v2 verificados.
+- [x] Java 21, Maven Wrapper, Node 22.14.0, npm 10.x, Docker y Compose verificados.
 - [x] `git diff --check` sin errores en gates integrados.
 - [x] secretos reales fuera de Git.
 - [x] imágenes backend y frontend construidas en CI.
+- [x] imagen backend declara revisión Git y versión Flyway.
 
-## Backend
+## Backend y base
 
 - [x] `clean verify` sin `-SkipTests`.
 - [x] 162/162 pruebas backend verdes después de V7.
-- [x] PostgreSQL 15 real mediante Testcontainers.
+- [x] PostgreSQL real mediante Testcontainers.
 - [x] migraciones V1-V7 aplicadas sobre base vacía.
-- [x] V1-V6 inmutables.
-- [x] V7 validada en smoke, seed y restore.
+- [x] V1-V7 inmutables y forward-only.
 - [x] 401, 403 y 409 diferenciados.
 - [x] backend fail-closed.
 - [x] idempotencia secuencial y concurrente.
-- [x] liquidación financiera por vigencia.
-- [x] cargo y snapshot atómicos.
+- [x] liquidación por vigencia y snapshot atómico.
 
 ## Frontend
 
@@ -35,42 +31,31 @@ Sólo se marca lo demostrado con ejecución o evidencia verificable. Este archiv
 - [x] 142/142 pruebas PASS.
 - [x] build Vite PASS.
 - [x] permisos alineados con backend.
-- [x] fuentes financieras legacy retiradas de la UI operativa.
+- [x] fuentes financieras legacy retiradas de UI operativa.
 - [ ] inventario final de IDs técnicos visibles.
-- [ ] estados loading/empty/error completos.
-- [ ] recorrido móvil real.
-- [ ] foco, teclado, labels y contraste completos.
+- [ ] loading/empty/error completos.
+- [ ] móvil real.
+- [ ] foco, teclado, labels y contraste.
 
-## Seguridad y roles
+## Seguridad y demo
 
 - [x] catálogo de 32 permisos.
-- [x] SUPERADMIN, DIRECCION, ADMINISTRADOR, SECRETARIA y CAJA.
-- [x] PROFESOR inactivo y no asignable.
-- [x] refresh token sólo en cookie HttpOnly.
-- [x] roles/permisos inactivos no autorizan.
+- [x] cinco roles operativos.
+- [x] PROFESOR inactivo/no asignable.
+- [x] refresh token HttpOnly.
 - [x] STOMP retirado.
-- [ ] recorridos humanos completos por los cinco roles.
-
-## Demo
-
-- [x] seed sintético.
-- [x] primera aplicación PASS.
-- [x] segunda aplicación con snapshot idéntico.
-- [x] cinco logins PASS.
-- [x] RBAC e integridad financiera PASS.
-- [x] smoke canónico V1-V7 PASS.
+- [x] seed doble y cinco logins PASS.
+- [x] smoke V1-V7 PASS.
 - [x] recursos Docker residuales: ninguno.
-- [ ] recorrido visual humano completo.
-- [ ] guion comercial cronometrado.
-- [ ] capturas definitivas.
+- [ ] recorridos humanos completos por rol.
+- [ ] guion comercial y capturas definitivas.
 
 ## Integración V7
 
-- [x] emisor source-owned implementado.
-- [x] payload mínimo y firmado.
-- [x] mapping de tenant fail-closed.
-- [x] función deshabilitada por defecto.
-- [x] secreto independiente externo.
+- [x] emisor source-owned mínimo y firmado.
+- [x] mapping tenant fail-closed.
+- [x] feature deshabilitada por defecto.
+- [x] secreto externo independiente.
 - [x] permisos administrativos dobles.
 - [x] snapshots/páginas inmutables.
 - [ ] receptor multipágina end-to-end compatible.
@@ -81,41 +66,43 @@ Sólo se marca lo demostrado con ejecución o evidencia verificable. Este archiv
 - [x] dump PostgreSQL custom.
 - [x] backup de recibos.
 - [x] manifiesto con tamaños y SHA-256.
-- [x] backup consistente con backend detenido.
+- [x] consistencia de aplicación con backend detenido.
 - [x] restore destructivo protegido.
-- [x] restore sobre base alternativa.
-- [x] datos sintéticos recuperados.
-- [x] Flyway V7 verificada después del restore.
-- [x] recibo recuperado.
-- [x] origen no alterado por restore alternativo.
-- [x] cleanup sin contenedores, volúmenes ni redes residuales.
+- [x] restore alternativo de datos, V7 y recibo.
+- [x] cleanup completo.
 - [ ] destino externo cifrado.
-- [ ] retención definida.
-- [ ] RPO/RTO aprobados.
-- [ ] responsables y frecuencia definidos.
+- [ ] retención, RPO/RTO y responsables.
 
-## Rollback y observabilidad
+## Rollback
 
-- [ ] rollback forward-compatible probado.
-- [ ] retorno a la versión actual probado.
-- [ ] health de aplicación y dependencias publicado de forma segura.
-- [ ] métricas mínimas.
-- [ ] logs correlacionados y sanitizados.
-- [ ] alertas.
-- [ ] runbook de incidentes y escalamiento.
+- [x] metadata Flyway por imagen.
+- [x] confirmación explícita.
+- [x] race guard de imagen actual.
+- [x] imagen V6 rechazada antes del cambio.
+- [x] backup consistente previo.
+- [x] rollback a artefacto anterior compatible.
+- [x] dato, Flyway V7 y tablas V7 preservados.
+- [x] retorno al artefacto actual.
+- [x] recuperación automática ante target unhealthy implementada.
+- [x] cleanup de stack, imágenes, worktree y temporales.
+- [ ] registry productivo por digest.
+- [ ] firma, promoción y retención de artefactos.
+- [ ] coordinación de rollback frontend.
+- [ ] procedimiento para efectos externos.
 
-## Ambiente
+## Observabilidad y ambiente
 
+- [ ] health/readiness/liveness seguros.
+- [ ] métricas HTTP, JVM, pool y DB.
+- [ ] correlación de requests.
+- [ ] logs sanitizados y estructurados.
+- [ ] alertas y runbook de incidentes.
 - [ ] staging definido.
-- [ ] secretos cargados mediante secret manager.
-- [ ] TLS verificado.
-- [ ] CORS verificado.
-- [ ] cookies Secure/SameSite/Domain verificadas.
-- [ ] backup/restore ejecutado en staging.
-- [ ] rollback ejecutado en staging.
-- [ ] observabilidad operativa en staging.
+- [ ] secret manager.
+- [ ] TLS, CORS y cookies verificados.
+- [ ] todos los gates repetidos en staging.
 - [ ] autorización de producción.
 
 ## Decisión
 
-La aprobación de GATE-1, GATE-1B, demo automatizada y backup/restore técnico **no autoriza** demo comercial, staging ni producción. El siguiente gate operativo es rollback forward-compatible, seguido por observabilidad y recorridos humanos.
+Seguridad, finanzas, V7, demo automatizada, backup, restore y rollback técnico están aprobados dentro de infraestructura descartable. Observabilidad, GATE-2, demo humana, políticas operativas y ambiente externo siguen bloqueando demo comercial, staging y producción.
