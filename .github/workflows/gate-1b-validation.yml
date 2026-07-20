@@ -6,81 +6,13 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: gate-1b-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  patch-smoke-once:
-    name: Patch smoke once
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout head branch
-        uses: actions/checkout@v4
-        with:
-          ref: agent/gate-1b-liquidacion-vigencia
-          fetch-depth: 0
-
-      - name: Apply deterministic smoke patch
-        shell: python
-        run: |
-          from pathlib import Path
-          import re
-
-          path = Path("scripts/smoke-local.ps1")
-          source = path.read_text(encoding="utf-8-sig")
-          if "$tarifaBusinessNow = Get-BusinessNow" in source:
-              print("Smoke ya actualizado")
-              raise SystemExit(0)
-
-          discipline_start = source.index('        $disciplina = (Invoke-Api -Method "POST" -Path "/disciplinas"')
-          discipline_end = source.index('        } -ExpectedStatus 200).Json', discipline_start)
-          discipline_end = source.index('\n', discipline_end) + 1
-          tariff = '''        $tarifaBusinessNow = Get-BusinessNow
-          $tarifaVigenteDesde = [datetime]::new($tarifaBusinessNow.Year, $tarifaBusinessNow.Month, 1).ToString("yyyy-MM-dd")
-          $tarifa = (Invoke-Api -Method "POST" -Path "/disciplinas/$($disciplina.id)/tarifas" -Body @{
-              vigenteDesde = $tarifaVigenteDesde; valorCuota = "25.00"; matricula = "10.00"
-              claseSuelta = "5.00"; clasePrueba = "0.00"; motivo = "Tarifa efectiva smoke $suffix"
-          } -ExpectedStatus 201).Json
-          Assert-Equal -Actual $tarifa.vigenteDesde -Expected $tarifaVigenteDesde -Message "Tarifa inicial sin vigencia efectiva"
-          '''
-          source = source[:discipline_end] + tariff + source[discipline_end:]
-
-          source, legacy_count = re.subn(
-              r'(?m)^\s*bonificacionId = \$null; fechaInscripcion = \$today; costoParticular = \$null\s*$',
-              '            fechaInscripcion = $today',
-              source,
-              count=1
-          )
-          if legacy_count != 1:
-              raise SystemExit("No se encontró el request legacy de inscripción")
-
-          marker = '        Pass "Inscripcion"'
-          if marker not in source:
-              raise SystemExit("No se encontró el cierre del circuito de inscripción")
-          financial_assertions = '''        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM cargo_liquidaciones l JOIN cargos c ON c.id=l.cargo_id LEFT JOIN mensualidades m ON m.id=c.mensualidad_id LEFT JOIN matriculas ma ON ma.id=c.matricula_id WHERE (m.inscripcion_id=$($inscripcion.id) OR ma.alumno_id=$($alumno.id)) AND l.formula_version=1 AND l.origen_precio='TARIFA_HISTORICA'") -Expected "2" -Message "Mensualidad y matricula no tienen snapshots historicos"
-          Assert-Equal -Actual (Invoke-Sql "SELECT c.importe_original FROM cargos c JOIN mensualidades m ON m.id=c.mensualidad_id WHERE m.inscripcion_id=$($inscripcion.id) AND m.anio=$anio AND m.mes=$($businessNow.Month)") -Expected "25.00" -Message "Mensualidad no uso tarifa efectiva"
-          Assert-Equal -Actual (Invoke-Sql "SELECT c.importe_original FROM cargos c JOIN matriculas m ON m.id=c.matricula_id WHERE m.alumno_id=$($alumno.id) AND m.anio=$anio") -Expected "10.00" -Message "Matricula no uso tarifa efectiva"
-          Pass "Inscripcion y liquidacion por vigencia"'''
-          source = source.replace(marker, financial_assertions, 1)
-          path.write_text(source, encoding="utf-8")
-
-      - name: Commit smoke patch
-        shell: bash
-        run: |
-          if git diff --quiet -- scripts/smoke-local.ps1; then
-            exit 0
-          fi
-          git diff --check
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add scripts/smoke-local.ps1
-          git commit -m "test(smoke): valida tarifas y snapshots efectivos"
-          git push origin HEAD:agent/gate-1b-liquidacion-vigencia
-
   validate-all:
     name: Scope All
     runs-on: ubuntu-latest
