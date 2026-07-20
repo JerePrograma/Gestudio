@@ -71,3 +71,11 @@ un error de schema requiere una migración posterior, nunca editar V7 fusionada.
 3. Mantener la copia offline del contrato sincronizada con el SHA y checksum de
    procedencia ante cualquier cambio posterior.
 4. No afirmar deployment: el estado máximo de esta misión es validado localmente.
+
+
+## Reconciliación de release gates
+
+- GATE-1B permanece cerrado e integrado en `main` desde `ef4f9c31dab9a3dfce43f913177089f80ae0205a`.
+- El emisor V7 no habilita despliegue ni transporte automático.
+- La integración multi-página sigue bloqueada externamente por `JerePrograma/jere-platform#59`; Gestudio sólo materializa y expone artefactos administrativos con la función deshabilitada por defecto.
+- Smoke, seed, documentación y scripts deben validar V1-V7 antes de fusionar PR #15.
