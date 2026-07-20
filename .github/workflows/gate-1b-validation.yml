@@ -55,6 +55,17 @@ jobs:
             backend/target/site/jacoco
           if-no-files-found: ignore
 
+      - name: Publish validation sources
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-sources
+          path: |
+            scripts/smoke-local.ps1
+            scripts/validate-demo-seed.ps1
+            scripts/codex/validate.ps1
+          if-no-files-found: error
+
   smoke-local:
     name: Smoke local
     needs: validate-all
