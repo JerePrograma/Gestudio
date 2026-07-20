@@ -1,201 +1,354 @@
 # Checklist de release
 
-> Decisión actual: `NO-GO`
->
-> Baseline actual: `feat/rbac-production-hardening` desde `f6493a3b1b7988a626c0742fe88ce75c2f1c4ee5`; `origin/main` inicial `644e044b26438516ea093513ca5651ce72fb3fb3`
->
-> Última revisión documental: 2026-07-14
->
-> Regla: una casilla sólo se marca con comando/recorrido, fecha y resultado enlazados.
+> Decisión actual: **`NO-GO` para staging y producción**  
+> Fecha de corte: **2026-07-20**  
+> Rama: `main`  
+> HEAD remoto revisado: `3f314ba8cc61a71bfa434a46593cd02336ec16e5`  
+> Regla: una casilla sólo se marca con evidencia ejecutada, fecha, HEAD y resultado.
 
-[Índice](./00_INDEX.md) · [Baseline](./01_BASELINE_Y_HALLAZGOS.md) · [Matriz RBAC](./02_MATRIZ_RBAC.md) · [Etapa 1](./03_ETAPA_1_SEGURIDAD_RBAC.md) · [Etapa 1B](./04_ETAPA_1B_LIQUIDACION_FINANCIERA.md) · [Etapa 2](./05_ETAPA_2_UX_OPERATIVA.md) · [Etapa 3](./06_ETAPA_3_COMPONENTES_Y_CONTRATOS.md) · [Etapa 4](./07_ETAPA_4_DEMO_Y_PUBLICACION.md) · [Plan de pruebas](./08_PLAN_DE_PRUEBAS.md) · [Bitácora](./09_BITACORA_IMPLEMENTACION.md) · [Decisiones](./10_DECISIONES_Y_BLOQUEOS.md)
+[Índice](./00_INDEX.md) · [Estado maestro](./12_ESTADO_ACTUAL_Y_BACKLOG.md) · [Bitácora de continuidad](./13_BITACORA_CONTINUIDAD.md) · [Plan de pruebas](./08_PLAN_DE_PRUEBAS.md)
 
-## Cómo usar este checklist
+## 1. Convenciones
 
-- `VALIDADO`: existe evidencia actual y reproducible.
-- `PENDING`: aún no corresponde ejecutar o falta trabajo previo.
-- `BLOCKED`: una evidencia roja o decisión impide aprobar el gate.
-- `NO_VERIFICADO`: existe código/configuración, pero no se ejecutó la prueba requerida.
+- `VALIDADO`: existe evidencia reproducible sobre un commit identificado.
+- `INTEGRADO`: el cambio existe en `main`; no implica repetición de pruebas.
+- `PARTIAL`: existe avance, pero no cumple el gate completo.
+- `READY`: dependencias cerradas; puede comenzar.
+- `PENDING`: definido, no iniciado o sin evidencia suficiente.
+- `BLOCKED`: falta una condición externa o una evidencia obligatoria.
+- `NO_VERIFICADO`: existe código o configuración, pero no se ejecutó el gate.
 - Demo interna, demo comercial, staging y producción son autorizaciones distintas.
-- Un build o smoke verde no autoriza despliegue. Toda mutación externa requiere confirmación explícita y alcance definido.
-- La evidencia completa se registra en [09_BITACORA_IMPLEMENTACION.md](./09_BITACORA_IMPLEMENTACION.md); aquí sólo se resume y enlaza.
 
-## Evidencia actual
+## 2. Snapshot actual
 
-| Evidencia | Estado | Resultado actual |
+| Evidencia | Estado | Resultado |
 |---|---|---|
-| Branch/HEAD/árbol inicial | `VALIDADO` | Fuente `f6493a3b`, árbol limpio; implementación en `feat/rbac-production-hardening`. El SHA final se registra después de commits. |
-| Frontend test/lint/build | `VALIDADO` | 21 archivos/140 tests, lint y build 2337 módulos, exit 0. |
-| Backend `clean verify` | `VALIDADO` | 129/129, 0 fallos/errores/skips, jar generado. |
-| Políticas HTTP | `VALIDADO` | 144/144 mappings reales contractualizados; ruta desconocida y Observaciones en `denyAll`. |
-| Flyway base limpia/upgrade | `VALIDADO` para V1–V6 | Base limpia y V5→V6; 32 permisos y matrices 32/31/31/17/8/0; V1–V5 inmutables. |
-| Smoke sin seed demo | `VALIDADO` | 20/20, base limpia, imágenes reconstruidas y limpieza completa. |
-| Docker Compose | `VALIDADO` | `docker compose config --quiet` exit 0. |
-| Integración remota | `PENDING` | Sólo PR #11 sigue draft con smoke rojo del baseline; falta PR reemplazante/checks/merge. |
-| Demo, backup/restore y rollback | `NO_VERIFICADO` | Sin ejecución registrada. |
+| Rama y HEAD remotos | `VALIDADO` | `main` en `3f314ba8` |
+| PR abiertos | `VALIDADO` | Ninguno observado el 2026-07-20 |
+| Issues abiertos | `VALIDADO` | Ninguno observado el 2026-07-20 |
+| Checks del HEAD | `NO_VERIFICADO` | No se publicaron status checks para el HEAD consultado |
+| Workflow runs del HEAD | `NO_VERIFICADO` | No se publicaron runs para el HEAD consultado |
+| RBAC | `INTEGRADO / VALIDADO HISTÓRICO` | Backend 129, frontend 140, All y smoke 20/20 antes de integración |
+| Flyway | `VALIDADO HISTÓRICO` | V1-V6 y matrices exactas |
+| Seed demo | `INTEGRADO / NO_VERIFICADO EN HEAD` | Seed, validador y documentación presentes |
+| Demo persistente | `INTEGRADO / NO_VERIFICADO` | Lanzador y guía presentes |
+| UX | `PARTIAL` | Tabla, foco de búsqueda, continuidad de datos y roles |
+| Estrategia comercial | `INTEGRADO / CANÓNICO` | Precios, piloto, mensajes y métricas |
+| Backup/restore | `NO_VERIFICADO` | Sin simulacro registrado |
+| Rollback | `NO_VERIFICADO` | Sin simulacro registrado |
 
-## Gate: demo interna
+## 3. Gate de documentación
 
-**Estado:** `BLOCKED`. Requiere `GATE-1`, `GATE-1B`, `GATE-2` y `GATE-3` cerrados.
+**Estado: `VALIDADO / ACTUALIZADO`.**
 
-- [ ] Todas las suites obligatorias están verdes o cualquier fallo está aceptado explícitamente con alcance y riesgo.
-- [ ] Base descartable migra, bootstrap funciona y el primer GET operativo no requiere SQL manual.
-- [ ] Dataset demo se carga después del bootstrap y no siembra permisos productivos faltantes.
-- [ ] Dirección, Secretaría y Caja completan recorridos con datos ficticios; Profesor permanece inactivo/no asignable y sus accesos son denegados.
-- [ ] Recorrido alumno → inscripción → cargo → pago → recibo → caja se completa.
-- [ ] Egresos, Stock y Asistencia demuestran el alcance comercial declarado.
-- [ ] Intentos sin permiso muestran 403/UX accionable y preservan la sesión.
-- [ ] No aparecen IDs técnicos, acciones no-op ni errores internos.
-- [ ] PC y celular completan el recorrido con teclado/foco básico.
-- [ ] Evidencia y riesgos quedaron en bitácora.
+- [x] Índice reconciliado con `main` actual.
+- [x] Estado maestro con alcance, progreso, backlog y riesgos.
+- [x] Bitácora de continuidad posterior a la histórica.
+- [x] Etapa 1B ya no figura bloqueada por el merge RBAC.
+- [x] Checklist no confunde integración con validación.
+- [x] Estrategia comercial enlazada como fuente normativa.
+- [ ] Próximas corridas deben registrar resultados reales sobre el HEAD actual.
+- [ ] Informe final de release continúa pendiente.
 
-## Gate: demo comercial
+## 4. GATE-0 — baseline
 
-**Estado:** `PENDING`. No iniciar antes de aprobar demo interna y recibir autorización.
+**Estado: `DONE`.**
 
-- [ ] Guion de 10–15 minutos aprobado con comienzo, datos y cierre reproducibles.
-- [ ] Base/demo puede reiniciarse sin intervención SQL improvisada.
-- [ ] Se demuestra separación real de roles sin usar SUPERADMIN como cuenta diaria.
-- [ ] Dashboard muestra sólo 3–5 señales relevantes por permiso.
-- [ ] Reportes/exportaciones respetan permisos y usan referencias humanas.
-- [ ] Tarifas/condiciones por vigencia producen importes y snapshots esperados.
-- [ ] Mensajes, empty states y siguiente acción son comprensibles para una secretaria.
-- [ ] No se ofrecen módulos incompletos como funciones terminadas.
-- [ ] Existe responsable de operación y plan si la demo falla.
-- [ ] Se registraron observaciones y decisión de avanzar/no avanzar.
+- [x] Stack y cadena Flyway identificados.
+- [x] Rutas, endpoints y permisos inventariados.
+- [x] Hallazgos con IDs y tareas.
+- [x] Plan de pruebas y bitácora histórica.
+- [x] Decisiones y bloqueos.
+- [x] Estado postintegración reconciliado.
 
-## Gate: staging
+## 5. GATE-1 — seguridad y RBAC
 
-**Estado:** `PENDING`; requiere autorización externa específica.
+**Estado: `DONE / INTEGRADO EN MAIN`.**
 
-- [ ] Ambiente, dominio, responsables, ventana y datos permitidos están identificados.
-- [ ] Secretos provienen de variables/gestor externo; no están en repo, imágenes ni logs.
-- [ ] TLS, CORS, cookies y URLs frontend/backend usan el ambiente correcto; STOMP continúa ausente y REST/email está configurado.
-- [ ] Imagen/backend usa Java 21 y los builds Docker limpios terminan correctamente.
-- [ ] Base de staging tiene backup previo y restore probado en un destino aislado.
-- [ ] Flyway base limpia y upgrade desde el estado anterior terminan correctamente.
-- [ ] Smoke, health checks y recorridos por rol pasan en staging.
-- [ ] Logs no exponen tokens, contraseñas, payloads personales o financieros completos.
-- [ ] Rollback de aplicación y recovery de datos fueron ensayados.
-- [ ] La aprobación de staging quedó fechada en la bitácora.
+- [x] Catálogo de 32 permisos.
+- [x] Matrices base determinísticas.
+- [x] SUPERADMIN con 32 permisos.
+- [x] DIRECCION y ADMINISTRADOR con 31.
+- [x] SECRETARIA con 17.
+- [x] CAJA con 8.
+- [x] PROFESOR inactivo, sin permisos y no asignable.
+- [x] Bootstrap fail-fast.
+- [x] Sin autenticación = 401.
+- [x] Sin permiso = 403.
+- [x] Conflicto de negocio = 409.
+- [x] Backend y frontend alineados.
+- [x] `/api/**` desconocido fail-closed.
+- [x] STOMP retirado.
+- [x] Observaciones sin superficie activa.
+- [x] Backend 129/129 en evidencia histórica.
+- [x] Frontend 140/140, lint y build en evidencia histórica.
+- [x] All PASS en evidencia histórica.
+- [x] Smoke 20/20 en evidencia histórica.
+- [x] Cambios integrados a `main`.
 
-## Gate: producción
+Revalidación requerida antes de demo interna:
 
-**Estado:** `PENDING` / `NO-GO`; requiere autorización explícita posterior a staging.
+- [ ] Repetir suites y smoke sobre `3f314ba8` o HEAD posterior exacto.
 
-- [ ] Commit/artefacto exacto, changelog, migraciones y checksum están congelados.
-- [ ] Todos los gates anteriores están aprobados sin evidencia vencida.
-- [ ] Ventana, responsables, monitoreo y criterios de abortar están acordados.
-- [ ] Backup de producción fue completado y su restaurabilidad fue probada.
-- [ ] Migración tiene precondiciones, reconciliación, tiempos y recovery revisados.
-- [ ] No se depende de seed demo, credenciales bootstrap temporales ni SQL manual.
-- [ ] Smoke post-deploy y verificaciones financieras/de permisos están definidos.
-- [ ] Artefacto anterior y runbook de rollback están disponibles.
-- [ ] Riesgos residuales fueron aceptados por quien tiene autoridad.
-- [ ] Aprobación `GO` quedó registrada antes de ejecutar el despliegue.
+## 6. GATE-1B — liquidación financiera
 
-## Gate: seguridad
+**Estado: `READY_TO_START`.**
 
-**Estado:** `VALIDADO LOCAL / PENDIENTE CI Y MERGE`.
+### Caracterización
 
-- [x] Catálogo y roles base son determinísticos desde base limpia.
-- [x] SUPERADMIN bootstrap recibe la matriz productiva sin seed demo.
-- [x] Todos los permisos canónicos usados existen, están activos y sembrados/asignados.
-- [x] Sin autenticación devuelve 401; autenticado sin autoridad devuelve 403; conflicto real devuelve 409.
-- [x] Cada write sensible tiene permiso backend explícito y defensa de servicio cuando corresponde.
-- [x] Usuario, rol o permiso inactivo y `authVersion` invalidan acceso efectivo.
-- [x] Delegación no permite escalamiento ni desactivar el último SUPERADMIN.
-- [x] Profesor permanece deshabilitado, sin permisos, no asignable y sin rutas visibles.
-- [x] Menú, rutas y acciones frontend usan la misma matriz; `/unauthorized` no entra en loop.
-- [x] Usuarios/Roles usan `PERM_USUARIOS_ADMIN` / `PERM_ROLES_ADMIN`, no strings `*_WRITE` — 2026-07-11, UI permitido/denegado y HTTP focalizado verdes.
-- [x] `/unauthorized` no exige un permiso funcional y conserva autenticación; códigos de rol `ROLE_*` son rechazados — 2026-07-11, pruebas focalizadas verdes.
-- [x] Refresh se mantiene serializado sólo para 401; 403 conserva sesión.
-- [x] WebSocket/STOMP está deshabilitado por completo; REST/email permanece.
-- [x] Matriz HTTP, contrato frontend y smoke de seguridad están verdes localmente.
-- [ ] PR reemplazante, checks remotos y merge a `main` completados.
+- [ ] Casos de tarifa anterior, exacta y futura.
+- [ ] Casos de condición anterior, exacta y futura.
+- [ ] Costo particular nulo y no nulo.
+- [ ] Descuento porcentual, fijo y combinado.
+- [ ] Ausencia de tarifa.
+- [ ] Matrícula con cero, una y varias disciplinas.
+- [ ] Reintento secuencial y concurrente.
 
-## Gate: datos y migraciones
+### Implementación
 
-**Estado:** `RBAC V6 VALIDADO`; contratos financieros de Parte B `PENDING`.
+- [ ] Un único servicio resuelve tarifa y condición.
+- [ ] Fecha mensual = primer día del período.
+- [ ] Fecha matrícula = 1 de enero.
+- [ ] Ausencia de tarifa aborta.
+- [ ] Costo particular efectivo tiene prioridad.
+- [ ] Bonificación usa snapshots efectivos.
+- [ ] Matrícula usa máximo efectivo entre disciplinas activas.
+- [ ] Cargo y snapshot son atómicos.
+- [ ] `formula_version = 1` queda persistida.
+- [ ] Reintentos no duplican.
+- [ ] Cálculo no lee campos legacy.
+- [ ] UI no ofrece fuentes paralelas.
 
-- [x] Historial Flyway real y versión siguiente fueron confirmados antes de editar V6.
-- [x] Base limpia aplica V1–V6 y JPA valida el esquema.
-- [x] Upgrade V5→V6 termina sin pérdida y preserva IDs/asignaciones personalizadas.
-- [x] Precondiciones V6 fallan ante colisiones incompatibles antes de reconciliar.
-- [x] Reconciliación RBAC verifica conteos y matrices exactas.
-- [x] V6 no borra historia de pagos, cuotas, inscripciones, asistencia, caja, egresos o usuarios auditables.
-- [x] RBAC productivo y dataset demo permanecen separados.
-- [ ] Tarifa/condición vigente es la única fuente de cargos y conserva snapshot/versionado.
-- [ ] Idempotencia evita cargos, pagos, egresos, ventas o liquidaciones duplicados.
-- [x] Pruebas PostgreSQL/Testcontainers de RBAC pasan; H2 no se usa como prueba de Flyway/PostgreSQL.
-- [x] Recovery/rollback lógico de V6 está documentado como forward-only/restauración aislada.
+### Validación
 
-## Gate: observabilidad y backup
+- [ ] Tests unitarios de fórmula.
+- [ ] Tests PostgreSQL de vigencia.
+- [ ] Tests de rollback transaccional.
+- [ ] Tests de idempotencia y concurrencia.
+- [ ] Backend completo verde.
+- [ ] Frontend completo verde.
+- [ ] All verde.
+- [ ] Base limpia y upgrade si hubo migración.
+- [ ] Documentación actualizada.
 
-**Estado:** `NO_VERIFICADO`.
+## 7. GATE-2 — UX crítica
 
-- [ ] Health/readiness permite distinguir aplicación, DB y dependencia externa.
-- [ ] Logs registran operación, ID, estado y resultado sin secretos ni datos completos.
-- [ ] Errores 500 no exponen detalles internos y conservan correlación diagnóstica.
-- [ ] Métricas/alertas mínimas cubren disponibilidad, errores, latencia y fallos de jobs críticos.
-- [ ] Zona horaria de negocio y timestamps operativos están documentados.
-- [ ] Política de backup define frecuencia, retención, cifrado, destino y responsable.
-- [ ] Backup fue restaurado en ambiente aislado y validado con consultas/smoke.
-- [ ] Fallos de email/recibo después de commit son observables y reintentables sin duplicar negocio.
-- [ ] Runbook indica dónde mirar y cuándo escalar.
+**Estado: `PARTIAL`.**
 
-## Gate: rollback
+Hecho:
 
-**Estado:** `NO_VERIFICADO`.
+- [x] Tabla no trata `Acciones` como dato.
+- [x] Regresión para no mostrar `undefined`.
+- [x] Búsqueda de alumnos conserva foco.
+- [x] Alumnos e inscripciones conservan datos previos durante refetch.
+- [x] Contrato frontend de roles usa permisos reales.
+- [x] API explícita obligatoria en producción.
+- [x] HTTPS obligatorio fuera de localhost en producción.
 
-- [ ] Artefacto anterior compatible está identificado y disponible.
-- [ ] Se definió qué cambios admiten rollback de aplicación y cuáles requieren recovery forward-only.
-- [ ] Backup previo tiene restore probado y tiempo conocido.
-- [ ] Migraciones destructivas o ambiguas están prohibidas o tienen reconciliación/recuperación explícita.
-- [ ] Pagos, egresos, stock, caja e inscripciones se revierten por registros/estados, nunca por borrado histórico.
-- [ ] Criterios de abortar, responsable y comandos exactos están en runbook.
-- [ ] Smoke posterior al rollback verifica login, permisos y circuito financiero mínimo.
-- [ ] El simulacro fue ejecutado en staging y su evidencia quedó registrada.
+Pendiente:
 
-## Gate: UX crítica
+- [ ] Cero IDs técnicos visibles en flujos comerciales.
+- [ ] Búsqueda por nombre, apellido, órdenes y documento.
+- [ ] Selectores con referencias humanas.
+- [ ] Claves inmutables no editables.
+- [ ] Baja, reactivación, finalización y anulación con textos correctos.
+- [ ] Pagos, caja, egresos y recibos con ARS consistente.
+- [ ] Fecha operativa Buenos Aires.
+- [ ] Stock sólo por movimientos.
+- [ ] Venta y reversión completas.
+- [ ] Asistencia diaria con estado de guardado.
+- [ ] Loading, empty y error accionables.
+- [ ] PC, móvil y teclado.
+- [ ] Recorrido humano por Dirección, Secretaría y Caja.
 
-**Estado:** `PENDING`; la suite actual está verde, pero Parte C no comenzó.
+## 8. GATE-3 — componentes y contratos
 
-- [ ] Cero IDs técnicos visibles en tablas, formularios, toasts, labels y filenames operativos.
-- [ ] Búsqueda de alumnos funciona por nombre, apellido, ambos órdenes y DNI/documento.
-- [ ] Selectores controlados son accesibles y muestran contexto humano.
-- [ ] No se puede editar una clave que backend considera inmutable.
-- [ ] Baja, reactivación, finalización y anulación se nombran según su efecto real.
-- [ ] Pagos, recibos, Caja y Egresos muestran referencias humanas y ARS consistente.
-- [ ] Fecha operativa usa Buenos Aires y Caja abre en Hoy.
-- [ ] Stock cambia cantidad mediante movimientos; venta/reversión es completa o queda fuera del alcance comercial.
-- [ ] Asistencia diaria cubre PRESENTE/AUSENTE/JUSTIFICADO y estado de guardado.
-- [ ] Estados empty/loading/error ofrecen feedback y siguiente paso autorizado.
-- [ ] Flujos críticos funcionan en PC, celular y teclado.
-- [x] Suite frontend, lint y build están verdes para el alcance RBAC actual.
+**Estado: `PENDING`.**
 
-## Gate: documentación
+- [ ] No existe refactor general sin necesidad de release.
+- [ ] El resultado de liquidación es inmutable y testeable.
+- [ ] Mensualidad y matrícula comparten resolución.
+- [ ] Contratos frontend evitan modelos divergentes.
+- [ ] Componentes comunes tienen regresiones propias.
+- [ ] No se crean capas ceremoniales ni adaptadores sin consumidor.
 
-**Estado:** `VALIDADO` para GATE-0; el informe final de release permanece `PENDING` hasta Etapa 4.
+## 9. Gate del seed demo
 
-- [x] Los 12 documentos existen y están enlazados desde [00_INDEX.md](./00_INDEX.md).
-- [x] Baseline contiene SHA, branch, estado, comandos y fallos clasificados.
-- [x] Cada hallazgo tiene ID estable, evidencia y tarea asociada.
-- [x] Matriz RBAC cubre frontend, endpoint, permiso, seed, ownership y tests.
-- [x] Cada etapa registra objetivo, alcance, dependencias, tareas, riesgos, rollback, aceptación, validación y gate.
-- [x] [08_PLAN_DE_PRUEBAS.md](./08_PLAN_DE_PRUEBAS.md) contiene comandos PowerShell exactos y todos los niveles requeridos.
-- [x] [09_BITACORA_IMPLEMENTACION.md](./09_BITACORA_IMPLEMENTACION.md) registra cada tarea, archivos, decisión, pruebas y resultado.
-- [x] [10_DECISIONES_Y_BLOQUEOS.md](./10_DECISIONES_Y_BLOQUEOS.md) contiene decisiones/autoridad y bloqueos reales.
-- [x] Este checklist refleja evidencia actual y no conserva casillas verdes obsoletas.
-- [ ] Informe final enlaza commit, migraciones, resultados, demo, riesgos y rollback.
+**Estado: `INTEGRADO / NO_VERIFICADO EN HEAD`.**
 
-## Decisión de salida
+### Contrato estático
 
-| Decisión | Condición | Estado actual |
+- [x] Seed separado de Flyway.
+- [x] Sin migración demo.
+- [x] Sin DML sobre roles, permisos o matrices.
+- [x] Sin activación de PROFESOR.
+- [x] Sin credenciales fijas.
+- [x] Precondiciones de V6.
+- [x] Conteos esperados de 914 filas.
+- [x] Conciliaciones financieras y de stock documentadas.
+
+### Ejecución requerida
+
+- [ ] Parser PowerShell.
+- [ ] Build backend usado por el validador.
+- [ ] PostgreSQL aislado.
+- [ ] Flyway V1-V6 desde vacío.
+- [ ] Hibernate validate.
+- [ ] Primera aplicación del seed.
+- [ ] Conteos exactos.
+- [ ] Integridad financiera.
+- [ ] Integridad de stock.
+- [ ] RBAC inmutable.
+- [ ] Cinco logins.
+- [ ] Casos 200/400/401/403.
+- [ ] Segunda aplicación idéntica.
+- [ ] IDs y hashes estables.
+- [ ] Reinicio y nuevo login.
+- [ ] Sin secretos en temporales.
+- [ ] Sin recursos Docker residuales.
+- [ ] Resultado registrado con HEAD y exit code.
+
+## 10. Gate de demo persistente
+
+**Estado: `INTEGRADO / NO_VERIFICADO`.**
+
+- [x] Acciones Start, Status, Stop, Reset y SeedNative documentadas.
+- [x] Puertos fijos y detección de conflicto.
+- [x] Credenciales no persistidas en archivos/logs.
+- [x] Cookie local aislada.
+- [ ] Reset desde cero exitoso.
+- [ ] Status muestra servicios saludables.
+- [ ] Cinco usuarios pueden iniciar sesión.
+- [ ] Separación real de roles demostrada.
+- [ ] Dirección completa su circuito.
+- [ ] Secretaría completa su circuito.
+- [ ] Caja completa su circuito.
+- [ ] Denegaciones preservan sesión y muestran feedback.
+- [ ] Stop conserva datos.
+- [ ] Reset elimina datos y recrea.
+- [ ] Evidencia y tiempos registrados.
+
+## 11. Gate de demo interna
+
+**Estado: `BLOCKED`.**
+
+- [ ] Todas las suites obligatorias están verdes sobre el HEAD exacto.
+- [ ] Seed demo está verde e idempotente.
+- [ ] Demo persistente arranca sin SQL improvisado.
+- [ ] Circuito alumno → inscripción → cargo → pago → recibo → caja.
+- [ ] Egresos, stock y asistencia funcionan según oferta.
+- [ ] Dirección, Secretaría y Caja completan recorridos.
+- [ ] PROFESOR permanece denegado.
+- [ ] No aparecen IDs técnicos, `undefined` ni acciones no-op.
+- [ ] PC y móvil completan el recorrido.
+- [ ] Foco y teclado básico verificados.
+- [ ] Fallo de demo tiene procedimiento de recuperación.
+- [ ] Decisión `GO/NO-GO` registrada.
+
+## 12. Gate de demo comercial
+
+**Estado: `PENDING`.**
+
+- [ ] Demo interna aprobada.
+- [ ] Guion de 10-15 minutos.
+- [ ] Capturas definitivas.
+- [ ] Datos y usuarios reiniciables.
+- [ ] Dashboard con 3-5 señales relevantes.
+- [ ] Separación de roles visible.
+- [ ] Mensajes alineados con estrategia canónica.
+- [ ] Precios resueltos desde documento comercial.
+- [ ] Limitaciones actuales explícitas.
+- [ ] Responsable y plan de contingencia.
+- [ ] Aprobación comercial registrada.
+
+## 13. Gate de staging
+
+**Estado: `PENDING / NO AUTORIZADO`.**
+
+- [ ] Host y dominio identificados.
+- [ ] Responsables y ventana definidos.
+- [ ] Datos permitidos definidos.
+- [ ] Secretos fuera de repo, imágenes y logs.
+- [ ] TLS válido.
+- [ ] CORS por ambiente.
+- [ ] Cookies correctas.
+- [ ] URLs frontend/backend correctas.
+- [ ] Imágenes reproducibles con Java 21.
+- [ ] Flyway base limpia y upgrade.
+- [ ] Backup previo.
+- [ ] Restore probado en destino aislado.
+- [ ] Smoke y recorridos por rol.
+- [ ] Health/readiness.
+- [ ] Logs sin secretos ni payloads completos.
+- [ ] Métricas y alertas mínimas.
+- [ ] Rollback ensayado.
+- [ ] Aprobación explícita.
+
+## 14. Gate de producción
+
+**Estado: `NO-GO`.**
+
+- [ ] Todos los gates anteriores aprobados.
+- [ ] Commit y artefactos congelados.
+- [ ] Changelog y migraciones revisados.
+- [ ] Backup restaurable.
+- [ ] Ventana y responsables.
+- [ ] Monitoreo en tiempo real.
+- [ ] Criterios de abortar.
+- [ ] Artefacto anterior disponible.
+- [ ] Runbook de rollback.
+- [ ] Smoke post-deploy.
+- [ ] Verificación financiera y RBAC.
+- [ ] Riesgos residuales aceptados.
+- [ ] Autorización `GO` antes de desplegar.
+
+## 15. Observabilidad y backup
+
+**Estado: `NO_VERIFICADO`.**
+
+- [ ] Health de aplicación.
+- [ ] Readiness de DB y dependencias.
+- [ ] Correlation ID para errores.
+- [ ] 500 sin detalles internos.
+- [ ] Métricas de disponibilidad, latencia y errores.
+- [ ] Alertas por jobs críticos.
+- [ ] Zona horaria documentada en operación.
+- [ ] Frecuencia de backup.
+- [ ] Retención.
+- [ ] Cifrado.
+- [ ] Destino externo.
+- [ ] Responsable.
+- [ ] Restore probado.
+- [ ] Fallos de email/recibo observables y reintentables.
+- [ ] Runbook operativo.
+
+## 16. Rollback
+
+**Estado: `NO_VERIFICADO`.**
+
+- [ ] Artefacto anterior identificado.
+- [ ] Compatibilidad DB revisada.
+- [ ] Cambios forward-only clasificados.
+- [ ] Backup previo restaurable.
+- [ ] Tiempo de restore medido.
+- [ ] No hay borrado histórico como rollback.
+- [ ] Criterios de abortar.
+- [ ] Responsable.
+- [ ] Comandos exactos.
+- [ ] Smoke posterior al rollback.
+- [ ] Simulacro ejecutado en staging.
+
+## 17. Decisión de salida
+
+| Salida | Estado | Condición inmediata |
 |---|---|---|
-| Demo interna | Gates funcionales + suites + smoke + recorrido | `NO-GO` |
-| Demo comercial | Demo interna aprobada + autorización | `NO-GO` |
-| Staging | Demo comercial aprobada + ambiente/backup/rollback | `NO-GO` |
-| Producción | Staging aprobado + autorización explícita | `NO-GO` |
+| Continuar desarrollo local | `GO` | Mantener evidencia y no romper gates cerrados |
+| Iniciar GATE-1B | `GO` | Comenzar por `E1B-001` |
+| Usar demo interna | `NO-GO` | Ejecutar validaciones y recorridos |
+| Usar demo comercial | `NO-GO` | Aprobar demo interna |
+| Desplegar staging | `NO-GO` | Ambiente, restore, rollback y autorización |
+| Desplegar producción | `NO-GO` | Todos los gates y autorización final |
 
-El próximo cambio de estado debe actualizar [00_INDEX.md](./00_INDEX.md), este checklist y una entrada fechada en [09_BITACORA_IMPLEMENTACION.md](./09_BITACORA_IMPLEMENTACION.md).
+El próximo cambio de estado debe actualizar este checklist,
+[12_ESTADO_ACTUAL_Y_BACKLOG.md](./12_ESTADO_ACTUAL_Y_BACKLOG.md) y
+[13_BITACORA_CONTINUIDAD.md](./13_BITACORA_CONTINUIDAD.md).
