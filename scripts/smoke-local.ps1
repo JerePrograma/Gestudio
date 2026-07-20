@@ -364,13 +364,13 @@ try {
         Assert-Equal -Actual $front.Status -Expected 200 -Message "Frontend no responde"
         Pass "Stack healthy"
 
-        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM flyway_schema_history WHERE success") -Expected "6" -Message "Flyway no aplico V1-V6"
-        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM flyway_schema_history WHERE version = '6' AND success") -Expected "1" -Message "Flyway V6 no esta aplicada"
-        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM flyway_schema_history WHERE NOT success OR version::int NOT BETWEEN 1 AND 6") -Expected "0" -Message "Hay migraciones fallidas o inesperadas"
-        $flywayChecksums = Invoke-Sql "SELECT 'V' || version, checksum::text FROM flyway_schema_history WHERE success AND version::int BETWEEN 1 AND 6 ORDER BY version::int"
-        $v6Checksum = @($flywayChecksums -split "`r?`n" | Where-Object { $_ -match '^V6\|-?\d+$' })
-        Assert-Equal -Actual $v6Checksum.Count -Expected 1 -Message "Flyway V6 no tiene un checksum registrado"
-        Write-Host "[INFO] Flyway checksums V1-V6:`n$flywayChecksums"
+        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM flyway_schema_history WHERE success") -Expected "7" -Message "Flyway no aplico V1-V7"
+        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM flyway_schema_history WHERE version = '7' AND success") -Expected "1" -Message "Flyway V7 no esta aplicada"
+        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM flyway_schema_history WHERE NOT success OR version::int NOT BETWEEN 1 AND 7") -Expected "0" -Message "Hay migraciones fallidas o inesperadas"
+        $flywayChecksums = Invoke-Sql "SELECT 'V' || version, checksum::text FROM flyway_schema_history WHERE success AND version::int BETWEEN 1 AND 7 ORDER BY version::int"
+        $v7Checksum = @($flywayChecksums -split "`r?`n" | Where-Object { $_ -match '^V7\|-?\d+$' })
+        Assert-Equal -Actual $v7Checksum.Count -Expected 1 -Message "Flyway V7 no tiene un checksum registrado"
+        Write-Host "[INFO] Flyway checksums V1-V7:`n$flywayChecksums"
         Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM permisos") -Expected "32" -Message "Catalogo RBAC inesperado"
         Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM permisos WHERE activo AND sistema") -Expected "32" -Message "Hay permisos productivos inactivos o no sistema"
         Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM roles WHERE codigo = 'SUPERADMIN' AND activo") -Expected "1" -Message "Falta SUPERADMIN activo"
@@ -380,7 +380,7 @@ try {
         $matrixDiff = Invoke-Sql "WITH expected(role_code, permission_code) AS (SELECT 'SUPERADMIN', codigo FROM permisos UNION ALL SELECT 'DIRECCION', codigo FROM permisos WHERE codigo <> 'PERM_ROLES_ADMIN' UNION ALL SELECT 'ADMINISTRADOR', codigo FROM permisos WHERE codigo <> 'PERM_ROLES_ADMIN' UNION ALL SELECT 'SECRETARIA', codigo FROM permisos WHERE codigo IN ('PERM_APP_ACCESO','PERM_PAGOS_REGISTRAR','PERM_CREDITOS_CONSUMIR','PERM_CONDICIONES_ECONOMICAS_ADMIN','PERM_ALUMNOS_LEER','PERM_ALUMNOS_ADMIN','PERM_INSCRIPCIONES_LEER','PERM_INSCRIPCIONES_ADMIN','PERM_DISCIPLINAS_LEER','PERM_PROFESORES_LEER','PERM_ASISTENCIAS_LEER','PERM_ASISTENCIAS_REGISTRAR','PERM_PAGOS_LEER','PERM_CAJA_LEER','PERM_STOCK_LEER','PERM_REPORTES_LEER','PERM_CONFIG_LEER') UNION ALL SELECT 'CAJA', codigo FROM permisos WHERE codigo IN ('PERM_APP_ACCESO','PERM_ALUMNOS_LEER','PERM_PAGOS_LEER','PERM_PAGOS_REGISTRAR','PERM_CAJA_LEER','PERM_STOCK_LEER','PERM_CONFIG_LEER','PERM_CREDITOS_CONSUMIR')), actual AS (SELECT r.codigo, p.codigo FROM roles r JOIN rol_permisos rp ON rp.rol_id=r.id JOIN permisos p ON p.id=rp.permiso_id WHERE r.codigo IN ('SUPERADMIN','DIRECCION','ADMINISTRADOR','SECRETARIA','CAJA','PROFESOR')), differences AS ((SELECT * FROM expected EXCEPT SELECT * FROM actual) UNION ALL (SELECT * FROM actual EXCEPT SELECT * FROM expected)) SELECT count(*) FROM differences"
         Assert-Equal -Actual $matrixDiff -Expected "0" -Message "La matriz de roles base no es exacta"
         Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM usuarios WHERE nombre_usuario LIKE 'demo-%'") -Expected "0" -Message "El smoke no debe depender del seed demo"
-        Pass "Flyway V1-V6 y matriz RBAC"
+        Pass "Flyway V1-V7 y matriz RBAC"
 
         $quotedUser = $adminUsername.Replace("'", "''")
         Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM usuarios") -Expected "1" -Message "El bootstrap no creo exactamente un usuario"

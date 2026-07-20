@@ -1,5 +1,5 @@
 -- ESTE ARCHIVO NO ES UNA MIGRACIÓN FLYWAY.
--- Seed manual, sintético y descartable para validar Gestudio después de V1..V6.
+-- Seed manual, sintético y descartable para validar Gestudio después de V1..V7.
 -- No ejecutar sobre una base que contenga datos que deban conservarse.
 
 \set ON_ERROR_STOP on
@@ -36,7 +36,8 @@ BEGIN
         'ventas_stock', 'movimientos_stock', 'asistencias_mensuales',
         'asistencias_alumno_mensual', 'asistencias_diarias', 'recibos', 'recibos_pendientes',
         'refresh_sessions', 'bootstrap_ejecuciones', 'auditoria_eventos', 'cargo_eventos',
-        'notificaciones'
+        'notificaciones',
+        'jere_platform_student_export_snapshots', 'jere_platform_student_export_pages'
     ] LOOP
         IF to_regclass('public.' || required_table) IS NULL THEN
             missing_tables := array_append(missing_tables, required_table);
@@ -47,14 +48,14 @@ BEGIN
         RAISE EXCEPTION 'Faltan tablas requeridas: %', array_to_string(missing_tables, ', ');
     END IF;
 
-    IF (SELECT count(*) FROM public.flyway_schema_history WHERE success) <> 6
+    IF (SELECT count(*) FROM public.flyway_schema_history WHERE success) <> 7
        OR EXISTS (SELECT 1 FROM public.flyway_schema_history WHERE NOT success)
        OR NOT EXISTS (
             SELECT 1
             FROM public.flyway_schema_history
-            WHERE version = '6'
+            WHERE version = '7'
               AND success
-              AND script = 'V6__rbac_permission_catalog_and_base_roles.sql'
+              AND script = 'V7__jere_platform_student_source_exports.sql'
        )
        OR EXISTS (
             SELECT 1
@@ -62,7 +63,7 @@ BEGIN
             WHERE lower(script) LIKE '%demo%seed%'
                OR lower(script) LIKE '%seed%demo%'
        ) THEN
-        RAISE EXCEPTION 'El historial Flyway no coincide con V1..V6 productivas';
+        RAISE EXCEPTION 'El historial Flyway no coincide con V1..V7 productivas';
     END IF;
 
     IF (SELECT count(*) FROM public.permisos WHERE activo AND sistema) <> 32 THEN

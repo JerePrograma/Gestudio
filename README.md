@@ -4,10 +4,10 @@ Monorepo de gestión para alumnos, inscripciones, disciplinas, asistencias, mens
 
 ## Estado
 
-El producto está en etapa pre-productiva. Seguridad/RBAC y Flyway V1-V7 están
-integrados; la liquidación financiera por vigencia, la demo interna, staging,
-backup/restore y rollback permanecen abiertos. No debe interpretarse el estado
-del repositorio como autorización de producción.
+El producto está en etapa pre-productiva. Seguridad/RBAC, liquidación financiera
+por vigencia, Flyway V1-V7 y la demo interna automatizada están integrados.
+GATE-2, recorridos humanos, backup/restore, rollback, observabilidad, staging y
+producción permanecen abiertos; el repositorio no constituye autorización de despliegue.
 
 Estado y backlog vigentes:
 
@@ -93,10 +93,9 @@ Los pagos usan cargos y aplicaciones explícitas, ledgers compensatorios e
 idempotency keys con request hash. La generación, almacenamiento y entrega de
 recibos se procesa fuera de la transacción financiera mediante `ReciboPendiente`.
 
-La etapa pendiente de liquidación por vigencia debe conectar tarifas y
-condiciones históricas con `cargo_liquidaciones` y retirar del cálculo los
-campos legacy. Ver
-[Etapa 1B](docs/codex/gestudio-release-hardening/04_ETAPA_1B_LIQUIDACION_FINANCIERA.md).
+La liquidación por vigencia está integrada: mensualidades y matrículas resuelven
+tarifas históricas y condiciones efectivas, persisten `cargo_liquidaciones` de
+forma atómica y rechazan fuentes legacy. Ver [cierre de GATE-1B](docs/codex/gestudio-release-hardening/15_CIERRE_GATE_1B_2026-07-20.md).
 
 ## Documentación
 
