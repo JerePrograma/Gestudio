@@ -22,6 +22,7 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static gestudio.infra.seguridad.PermissionCodes.PERM_CONDICIONES_ECONOMICAS_ADMIN;
 import static gestudio.infra.seguridad.PermissionCodes.PERM_TARIFAS_HISTORICAS;
@@ -121,8 +122,14 @@ public class CondicionEconomicaServicio {
 
     @Transactional(readOnly = true)
     public CondicionEconomicaInscripcion vigente(Long inscripcionId, LocalDate fecha) {
-        return condiciones.findFirstByInscripcionIdAndVigenteDesdeLessThanEqualOrderByVigenteDesdeDesc(inscripcionId, fecha)
+        return vigenteOpcional(inscripcionId, fecha)
                 .orElseThrow(() -> new CondicionHistoricaNoDefinidaException(fecha));
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<CondicionEconomicaInscripcion> vigenteOpcional(Long inscripcionId, LocalDate fecha) {
+        return condiciones.findFirstByInscripcionIdAndVigenteDesdeLessThanEqualOrderByVigenteDesdeDesc(
+                inscripcionId, fecha);
     }
 
     private Usuario actorAutorizado(Usuario actor) {
