@@ -98,6 +98,35 @@ class LiquidacionCargoAtomicaPostgreSqlTest extends PostgreSqlIntegrationTest {
     }
 
     @Test
+    void falloDeCargoNoDejaMensualidadNiSnapshot() {
+        Fixture fixture = fixture("cargo-failure", true);
+        tarifa(fixture, LocalDate.of(2026, 1, 1), "100.00", "40.00");
+        instalarFalloCargo();
+        try {
+            assertThatThrownBy(() -> mensualidades.crearMensualidad(
+                    new MensualidadRegistroRequest(fixture.inscripcionId(), 2026, 5, null, null)))
+                    .isInstanceOf(RuntimeException.class)
+                    .hasStackTraceContaining("fallo de cargo inducido por test");
+        } finally {
+            retirarFalloCargo();
+        }
+
+        assertThat(jdbc.queryForObject("""
+                SELECT count(*) FROM mensualidades
+                WHERE inscripcion_id = ? AND anio = 2026 AND mes = 5
+                """, Integer.class, fixture.inscripcionId())).isZero();
+        assertThat(jdbc.queryForObject(
+                "SELECT count(*) FROM cargos WHERE alumno_id = ?",
+                Integer.class, fixture.alumnoId())).isZero();
+        assertThat(jdbc.queryForObject("""
+                SELECT count(*)
+                FROM cargo_liquidaciones l
+                JOIN cargos c ON c.id = l.cargo_id
+                WHERE c.alumno_id = ?
+                """, Integer.class, fixture.alumnoId())).isZero();
+    }
+
+    @Test
     void altaDeInscripcionSinTarifaRevierteTodoElAgregado() {
         Fixture fixture = fixture("enrollment-rollback", false);
 
@@ -201,6 +230,27 @@ class LiquidacionCargoAtomicaPostgreSqlTest extends PostgreSqlIntegrationTest {
     private void retirarFalloSnapshot() {
         jdbc.execute("DROP TRIGGER IF EXISTS test_fallar_cargo_liquidacion_trigger ON cargo_liquidaciones");
         jdbc.execute("DROP FUNCTION IF EXISTS test_fallar_cargo_liquidacion()");
+    }
+
+    private void instalarFalloCargo() {
+        jdbc.execute("""
+                CREATE OR REPLACE FUNCTION test_fallar_cargo()
+                RETURNS trigger LANGUAGE plpgsql AS $$
+                BEGIN
+                    RAISE EXCEPTION 'fallo de cargo inducido por test';
+                END;
+                $$
+                """);
+        jdbc.execute("""
+                CREATE TRIGGER test_fallar_cargo_trigger
+                BEFORE INSERT ON cargos
+                FOR EACH ROW EXECUTE FUNCTION test_fallar_cargo()
+                """);
+    }
+
+    private void retirarFalloCargo() {
+        jdbc.execute("DROP TRIGGER IF EXISTS test_fallar_cargo_trigger ON cargos");
+        jdbc.execute("DROP FUNCTION IF EXISTS test_fallar_cargo()");
     }
 
     private Long id(String sql, Object... args) {
