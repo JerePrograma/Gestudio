@@ -8,7 +8,7 @@
 |---|---|
 | Repositorio | `JerePrograma/Gestudio` |
 | Rama operativa | `main` |
-| HEAD remoto revisado | `3f314ba8cc61a71bfa434a46593cd02336ec16e5` |
+| Baseline funcional auditado | `3f314ba8cc61a71bfa434a46593cd02336ec16e5` |
 | Working tree del usuario | No verificado desde la revisión remota |
 | Etapa técnica disponible | Etapa 1B — liquidación financiera por vigencia |
 | Último gate cerrado | `GATE-1` — Seguridad/RBAC integrado en `main` |
@@ -48,6 +48,7 @@ La fuente canónica para continuidad es
 11. [Checklist de release](./11_CHECKLIST_RELEASE.md)
 12. [Estado actual y backlog maestro](./12_ESTADO_ACTUAL_Y_BACKLOG.md)
 13. [Bitácora de continuidad](./13_BITACORA_CONTINUIDAD.md)
+14. [Auditoría técnica de GATE-1B](./14_AUDITORIA_TECNICA_E1B.md)
 
 Documentación relacionada:
 
@@ -82,6 +83,7 @@ Documentación relacionada:
 | Demo persistente | Lanzador y guía integrados |
 | Comercial | Estrategia canónica integrada |
 | UX | Mejoras parciales en tablas, búsqueda y roles |
+| GATE-1B | Auditoría estática completa; código y tests pendientes |
 
 Esta evidencia no reemplaza una repetición sobre el HEAD actual.
 
@@ -102,7 +104,7 @@ Esta evidencia no reemplaza una repetición sobre el HEAD actual.
 
 1. repetir suites, smoke y validación del seed sobre HEAD actual;
 2. corregir cualquier fallo de demo;
-3. iniciar `E1B-001`;
+3. iniciar `E1B-001` conforme a `14_AUDITORIA_TECNICA_E1B.md`;
 4. cerrar GATE-1B;
 5. completar UX crítica;
 6. aprobar demo interna;
