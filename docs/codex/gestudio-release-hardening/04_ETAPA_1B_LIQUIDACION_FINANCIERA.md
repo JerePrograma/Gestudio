@@ -1,179 +1,283 @@
 # Etapa 1B — Liquidación financiera por vigencia
 
-Estado actual: `PENDING` / `BLOQUEADA POR MERGE VERDE DEL PR RBAC`. La secuencia fue autorizada por la consigna del 2026-07-14, pero esta etapa sólo puede comenzar desde `main` actualizado después del merge confirmado de [GATE-1](./03_ETAPA_1_SEGURIDAD_RBAC.md).
+> Estado actual: **`READY_TO_START`**  
+> Fecha de reconciliación: **2026-07-20**  
+> Rama operativa: `main`  
+> HEAD base revisado: `3f314ba8cc61a71bfa434a46593cd02336ec16e5`
 
-Referencias: [baseline financiero](./01_BASELINE_Y_HALLAZGOS.md#hallazgos-p0-financieros), [plan de pruebas](./08_PLAN_DE_PRUEBAS.md), [DEC-PRICING-001](./10_DECISIONES_Y_BLOQUEOS.md#dec-pricing-001--contrato-de-liquidación-por-vigencia) y [bitácora](./09_BITACORA_IMPLEMENTACION.md).
+El bloqueo anterior por merge RBAC está cerrado: GATE-1 forma parte de `main`.
+Esta etapa puede comenzar. No está implementada ni validada todavía.
+
+Referencias:
+
+- [estado actual y backlog](./12_ESTADO_ACTUAL_Y_BACKLOG.md);
+- [baseline financiero](./01_BASELINE_Y_HALLAZGOS.md#hallazgos-p0-financieros);
+- [plan de pruebas](./08_PLAN_DE_PRUEBAS.md);
+- [DEC-PRICING-001](./10_DECISIONES_Y_BLOQUEOS.md#dec-pricing-001--contrato-de-liquidación-por-vigencia);
+- [bitácora de continuidad](./13_BITACORA_CONTINUIDAD.md).
 
 ## Objetivo
 
-Eliminar la doble fuente de precios. Una fecha efectiva debe resolver una única tarifa y una única condición económica; mensualidad o matrícula debe crear el cargo y su `cargo_liquidaciones` auditable en la misma transacción, con `BigDecimal`, escala/redondeo explícitos e idempotencia.
+Eliminar la doble fuente de precios. Una fecha efectiva debe resolver una única
+tarifa y una única condición económica. Mensualidad o matrícula debe crear el
+cargo y su `cargo_liquidaciones` auditable dentro de la misma transacción, con
+`BigDecimal`, escala explícita, fórmula versionada e idempotencia.
+
+## Contrato aprobado
+
+| Tema | Decisión vigente |
+|---|---|
+| Fecha efectiva mensual | Primer día del `YearMonth` |
+| Fecha efectiva matrícula | 1 de enero del año |
+| Ausencia de tarifa | Rechazar; sin fallback legacy ni importe cero silencioso |
+| Prioridad de precio | `costoParticular` de condición efectiva no nulo; si no, tarifa efectiva |
+| Bonificación | Sólo snapshots de la condición efectiva |
+| Resolución histórica | Última fila con `vigenteDesde <= fecha` |
+| Campos legacy | Compatibilidad física; fuera del cálculo y edición operativa |
+| Fórmula inicial | `formula_version = 1` |
+| Matrícula multidisciplina | Máximo importe efectivo entre disciplinas activas |
+| Redondeo | Escala 2, `HALF_UP` donde exista operación porcentual |
+| Idempotencia | Reintentos no duplican origen, cargo ni snapshot |
 
 ## Fuera de alcance
 
-- No iniciar antes del merge verde de GATE-1 ni continuar a Etapa 2 antes del merge verde del PR financiero.
-- No reescribir V1-V5 ni usar el seed demo como migración.
-- No rediseñar pagos, crédito, caja o recibos salvo el contrato mínimo necesario para consumir el cargo correcto.
-- No borrar cargos ni snapshots históricos.
-- No agregar una abstracción paralela si `TarifaDisciplinaServicio`, `CondicionEconomicaServicio` y `LiquidacionCargoServicio` cubren el límite real.
-- No decidir importes, prioridad o fechas por conveniencia técnica: requieren `DEC-PRICING-001`.
-
-## Dependencias
-
-1. GATE-1 cerrado: catálogo RBAC determinístico, permisos de tarifas/condiciones y semántica 401/403/409.
-2. Secuencia autorizada por la consigna del 2026-07-14; no se requiere otra decisión funcional.
-3. `DEC-PRICING-001` confirmada antes de cambiar cálculo.
-4. Cadena Flyway efectiva verificada después de Etapa 1. V1-V5 quedan inmutables; V6 se reserva para RBAC. Si 1B necesita esquema, usar la siguiente versión libre, previsiblemente V7, nunca asumirla sin inspección.
-5. Docker Engine disponible para PostgreSQL/Testcontainers.
+- reescribir V1-V6;
+- usar el seed demo como migración;
+- rediseñar pagos, crédito, caja o recibos salvo integración mínima;
+- borrar cargos o snapshots históricos;
+- agregar un motor configurable sin necesidad actual;
+- normalizar automáticamente datos legacy ambiguos;
+- crear una migración si no cambia el esquema;
+- iniciar staging o producción.
 
 ## Mapa del cálculo actual
 
-| Flujo | Comportamiento actual | Evidencia | Problema |
-|---|---|---|---|
-| Mensualidad | base = `Inscripcion.costoParticular` o `Disciplina.valorCuota`; aplica `Bonificacion` legacy; vence día 10 | `backend/src/main/java/gestudio/servicios/mensualidad/MensualidadServicio.java` | no consulta tarifa/condición por `vigenteDesde` |
-| Matrícula | máximo de `Disciplina.matricula` entre inscripciones activas; vence 31/01 | `backend/src/main/java/gestudio/servicios/matricula/MatriculaServicio.java` | no consulta tarifa histórica ni define disciplina/origen ganador |
-| Tarifa | repositorio resuelve última `vigenteDesde <= fecha` y falla si falta | `TarifaDisciplinaRepositorio.java`, `TarifaDisciplinaServicio.java` | contrato correcto aún no conectado a cargos |
-| Condición | repositorio resuelve última `vigenteDesde <= fecha`, con snapshots de bonificación | `CondicionEconomicaRepositorio.java`, `CondicionEconomicaServicio.java` | no conectada a mensualidad/matrícula |
-| Snapshot | inserta una fila en `cargo_liquidaciones` | `backend/src/main/java/gestudio/cuotas/application/LiquidacionCargoServicio.java`, V4 | no tiene caller productivo |
-| UI | edita precio legacy y también historiales efectivos | `InscripcionesFormulario.tsx`, `CondicionesEconomicasPagina.tsx`, `DisciplinasPagina.tsx`, `TarifasDisciplinaPagina.tsx` | presenta dos fuentes de verdad |
-
-## Decisiones obligatorias antes de código
-
-Todas forman un único contrato indivisible en `DEC-PRICING-001`:
-
-| Tema | Opciones concretas | Recomendación pendiente de aprobación |
+| Flujo | Estado actual | Defecto |
 |---|---|---|
-| Fecha mensual | primer día del período; fecha de generación; vencimiento | primer día de `YearMonth`, porque representa el período y no depende del día de ejecución |
-| Fecha matrícula | 1 de enero del año; fecha de emisión; vencimiento | 1 de enero del año, consistente para todos los alumnos del período |
-| Sin tarifa | fallback legacy; cargo cero; rechazar | rechazar la liquidación con error de tarifa histórica faltante; nunca cobrar silenciosamente legacy/cero |
-| Prioridad | tarifa siempre; costo particular siempre; condición efectiva no nula y luego tarifa | condición efectiva con `costoParticular` no nulo; si es nulo, tarifa efectiva |
-| Bonificación | entidad legacy mutable; snapshot de condición; combinación | usar sólo snapshots de la condición efectiva; no combinar dos bonificaciones |
-| Historia | última fila `<= fecha`; rango explícito con fin; dato actual | última fila `<= fecha`, ya soportada por repositorios; una fila posterior cierra implícitamente la anterior |
-| Campos legacy | borrar; seguir escribiendo/leyendo; compatibilidad sin lecturas financieras | dejar físicamente por compatibilidad, retirar del cálculo y de la edición operativa; eliminar sólo con migración posterior y reconciliación |
-| Fórmula | sin versión; entero constante; motor configurable | entero constante inicial `1`, persistido en cada snapshot; cambiarlo sólo al cambiar semántica |
-| Matrícula con varias disciplinas | máximo; suma; una por disciplina; política institucional | requiere confirmación explícita; el comportamiento actual es máximo y no prueba intención de negocio |
+| Mensualidad | Usa `Inscripcion.costoParticular` o `Disciplina.valorCuota`; bonificación legacy | Ignora vigencias y snapshots |
+| Matrícula | Usa máximo de `Disciplina.matricula` | Ignora tarifa histórica y origen ganador |
+| Tarifa | Resuelve última `vigenteDesde <= fecha` | Correcto pero sin caller financiero |
+| Condición | Resuelve última `vigenteDesde <= fecha` y snapshots | Correcto pero sin caller financiero |
+| Snapshot | `LiquidacionCargoServicio.registrar(...)` inserta `cargo_liquidaciones` | No está conectado a mensualidades/matrículas |
+| Cargo | `CargoServicio` es idempotente por origen | Debe participar en una transacción con snapshot |
+| UI | Conserva precio legacy e historiales efectivos | Presenta dos fuentes de verdad |
 
-Las decisiones están confirmadas por la consigna del 2026-07-14. `E1B-001` sigue `PENDING` exclusivamente hasta que GATE-1 esté integrado en `main` con checks verdes.
+## Orden obligatorio
 
-## Orden obligatorio de tareas
+### `E1B-001` — Caracterizar el cálculo vigente
 
-### `E1B-001` — Mapear cálculo y cerrar decisiones
+Estado: `READY`.
 
-- Estado: `PENDING`.
-- Dependencias: GATE-1 integrado y `main` actualizado desde remoto.
-- Archivos: servicios/repositorios de mensualidad, matrícula, tarifas, condiciones; V3/V4; tests PostgreSQL; `10_DECISIONES_Y_BLOQUEOS.md`.
-- Cambio esperado: caracterización ejecutable del comportamiento actual y aprobación de `DEC-PRICING-001`.
-- Riesgo: cambiar importes históricos por una suposición.
-- Aceptación: tabla de casos con fecha, tarifa, condición, base, descuento, total, origen y fórmula; política de matrícula explícita.
-- Tests: primero tests de caracterización de mensualidad y matrícula; deben fallar sólo al expresar el defecto nuevo esperado.
-- Evidencia de cierre: comando focalizado, conteos y decisión aprobada en bitácora.
+Objetivo:
 
-### `E1B-002` — Resolver un único servicio de liquidación
+- crear casos ejecutables antes de reemplazar comportamiento;
+- registrar fecha, tarifa, condición, base, descuento, total, origen y fórmula;
+- demostrar explícitamente qué falla hoy.
 
-- Estado: `PENDING`.
-- Dependencias: `E1B-001`.
-- Archivos esperados: `TarifaDisciplinaServicio.java`, `CondicionEconomicaServicio.java`, `LiquidacionCargoServicio.java` y un servicio concreto existente/nuevo sólo si no hay punto de composición reutilizable.
-- Cambio esperado: una operación recibe inscripción/disciplina, fecha efectiva y tipo; devuelve importe y metadatos usando `BigDecimal` y la fórmula aprobada.
-- Riesgo: crear un segundo motor o esconder fallback legacy.
-- Aceptación: ningún consumidor recalcula; ausencia de historia produce el error acordado; prioridad y redondeo tienen una sola implementación.
-- Tests: unitario de fórmula más PostgreSQL para resolución `<= fecha`.
-- Evidencia: test focalizado verde y búsqueda que muestre una sola implementación de fórmula.
+Casos mínimos:
+
+1. tarifa anterior, exacta y futura;
+2. condición anterior, exacta y futura;
+3. costo particular nulo y no nulo;
+4. bonificación porcentual;
+5. bonificación fija;
+6. combinación de porcentaje y fijo;
+7. descuento mayor a la base;
+8. ausencia de tarifa;
+9. ausencia de condición;
+10. mensualidad pasada, actual y futura;
+11. matrícula con cero, una y varias disciplinas;
+12. reintento secuencial y concurrente.
+
+Aceptación:
+
+- tests de caracterización compilables;
+- defectos actuales señalados sin adaptar expectativas para ocultarlos;
+- tabla de casos registrada en bitácora;
+- ninguna modificación productiva antes de entender los fallos.
+
+### `E1B-002` — Resolución única de liquidación
+
+Estado: `PENDING`.
+
+Crear o adaptar un único punto de composición que reciba:
+
+- inscripción;
+- disciplina;
+- fecha efectiva;
+- tipo de origen;
+- actor opcional.
+
+Debe devolver un resultado inmutable con:
+
+- tarifa usada;
+- condición usada;
+- origen del precio;
+- importe base;
+- descuento porcentual;
+- descuento importe;
+- importe final;
+- versión de fórmula;
+- observación trazable.
+
+Reglas:
+
+- cero lecturas de `Disciplina.valorCuota`, `Disciplina.matricula` e
+  `Inscripcion.costoParticular` para cálculo nuevo;
+- ausencia de tarifa aborta;
+- la condición es opcional: si no existe, tarifa sin descuento;
+- si existe condición, sus snapshots son autoridad;
+- importe final no puede ser negativo;
+- escala 2 en todos los importes persistidos.
 
 ### `E1B-003` — Integrar mensualidades
 
-- Estado: `PENDING`.
-- Dependencias: `E1B-002`.
-- Archivos: `MensualidadServicio.java`, tests nuevos o ampliados en `backend/src/test/java/gestudio/servicios/mensualidad/`.
-- Cambio esperado: usar primer día del período u otra fecha aprobada y consumir el resultado único.
-- Riesgo: scheduler/manual produzcan importes distintos o dupliquen cargos.
-- Aceptación: creación manual y scheduler comparten ruta; tarifa futura no afecta período anterior; idempotencia conserva el primer resultado.
-- Tests: límite día anterior/mismo día/posterior, período pasado/futuro, retry concurrente.
-- Evidencia: tests focalizados y Testcontainers verdes.
+Estado: `PENDING`.
+
+Cambios esperados:
+
+- fecha efectiva = primer día del período;
+- creación manual y scheduler comparten la misma ruta;
+- cargo y snapshot se crean dentro de la misma transacción;
+- reintento devuelve el resultado existente;
+- una tarifa futura no cambia un período anterior;
+- ausencia de historia falla antes de persistir un origen incompleto.
 
 ### `E1B-004` — Integrar matrículas
 
-- Estado: `PENDING`.
-- Dependencias: `E1B-002`, política de matrícula aprobada.
-- Archivos: `MatriculaServicio.java` y tests en `backend/src/test/java/gestudio/servicios/matricula/`.
-- Cambio esperado: resolver fecha/tarifa conforme a decisión; creación API y scheduler usan la misma ruta.
-- Riesgo: alumno con varias disciplinas cobra monto arbitrario.
-- Aceptación: política multi-disciplina probada; tarifa futura respeta año efectivo; retry no crea otra matrícula/cargo.
-- Tests: cero/una/varias disciplinas, hueco histórico, límites e idempotencia.
-- Evidencia: tests focalizados y PostgreSQL verdes.
+Estado: `PENDING`.
 
-### `E1B-005` — Persistir snapshot en la misma transacción
+Cambios esperados:
 
-- Estado: `PENDING`.
-- Dependencias: `E1B-003`, `E1B-004`.
-- Archivos: `LiquidacionCargoServicio.java`, servicios de cargo, V4 y tests `CargoLiquidacionMigrationPostgreSqlTest.java`/nuevos.
-- Cambio esperado: cargo + liquidación son atómicos; snapshot guarda IDs, origen, base, descuento, total y `formula_version`.
-- Riesgo: cargo sin snapshot o snapshot duplicado.
-- Aceptación: rollback de cualquier insert deja cero filas; PK `cargo_id` impide duplicado; cambiar tarifa/condición después no altera snapshot.
-- Tests: transacción fallida, retry, mutación posterior de configuración, lectura del snapshot exacto.
-- Evidencia: SQL/asserts PostgreSQL y suite focalizada verdes.
+- fecha efectiva = 1 de enero del año;
+- calcular la tarifa efectiva de cada disciplina activa;
+- elegir el mayor importe final conforme al contrato aprobado;
+- registrar qué disciplina, tarifa y condición originaron el cargo;
+- creación API y scheduler comparten implementación;
+- reintento no duplica matrícula, cargo ni snapshot.
 
-### `E1B-006` — Retirar la doble UI/campos legacy del cálculo
+### `E1B-005` — Atomicidad de cargo y snapshot
 
-- Estado: `PENDING`.
-- Dependencias: `E1B-003` a `005`.
-- Archivos: `Disciplina.java`, `Inscripcion.java`, DTOs, formularios/páginas de disciplinas e inscripciones y, sólo si hace falta, siguiente migración Flyway disponible.
-- Cambio esperado: campos legacy no participan en cálculo ni ofrecen edición financiera contradictoria; historia permanece legible.
-- Riesgo: romper payloads o descartar datos ambiguos.
-- Aceptación: búsqueda de callers prueba cero lecturas financieras legacy; UI presenta una fuente; cualquier migración incluye precondiciones, reconciliación y SQL de verificación.
-- Tests: contratos backend/frontend, base limpia y upgrade desde cadena previa si hay esquema.
-- Evidencia: `rg` de lecturas legacy, tests y reconciliación.
+Estado: `PENDING`.
 
-### `E1B-007` — Matriz de regresión financiera
+Aceptación:
 
-- Estado: `PENDING`.
-- Dependencias: `E1B-001` a `006`.
-- Archivos: tests de tarifas/condiciones/mensualidades/matrículas/liquidaciones y `08_PLAN_DE_PRUEBAS.md`.
-- Cambio esperado: cobertura ejecutable de vigencias, huecos, límites, snapshots, exactitud monetaria e idempotencia.
-- Riesgo: suite verde sin probar PostgreSQL ni concurrencia.
-- Aceptación: valores exactos por `compareTo`/strings a escala 2; ninguna prueba H2 sustituye PostgreSQL.
-- Tests: `TarifaDisciplinaPostgreSqlTest`, `CondicionEconomicaPostgreSqlTest`, `CargoLiquidacionMigrationPostgreSqlTest`, nuevos flujos integrados y suite backend completa.
-- Evidencia: comandos, conteos y resultados en bitácora.
+- un fallo de snapshot revierte el cargo;
+- un fallo de cargo no deja snapshot;
+- `cargo_id` conserva una única liquidación;
+- cambiar tarifa o condición después no altera el snapshot;
+- actor, IDs, base, descuento, total y fórmula quedan trazados.
 
-## Estrategia mínima de implementación
+### `E1B-006` — Retirar doble fuente legacy
 
-1. Caracterizar antes de reemplazar.
-2. Reutilizar los repositorios efectivos y `LiquidacionCargoServicio`; no crear interfaces ceremoniales.
-3. Hacer que mensualidad/matrícula llamen a una única operación transaccional.
-4. Persistir el snapshot inmediatamente después de crear/flush del cargo dentro de la misma transacción.
-5. Quitar lecturas/UI legacy sólo cuando ambos flujos estén cubiertos.
-6. Si no cambia esquema, no crear migración. Si cambia, usar la siguiente versión libre posterior a V6 y probar base limpia + upgrade.
+Estado: `PENDING`.
 
-## Riesgo y rollback lógico
+Aceptación:
 
-- No hay rollback destructivo de cargos ni liquidaciones.
-- Antes de despliegue, revertir código conservando compatibilidad con V1-V5/V6 y snapshots ya creados.
-- Después de aplicar una migración, corregir forward-only; no editar una versión aplicada.
-- Ante datos legacy ambiguos, generar reporte y bloquear esa fila; no normalizar importes automáticamente.
-- Un fallo transaccional debe revertir cargo y snapshot juntos.
+- cero lecturas financieras legacy;
+- formularios no permiten editar valores que ya no gobiernan el cálculo;
+- DTOs conservan compatibilidad sólo cuando sea necesario;
+- no se eliminan columnas sin migración y reconciliación;
+- datos ambiguos se reportan y bloquean.
+
+### `E1B-007` — Regresión financiera
+
+Estado: `PENDING`.
+
+Debe cubrir:
+
+- límites de vigencia;
+- huecos históricos;
+- snapshots;
+- exactitud monetaria;
+- mensualidad manual/scheduler;
+- matrícula manual/scheduler;
+- concurrencia;
+- rollback transaccional;
+- PostgreSQL real;
+- base limpia y upgrade si aparece una migración.
+
+## Diseño mínimo recomendado
+
+No crear un framework de pricing. La solución mínima defendible es:
+
+1. un resultado inmutable de liquidación;
+2. un servicio único que consulte tarifa y condición efectivas;
+3. mensualidad y matrícula como orquestadores;
+4. `CargoServicio` para persistir el cargo idempotente;
+5. `LiquidacionCargoServicio` para snapshot dentro de la transacción exterior;
+6. tests PostgreSQL para resolución, atomicidad e idempotencia.
+
+## Riesgos
+
+### Bloqueantes
+
+- cambiar importes sin caracterización;
+- mantener fallback legacy;
+- crear cargos sin snapshot;
+- elegir matrícula multidisciplina sin dejar origen trazado.
+
+### Altos
+
+- que scheduler y API diverjan;
+- que un retry reutilice el origen pero duplique snapshot;
+- que una condición futura se aplique retroactivamente;
+- que el UI siga editando la fuente legacy.
+
+### Medios
+
+- redondeo inconsistente;
+- datos legacy sin historia suficiente;
+- mensajes técnicos poco accionables;
+- tests unitarios verdes sin PostgreSQL.
+
+## Rollback lógico
+
+- antes de una migración: revertir código conservando compatibilidad;
+- después de una migración: corregir forward-only;
+- no borrar cargos ni liquidaciones;
+- ante datos ambiguos: bloquear y reportar;
+- restaurar desde backup sólo en operación controlada;
+- un fallo transaccional debe revertir cargo y snapshot juntos.
 
 ## Validación
 
-Durante tareas, ejecutar el test focalizado con `Push-Location backend; .\mvnw.cmd -Dtest=Clase test; Pop-Location`. Al gate:
+Comandos mínimos:
 
 ```powershell
+Push-Location backend
+.\mvnw.cmd -Dtest=TarifaDisciplinaPostgreSqlTest,CondicionEconomicaPostgreSqlTest,CargoLiquidacionMigrationPostgreSqlTest,SchedulerIdempotencyPostgreSqlTest test
+Pop-Location
+
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\validate.ps1 -Scope Backend
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\validate.ps1 -Scope Frontend
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\validate.ps1 -Scope All
 ```
 
-Si hay migración, además: Flyway en PostgreSQL limpio, upgrade desde el estado inmediatamente anterior y consultas de reconciliación. No usar `localhost:5432` para pruebas destructivas.
+Si cambia el esquema:
+
+- verificar la siguiente versión libre;
+- probar PostgreSQL vacío;
+- probar upgrade desde V6;
+- ejecutar reconciliación;
+- conservar V1-V6 byte-identical.
 
 ## GATE-1B
 
+- [ ] Caracterización ejecutable completa.
 - [ ] Tarifa futura no afecta período anterior.
-- [ ] Sí afecta el período correspondiente.
+- [ ] Tarifa exacta afecta el período correspondiente.
 - [ ] Condición efectiva aplica sólo desde su vigencia.
-- [ ] Ausencia de tarifa sigue la decisión aprobada, sin fallback oculto.
+- [ ] Ausencia de tarifa falla sin fallback oculto.
 - [ ] Cargo conserva snapshot aunque cambie configuración.
-- [ ] Cargo y snapshot son atómicos y no se duplican.
+- [ ] Cargo y snapshot son atómicos.
+- [ ] Reintentos no duplican origen, cargo ni snapshot.
 - [ ] Mensualidad y matrícula no leen precios legacy.
 - [ ] UI no ofrece dos fuentes de verdad.
-- [ ] Exactitud monetaria, límites e idempotencia pasan en PostgreSQL.
+- [ ] Exactitud monetaria e idempotencia pasan en PostgreSQL.
 - [ ] Base limpia/upgrade pasan si hubo migración.
-- [ ] Backend, Frontend y All están clasificados y documentos actualizados.
+- [ ] Backend, Frontend y All quedan verdes o clasificados.
+- [ ] Bitácora, estado maestro y checklist quedan actualizados.
 
-Al cerrar GATE-1B: integrar su PR sólo con checks verdes, actualizar `main` desde remoto y recién entonces iniciar Etapa 2 desde una rama nueva.
+Al cerrar GATE-1B, actualizar `main` directamente conforme a la preferencia
+operativa vigente y recién después cerrar GATE-2.
