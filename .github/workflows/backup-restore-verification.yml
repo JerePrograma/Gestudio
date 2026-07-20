@@ -9,6 +9,8 @@ on:
       - "backend/src/main/resources/db/migration/**"
       - "backend/Dockerfile"
       - "docker-compose.yml"
+      - "docs/operations/backup-restore.md"
+      - "docs/operations/local-runbook.md"
       - ".github/workflows/backup-restore-verification.yml"
   push:
     branches: [main]
@@ -17,6 +19,8 @@ on:
       - "backend/src/main/resources/db/migration/**"
       - "backend/Dockerfile"
       - "docker-compose.yml"
+      - "docs/operations/backup-restore.md"
+      - "docs/operations/local-runbook.md"
       - ".github/workflows/backup-restore-verification.yml"
 
 permissions:
