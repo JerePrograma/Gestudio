@@ -137,7 +137,6 @@ Registrar la ejecución de:
 La entrada debe incluir HEAD, versiones, comandos, exit codes, conteos, fallos,
 recursos residuales y decisión de gate.
 
-<!-- GATE1B-CIERRE-2026-07-20 -->
 ## 2026-07-20 — Implementación y validación de GATE-1B
 
 - HEAD inicial real de `main`: `15481e38f0cf714607d0f7d5c3279a46315d7b5d`.
@@ -155,7 +154,7 @@ recursos residuales y decisión de gate.
 - Scope All: PASS, incluido `docker compose config --quiet`.
 - smoke: 20 pasos PASS, 0 fallos, 00:03:19, V1-V6/RBAC/integridad/reinicio/limpieza PASS, sin residuos Docker.
 - seed: PASS en primera y segunda aplicación, snapshot idéntico, 5/5 logins, denegaciones esperadas, Profesor no asignable, 32 permisos estables, duración 130.2 s, sin residuos Docker.
-- migraciones: V1-V6 sin cambios; no se creó V7.
+- migraciones: V1-V6 sin cambios; no se creó V7 durante GATE-1B.
 - commit de implementación previo al cierre documental: `faa9418eba896a6be49930873afa3dcc4b41d7b6`.
 - documento de evidencia detallada: `15_CIERRE_GATE_1B_2026-07-20.md`.
 - riesgo residual: recorridos humanos, GATE-2, backup/restore, rollback, observabilidad, staging y producción.
@@ -175,3 +174,111 @@ recursos residuales y decisión de gate.
 - recursos Docker residuales de smoke y seed: ninguno.
 - revisiones e hilos pendientes del PR al fusionar: ninguno.
 - no se desplegó; no se usaron bases reales; staging y producción continúan `NO-GO`.
+
+## 2026-07-20 — Integración V7 de referencias firmadas
+
+### Reconstrucción
+
+- issue de Gestudio: `#14`;
+- PR: `#15`;
+- HEAD final validado: `0650d18599da173a3443f73e979f2842ab1357ea`;
+- merge commit en `main`: `e1afec960ddeb72d61932a1eb1f4a83a65899540`;
+- bloqueo externo identificado: `JerePrograma/jere-platform#59`.
+
+### Alcance integrado
+
+- emisor source-owned `GESTUDIO_STUDENT`;
+- payload mínimo: ID, nombre de visualización y activo;
+- mapping explícito a tenant UUID;
+- snapshots/páginas inmutables;
+- SHA-256 y HMAC-SHA256;
+- secreto independiente externo;
+- permisos `PERM_CONFIG_ADMIN` + `PERM_REPORTES_EXPORTAR`;
+- auditoría sanitizada;
+- feature deshabilitada por defecto;
+- Flyway V7 forward-only;
+- sin push automático, scheduler, broker, UI ni Scalaris.
+
+### Fallos y correcciones
+
+1. smoke y seed todavía esperaban exactamente V1-V6;
+2. se reconciliaron cantidad, checksums, historial final y tablas nuevas a V1-V7;
+3. una segunda expectativa residual `BETWEEN 1 AND 6` hizo fallar el smoke final;
+4. se corrigió a 1..7;
+5. el fixture concurrente del scheduler se aisló de inscripciones residuales de otras suites;
+6. todos los workflows temporales de parche fueron eliminados.
+
+### Evidencia
+
+- backend: 162/162 PASS;
+- frontend: 142/142 PASS;
+- lint y build: PASS;
+- imágenes backend/frontend: PASS;
+- Scope All: PASS;
+- smoke V1-V7: PASS;
+- seed doble V1-V7: PASS;
+- `GATE-1B validation`: success;
+- `CI Gestudio`: success;
+- residuos Docker: ninguno.
+
+### Decisión
+
+La capacidad source está integrada y probada. La operación multipágina end-to-end no se declara disponible hasta cerrar `jere-platform#59`. Demo comercial, staging y producción continúan NO-GO.
+
+## 2026-07-20 — Backup y restore reproducible
+
+### Código operativo publicado en `main`
+
+| SHA | Cambio |
+|---|---|
+| `b6fb02d8` | backup PostgreSQL custom, recibos y manifiesto |
+| `5112fac9` | restore protegido |
+| `3c352631` | drill descartable |
+| `b10ce3c0` | workflow permanente de recuperación |
+
+### Primer drill
+
+- branch de evidencia: `agent/ops-backup-restore-docs`;
+- PR: `#18`;
+- workflow: `Backup restore verification`;
+- resultado: FAIL;
+- backup y manifiesto: creados correctamente;
+- cleanup: correcto;
+- causa: `psql` devolvió `1` y `INSERT 0 1`; ambas líneas se interpolaron como ID en un `DELETE`;
+- clasificación: defecto del parser del drill, no del dump;
+- corrección: tomar primera línea y exigir `^[0-9]+$`;
+- el fallo no fue ocultado ni reclasificado.
+
+### Drill verde
+
+- branch head probado: `8ef5405cbc38dbbb6f0b627f27b6f84a4e16ab26`;
+- merge ref probado por Actions: `6f50659f18207104b32a8db76fb14951437b61a2`;
+- runner: Ubuntu 24.04.4;
+- Git: 2.54.0;
+- Docker: 28.0.4;
+- Docker Compose: 2.38.2;
+- PowerShell: 7.6.3;
+- duración: `00:02:17`;
+- pasos: 9 PASS;
+- fallos: 0;
+- resultado global: PASS;
+- artefacto digest: `sha256:987a80fc0de9d9632ceba220acd75faa3548a594ec440873ca9138054f13e521`.
+
+### Casos demostrados
+
+- stack aislado healthy;
+- Flyway V1-V7 origen;
+- alumno y recibo sintéticos;
+- backup consistente con backend detenido;
+- manifiesto, tamaños y hashes válidos;
+- mutación del origen después del backup;
+- rechazo sin confirmación destructiva;
+- rechazo de overwrite de origen sin autorización;
+- restore en base alternativa;
+- alumno, tablas V7 y recibo recuperados;
+- origen no alterado por el restore alternativo;
+- cero contenedores, volúmenes y redes residuales.
+
+### Decisión
+
+Backup y restore quedan cerrados técnicamente en infraestructura descartable. Permanecen abiertos destino externo cifrado, retención, RPO/RTO, responsables, rollback, observabilidad, GATE-2, staging y producción.

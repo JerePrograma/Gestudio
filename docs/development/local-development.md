@@ -1,241 +1,223 @@
 # Desarrollo local
 
+Esta guía describe el entorno de desarrollo. Para una puesta en marcha funcional completa y el flujo de uso, ver [Puesta en marcha y flujo de uso](../operations/local-runbook.md).
+
 ## Requisitos
 
-| Herramienta | Versión de referencia | Uso |
-| --- | --- | --- |
-| Windows PowerShell | 5.1 o PowerShell 7 | Scripts locales y acciones Codex |
-| Git | 2.x | Control de versiones |
-| JDK | 21 | Compilación y ejecución backend |
-| Maven Wrapper | 3.9.10 | Build reproducible; no requiere Maven global |
-| Node.js | 22.14.0 | Build frontend |
-| npm | 10.x | Instalación reproducible con lockfile |
-| Docker Desktop | Engine activo | PostgreSQL y stack en contenedores |
-| Docker Compose | v2 o superior | Orquestación local |
+| Herramienta | Versión de referencia |
+|---|---|
+| PowerShell | 5.1 o 7 |
+| Git | 2.x |
+| JDK | 21 |
+| Maven | Wrapper del repositorio |
+| Node.js | 22.14.0 |
+| npm | 10.x |
+| Docker Desktop | Engine activo |
+| Docker Compose | v2 |
 
-No hay componente Python requerido.
+No se requiere Python para ejecutar Gestudio.
 
-## Preparación inicial
+## Preparación
 
-1. Definí `JAVA_HOME` con la ruta de un JDK 21. En el host auditado: `C:\Program Files\Java\corretto-21.0.7`.
-2. Si vas a usar Compose, creá una configuración local no versionada:
+```powershell
+git switch main
+git pull --ff-only origin main
+Copy-Item .env.local.example .env
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\setup.ps1
+```
 
-   ```powershell
-   Copy-Item .env.local.example .env
-   ```
-
-3. Ajustá puertos o credenciales locales en `.env` si difieren de los ejemplos. Sólo Compose carga `.env`; Maven y Vite reciben variables de la terminal, scripts o IDE.
-4. Resolvé dependencias sin iniciar servicios ni ejecutar tests completos:
-
-   ```powershell
-   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\setup.ps1
-   ```
-
-`setup.ps1` exige JDK 21, usa `backend\mvnw.cmd dependency:go-offline` y `frontend\npm ci`. No instala herramientas globales.
+`setup.ps1` valida JDK 21, resuelve dependencias del backend y ejecuta `npm ci`. No levanta servicios ni acredita que la aplicación esté saludable.
 
 ## Perfiles Spring
 
-- `dev`: perfil local explícito; PostgreSQL local, email no-op y schedulers deshabilitados salvo `APP_SCHEDULING_ENABLED=true`.
-- `test`: email no-op, schedulers deshabilitados, recibos en temporales y Flyway deshabilitado por defecto. Las pruebas PostgreSQL deben proporcionar su datasource aislado.
-- `prod`: datasource, JWT, SMTP/IMAP, CORS, zona horaria y almacenamiento obligatorios; `ddl-auto=validate`; Flyway activo por defecto; email real; schedulers activos.
+- `dev`: PostgreSQL local, email no-op y schedulers apagados salvo habilitación explícita.
+- `test`: infraestructura aislada de pruebas; Testcontainers provee PostgreSQL cuando corresponde.
+- `prod`: configuración externa obligatoria, `ddl-auto=validate`, Flyway activo y sin fallbacks locales.
 
-La configuración común vive en `backend/src/main/resources/application.yml`. No existe un perfil predeterminado: fuera de Compose, el script local o el IDE deben declarar `SPRING_PROFILES_ACTIVE=dev`. Los perfiles no contienen secretos reales.
-
-Flyway aplica V1 como baseline canónica y luego las migraciones forward-only
-V2–V6. V5 crea las estructuras RBAC y backfillea `usuario_roles` desde
-`usuarios.rol_id`; V6 incorpora el catálogo y las matrices productivas. El historial retirado V1-V060 no forma parte del runtime ni
-constituye una ruta de upgrade soportada.
-
-Los scripts no importan `.env`. Para ejecutar Maven/Vite con puertos distintos, exportá las variables en la misma terminal; las rutas con espacios se asignan como strings normales de PowerShell:
+No existe un perfil predeterminado fuera de Compose. Usar explícitamente:
 
 ```powershell
-$env:SPRING_PROFILES_ACTIVE = "dev"
-$env:SPRING_DATASOURCE_URL = "jdbc:postgresql://localhost:5433/gestudio_db"
-$env:BACKEND_PORT = "8090"
-$env:SERVER_PORT = $env:BACKEND_PORT
-$env:FRONTEND_PORT = "5190"
-$env:GESTUDIO_HOME = "C:\ruta con espacios\gestudio"
+$env:SPRING_PROFILES_ACTIVE = 'dev'
 ```
 
-`start-backend.ps1` declara `dev` sólo para la ejecución local cuando la terminal no eligió otro perfil y traduce `BACKEND_PORT` a `SERVER_PORT`. `start-frontend.ps1` pasa `FRONTEND_PORT` a Vite. Compose usa su propio `.env` y mantiene PostgreSQL en 5432 dentro de la red Docker aunque publique otro puerto al host.
+## Flyway
 
-## Ejecución local
+La cadena productiva vigente es V1-V7:
 
-Base de datos:
+- V1: esquema canónico;
+- V5: estructuras RBAC y backfill;
+- V6: catálogo de 32 permisos y matrices base;
+- V7: snapshots y páginas firmadas del emisor Jere Platform.
+
+Reglas:
+
+- V1-V7 son inmutables;
+- cualquier corrección futura requiere V8 o superior;
+- no usar `ddl-auto=update`;
+- no ejecutar down migrations;
+- el seed demo no es una migración;
+- un artefacto de rollback debe conservar todas las migraciones aplicadas.
+
+## Ejecución separada
+
+Base PostgreSQL:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev\start-db.ps1
 ```
 
-Backend:
+Backend, en otra terminal:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev\start-backend.ps1
 ```
 
-Frontend:
+Frontend, en otra terminal:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev\start-frontend.ps1
 ```
 
-Detener sólo los contenedores del proyecto, conservando volúmenes:
+Puertos usuales:
+
+- PostgreSQL: `5432` o `POSTGRES_PORT`;
+- backend: `8080` o `BACKEND_PORT`;
+- frontend Vite: `5173` o `FRONTEND_PORT`.
+
+Detener los contenedores conservando volúmenes:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev\stop.ps1
 ```
 
-Los procesos Maven/Vite iniciados en primer plano se detienen desde su propia terminal. Ningún script ejecuta `docker compose down -v`.
+Maven y Vite se detienen con `Ctrl+C` en sus terminales.
 
-## Docker Compose
-
-`docker-compose.yml` es la configuración local: construye imágenes, usa puertos configurables, healthchecks y nombres de proyecto derivados del worktree. Para worktrees paralelos, definí un `COMPOSE_PROJECT_NAME` distinto sólo si los nombres de directorio coinciden.
+## Docker Compose completo
 
 ```powershell
-docker compose config
-docker compose up -d db
-docker compose ps
+docker compose --env-file .env -p gestudio config
+docker compose --env-file .env -p gestudio up -d --build
+docker compose --env-file .env -p gestudio ps
 ```
 
-`docker-compose.prod.yml` es el único mecanismo de despliegue soportado. Exige secretos y URLs explícitos, elimina la publicación de PostgreSQL heredada del archivo local y no debe iniciarse para desarrollo:
+URLs predeterminadas:
+
+- frontend: `http://localhost:8081`;
+- backend: `http://localhost:8080`;
+- API: `http://localhost:8080/api`;
+- PostgreSQL: `localhost:5432`.
+
+Detener conservando datos:
 
 ```powershell
-docker compose -f docker-compose.yml -f docker-compose.prod.yml config
+docker compose --env-file .env -p gestudio down --remove-orphans
 ```
 
-## Bootstrap único del superadministrador
-
-Sólo para una base sin usuarios, exportá temporalmente las tres variables antes
-de iniciar el backend:
+Eliminar volúmenes sólo cuando esté decidido perder la base y recibos locales:
 
 ```powershell
-$env:APP_BOOTSTRAP_SUPERADMIN_ENABLED = "true"
-$env:APP_BOOTSTRAP_SUPERADMIN_USERNAME = "admin-inicial"
-$bootstrapSecret = Read-Host "Clave inicial" -AsSecureString
-$env:APP_BOOTSTRAP_SUPERADMIN_PASSWORD = [System.Net.NetworkCredential]::new("", $bootstrapSecret).Password
-Remove-Variable bootstrapSecret
+docker compose --env-file .env -p gestudio down --volumes --remove-orphans
 ```
 
-En producción preferí el mecanismo de secretos del entorno. Una vez creado el
-usuario, detené el proceso y eliminá las variables del proceso o del secret
-store. Si la bandera continúa activa al reiniciar, la aplicación falla cerrado.
+`docker-compose.prod.yml` es configuración de despliegue y no debe usarse como atajo de desarrollo.
 
-El rol de máximo privilegio es `SUPERADMIN`. El bootstrap reclama una ejecución
-única, sincroniza `usuarios.rol_id` y `usuario_roles`, usa BCrypt y exige una
-clave externa de 16 a 72 bytes UTF-8. Después del primer arranque se debe recrear
-el backend con `APP_BOOTSTRAP_SUPERADMIN_ENABLED=false`.
+## Bootstrap inicial
 
-El alias `APP_BOOTSTRAP_ADMIN_*` queda sólo por compatibilidad. El reset de una
-clave local existente usa `APP_BOOTSTRAP_ADMIN_RESET_EXISTING_PASSWORD=true` en
-perfil `dev`; no convierte el bootstrap en reconciliador.
-
-## Contrato RBAC
-
-- Login, refresh y perfil devuelven `roles[]` sin `ROLE_` y `permisos[]` con sus códigos persistidos `PERM_*`.
-- Spring agrega `ROLE_` sólo a las authorities de rol; las authorities de permiso conservan el código persistido sin modificación.
-- Roles y permisos inactivos no autorizan.
-- Los JWT no copian authorities; contienen identidad y `auth_version`.
-- El refresh token no aparece en JSON: se rota en una cookie HttpOnly.
-- `usuarios.rol_id` es compatibilidad temporal; `usuario_roles` es la relación
-  efectiva y los cambios de seguridad incrementan `auth_version`.
-
-## Smoke integrado local
-
-El smoke canónico construye y levanta un proyecto Compose único con puertos,
-red y volúmenes efímeros; no usa la base local ni se conecta a
-`localhost:5432`:
+Sólo sobre una base sin usuarios:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke-local.ps1
+$env:APP_BOOTSTRAP_SUPERADMIN_ENABLED = 'true'
+$env:APP_BOOTSTRAP_SUPERADMIN_USERNAME = 'admin-inicial'
+$secret = Read-Host 'Clave inicial' -AsSecureString
+$env:APP_BOOTSTRAP_SUPERADMIN_PASSWORD = [System.Net.NetworkCredential]::new('', $secret).Password
+Remove-Variable secret
 ```
 
-Ejecuta bootstrap, seguridad, login/refresh, reinicio con bootstrap apagado,
-alumno, inscripción/matrícula, cargo, pagos e idempotencia, recibo/outbox, caja,
-egreso/reversión, stock/reversión, persistencia tras reinicio y auditorías SQL de
-solo lectura. El detalle operativo está en [Smoke local](../testing/smoke-local.md).
+La clave debe tener entre 16 y 72 bytes UTF-8. Después del primer arranque:
 
-Los volúmenes `postgres_data` y `receipts_data` son persistentes. No se eliminan en setup, cleanup ni stop.
+1. confirmar el login;
+2. apagar `APP_BOOTSTRAP_SUPERADMIN_ENABLED`;
+3. recrear el backend.
 
-PM2 no está soportado. Se retiró su configuración incompleta para no mantener dos mecanismos productivos divergentes.
+Mantener la bandera activa provoca un fallo cerrado.
 
 ## Validación
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\status.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\validate.ps1
-```
-
-Validaciones parciales:
-
-```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\validate.ps1 -Scope Backend
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\validate.ps1 -Scope Frontend
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\validate.ps1 -Scope All
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke-local.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\validate-demo-seed.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\ops\verify-backup-restore.ps1
 ```
 
-El gate completo ejecuta `mvnw.cmd clean verify`, lint, tests frontend sólo si existe el script, build y `docker compose config`. Conserva el primer código de error y muestra todos los resultados.
+`Scope All` ejecuta backend, lint, tests frontend, build y validación Compose. No usar `-SkipTests`.
 
-El contrato frontend no interactivo es `npm test`, que ejecuta `vitest run` una
-sola vez y termina. El modo de desarrollo queda separado y explícito:
+## Demo persistente
 
 ```powershell
-Push-Location frontend
-npm test
-npm run test:watch
-Pop-Location
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\demo-local.ps1 -Action Start
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\demo-local.ps1 -Action Status
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\demo-local.ps1 -Action Stop
 ```
 
-CI y `validate.ps1` usan únicamente `npm test`, sin reenviar argumentos.
+Guía: [Demo local persistente](../testing/demo-local.md).
 
-En CI, `clean verify` se ejecuta primero en el runner con acceso a Docker para que Testcontainers use PostgreSQL 15. La construcción de imágenes es un job posterior y el `Dockerfile` backend empaqueta con `-DskipTests`; no monta `docker.sock` ni intenta iniciar Testcontainers dentro de BuildKit. Ambas imágenes se etiquetan con el SHA verificado. El workflow acepta push a `main`, pull requests y ejecución manual mediante `workflow_dispatch`; no publica imágenes ni despliega.
+## Backup y restore
 
-La baseline `041a27fd` se validó localmente el 2026-07-01 con 70 tests backend,
-16 tests frontend, ambos Compose y ambas imágenes en verde. La evidencia completa
-está en el [worklog canónico](../refactor/16-canonical-v1-worklog.md#cierre-de-reproducibilidad-ci-y-docker---2026-07-01).
-
-## Configuración local de Codex
-
-Script de configuración, pestaña Windows:
+Backup consistente de base y recibos:
 
 ```powershell
-$ErrorActionPreference = "Stop"
-Set-StrictMode -Version Latest
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\setup.ps1
-exit $LASTEXITCODE
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File .\scripts\ops\backup-postgres.ps1 `
+  -EnvFile .\.env `
+  -ProjectName gestudio `
+  -OutputDirectory D:\Backups\Gestudio `
+  -StopBackend
 ```
 
-Script de limpieza, pestaña Windows:
+Drill descartable:
 
 ```powershell
-$ErrorActionPreference = "Stop"
-Set-StrictMode -Version Latest
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\cleanup.ps1
-exit $LASTEXITCODE
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\ops\verify-backup-restore.ps1
 ```
 
-Las variables y acciones completas están en [Variables de entorno](environment-variables.md#variables-recomendadas-para-codex) y en la entrega de esta auditoría.
+Runbook: [Backup y restore](../operations/backup-restore.md).
 
-Acciones recomendadas; todas usan `C:\laburo\gestudio` como directorio de ejecución:
+## Integración V7
 
-| Nombre | Comando |
-| --- | --- |
-| Estado | `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\status.ps1` |
-| Preparar entorno | `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\setup.ps1` |
-| Validar todo | `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\validate.ps1` |
-| Validar backend | `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\validate.ps1 -Scope Backend` |
-| Validar frontend | `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\validate.ps1 -Scope Frontend` |
-| Smoke integrado | `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke-local.ps1` |
-| Iniciar base | `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev\start-db.ps1` |
-| Iniciar backend | `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev\start-backend.ps1` |
-| Iniciar frontend | `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev\start-frontend.ps1` |
-| Ver servicios | `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\status.ps1` |
-| Detener servicios | `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev\stop.ps1` |
+Permanece deshabilitada por defecto. Para una prueba administrativa controlada se requieren:
 
-## Solución de problemas
+```text
+APP_JERE_PLATFORM_STUDENT_EXPORT_ENABLED=true
+APP_JERE_PLATFORM_STUDENT_EXPORT_ORGANIZATION_ID=<id estable>
+APP_JERE_PLATFORM_STUDENT_EXPORT_TENANT_ID=<UUID>
+APP_JERE_PLATFORM_STUDENT_EXPORT_CURRENT_SECRET=<32 bytes o más>
+```
 
-- `java -version` muestra Java 8 pero existe JDK 21: corregí `JAVA_HOME`; los scripts usan directamente `%JAVA_HOME%\bin\java.exe`.
-- Maven informa `JAVA_HOME ... not defined correctly`: la ruta no existe o no contiene `bin\java.exe`.
-- Puerto 5432 ocupado: cambiá `POSTGRES_PORT` en `.env`; el backend en Docker sigue usando `db:5432` internamente.
-- Docker CLI funciona pero Engine no: iniciá Docker Desktop y esperá a que `docker info` finalice con código 0.
-- `npm ci` falla: no reemplaces por `npm install`; verificá que `frontend/package-lock.json` esté presente y sincronizado.
-- El backend no valida el esquema: iniciá PostgreSQL, revisá credenciales y no cambies `ddl-auto` a `update`.
-- Producción rechaza el inicio: completá todas las variables marcadas como obligatorias; no agregues fallbacks inseguros.
+No habilitar como operación end-to-end hasta cerrar `JerePrograma/jere-platform#59`.
+
+## Diagnóstico
+
+```powershell
+docker compose --env-file .env -p gestudio ps
+docker compose --env-file .env -p gestudio logs --tail 200 db backend frontend
+docker volume ls --filter label=com.docker.compose.project=gestudio
+```
+
+Problemas frecuentes:
+
+- Java no es 21: corregir `JAVA_HOME`;
+- Docker CLI sin Engine: iniciar Docker Desktop;
+- puerto ocupado: cambiarlo en `.env`;
+- Flyway falla: no editar una migración aplicada;
+- Hibernate falla: revisar datasource y mantener `ddl-auto=validate`;
+- bootstrap falla tras crear usuario: apagar la bandera;
+- falta tarifa: crear una vigencia histórica, no usar campos legacy;
+- restore rechazado: usar una base alternativa y confirmaciones explícitas.
+
+## Límites
+
+Un entorno local verde no autoriza demo comercial, staging ni producción. Permanecen pendientes rollback, observabilidad, GATE-2 y recorridos humanos.

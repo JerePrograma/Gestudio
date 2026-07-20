@@ -230,8 +230,9 @@ try {
         Assert-Equal -Actual $flyway.Trim() -Expected '7|7' -Message 'Flyway origen inválido'
         Pass 'Flyway V1-V7 en origen'
 
-        $studentId = Invoke-Sql -Database $sourceDatabase -Sql "INSERT INTO alumnos(nombre, apellido, fecha_incorporacion, activo) VALUES ('Backup', '$marker', DATE '2026-07-20', true) RETURNING id"
-        Assert-True -Condition (-not [string]::IsNullOrWhiteSpace($studentId)) -Message 'No se insertó el alumno sintético.'
+        $studentResult = Invoke-Sql -Database $sourceDatabase -Sql "INSERT INTO alumnos(nombre, apellido, fecha_incorporacion, activo) VALUES ('Backup', '$marker', DATE '2026-07-20', true) RETURNING id"
+        $studentId = (($studentResult -split "`r?`n") | Select-Object -First 1).Trim()
+        Assert-True -Condition ($studentId -match '^[0-9]+$') -Message "La inserción no devolvió un ID numérico: $studentResult"
         Invoke-Native -FilePath 'docker' -Arguments @(
             'exec', $backendContainer, 'sh', '-ec',
             'printf "%s" "$1" > "/app/data/receipts/$2"',

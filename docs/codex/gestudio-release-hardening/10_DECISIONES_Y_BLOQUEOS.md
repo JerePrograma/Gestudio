@@ -1,271 +1,224 @@
-# Decisiones y bloqueos
+# Decisiones y bloqueos vigentes
 
-> Última revisión: **2026-07-20**  
+> Fecha de corte: 20 de julio de 2026  
 > Rama operativa: `main`  
-> Estado global: **desarrollo local habilitado; demo interna, demo comercial, staging y producción en `NO-GO`**
+> Estado global: **NO-GO para demo comercial, staging y producción**
 
-[Índice](./00_INDEX.md) · [Estado actual](./12_ESTADO_ACTUAL_Y_BACKLOG.md) · [Checklist](./11_CHECKLIST_RELEASE.md) · [Bitácora de continuidad](./13_BITACORA_CONTINUIDAD.md)
+Una implementación integrada, una prueba ejecutada y una autorización de despliegue son estados distintos. Este documento contiene sólo decisiones vigentes; la secuencia histórica se conserva en las bitácoras.
 
-## Regla de interpretación
+## Decisiones técnicas
 
-Una recomendación no equivale a una decisión. Una implementación integrada no
-equivale a una prueba ejecutada sobre el HEAD actual. Una suite verde no
-autoriza staging o producción.
+### DEC-RBAC-001 — Seguridad fail-closed
 
-Estados:
+- catálogo exacto de 32 permisos;
+- `SUPERADMIN`, `DIRECCION`, `ADMINISTRADOR`, `SECRETARIA` y `CAJA`;
+- `PROFESOR` inactivo, sin permisos y no asignable;
+- backend como autoridad;
+- rutas no inventariadas denegadas;
+- 401 sin autenticación, 403 sin permiso, 409 para conflictos reales;
+- frontend condicionado por permisos efectivos;
+- STOMP retirado.
 
-- `TOMADA`: contrato funcional o técnico definido;
-- `VALIDADO`: existe evidencia ejecutada identificada;
-- `DEFERRED`: decisión consciente de no incluir;
-- `PENDING`: falta definición, evidencia o ejecución;
-- `BLOCKED`: no puede continuar sin una condición concreta;
-- `CERRADO`: el bloqueo dejó de existir.
+Estado: **INTEGRADA Y VALIDADA**.
 
-## Resumen
+### DEC-DB-001 — Flyway forward-only
 
-| ID | Estado vigente | Efecto actual |
-|---|---|---|
-| `DEC-RBAC-001` | `TOMADA / INTEGRADA` | Catálogo de 32 permisos y matrices base en V6 |
-| `DEC-DB-001` | `TOMADA / VALIDADA` | V1-V6 inmutables; cambios futuros forward-only |
-| `DEC-OWNERSHIP-001` | `TOMADA / DEFERRED SAFE` | `PROFESOR` inactivo, sin permisos y no asignable |
-| `DEC-WS-001` | `TOMADA / INTEGRADA` | STOMP retirado; REST/email permanecen |
-| `DEC-PRICING-001` | `TOMADA / READY_TO_IMPLEMENT` | GATE-1B puede comenzar desde `main` |
-| `DEC-OBS-001` | `TOMADA / DEFERRED` | Observaciones sin superficie activa |
-| `DEC-ENV-001` | local `TOMADA`; externo `PENDING` | Scripts versionados gobiernan local; staging requiere definición |
-| `DEC-RELEASE-001` | `TOMADA: NO-GO EXTERNO` | Demo y despliegues requieren gates y autorización separados |
+- V1-V7 son inmutables;
+- V6 conserva catálogo y matrices RBAC;
+- V7 conserva snapshots/páginas del emisor firmado;
+- no se edita una migración aplicada;
+- no se ejecutan down migrations;
+- una corrección futura requiere V8 o superior;
+- el seed demo no es una migración;
+- rollback de código debe conservar todas las migraciones ya aplicadas.
 
-## Decisiones
+Estado: **INTEGRADA Y VALIDADA**.
 
-### DEC-RBAC-001 — Matriz base de roles y permisos
+### DEC-FIN-001 — Liquidación por vigencia
 
-**Decisión:** conservar los 15 códigos preexistentes y agregar exactamente 17
-permisos funcionales, para un catálogo total de 32.
-
-Matriz:
-
-- `SUPERADMIN`: 32;
-- `DIRECCION`: 31, sin `PERM_ROLES_ADMIN`;
-- `ADMINISTRADOR`: 31, por compatibilidad;
-- `SECRETARIA`: 17;
-- `CAJA`: 8;
-- `PROFESOR`: 0, inactivo y no asignable.
-
-Reglas:
-
-- no hay bypass por rol;
-- backend es autoridad;
-- `/api/**` exige acceso general y permiso funcional;
-- rutas no inventariadas se deniegan;
-- roles personalizados y asignaciones no canónicas se preservan;
-- el seed demo no configura RBAC productivo.
-
-**Estado:** `TOMADA / INTEGRADA`. GATE-1 está cerrado.
-
-### DEC-DB-001 — Cadena Flyway y cambios forward-only
-
-**Decisión:** V1-V6 son la cadena productiva conocida y permanecen inmutables.
-V6 contiene catálogo y matrices RBAC.
-
-Consecuencias:
-
-- no editar una migración aplicada;
-- cualquier corrección requiere una versión posterior libre;
-- probar base vacía y upgrade desde la versión anterior;
-- incluir precondiciones, reconciliación y verificación;
-- no usar `gestudio_demo_seed_full.sql` como migración;
-- no borrar historia financiera o de seguridad para “normalizar”.
-
-**Estado:** `TOMADA / VALIDADA HISTÓRICAMENTE`.
-
-### DEC-OWNERSHIP-001 — Rol Profesor
-
-**Decisión:** primera release con `PROFESOR` presente pero:
-
-- `activo=false`;
-- sin permisos;
-- no asignable;
-- sin rutas ni acciones visibles.
-
-Sólo puede reabrirse después de implementar y probar:
-
-`principal → usuario → profesor → disciplinas → alumnos/asistencias`.
-
-La prueba obligatoria usa dos profesores y demuestra acceso cruzado denegado.
-
-**Estado:** `TOMADA / DEFERRED SAFE`.
-
-### DEC-WS-001 — WebSocket y notificaciones
-
-**Decisión:** retirar STOMP/SockJS de la primera release y mantener REST/email.
-
-Reintroducir tiempo real exige:
-
-- URL y protocolo por ambiente;
-- origins explícitos;
-- autenticación de handshake;
-- autorización por destino;
-- aislamiento por usuario;
-- pruebas de seguridad propias.
-
-**Estado:** `TOMADA / INTEGRADA`.
-
-### DEC-PRICING-001 — Liquidación por vigencia
-
-**Decisión funcional aprobada:**
-
-| Tema | Contrato |
+| Tema | Contrato vigente |
 |---|---|
-| Fecha mensual | Primer día del `YearMonth` |
+| Fecha mensual | primer día del `YearMonth` |
 | Fecha matrícula | 1 de enero |
-| Sin tarifa | Rechazar; sin fallback legacy |
-| Prioridad | Costo particular efectivo no nulo; si no, tarifa efectiva |
-| Bonificación | Snapshots de condición efectiva |
-| Historia | Última fila `vigenteDesde <= fecha` |
-| Legacy | Compatibilidad física; fuera de cálculo/edición |
-| Fórmula | `formula_version = 1` |
-| Matrícula multidisciplina | Máximo importe efectivo entre disciplinas activas |
+| Tarifa | última `vigenteDesde <= fechaEfectiva`; obligatoria |
+| Condición | opcional; última efectiva |
+| Precio | costo particular efectivo no nulo; si no, tarifa histórica |
+| Descuento | snapshots porcentual/fijo, escala monetaria 2, `HALF_UP` |
+| Resultado negativo | abortar y revertir |
+| Fórmula | versión 1 |
+| Matrícula multidisciplina | mayor importe final; empate por menor inscripción |
+| Recargo | cargo tardío separado |
+| Legacy | compatible físicamente, fuera de cálculo y edición operativa |
 
-La condición económica puede estar ausente; en ese caso se usa la tarifa sin
-descuento. La ausencia de tarifa bloquea la liquidación.
+Cargo y snapshot se persisten en la misma transacción. Un cargo existente sin snapshot es inconsistencia y no se reconstruye con configuración actual.
 
-**Estado:** `TOMADA / READY_TO_IMPLEMENT`. El bloqueo por RBAC terminó; comenzar
-por `E1B-001` y tests de caracterización.
+Estado: **INTEGRADA Y VALIDADA**.
 
-### DEC-OBS-001 — Observaciones de profesores
+### DEC-DEMO-001 — Demo sintética y separada
 
-**Decisión:** conservar tabla, entidad y datos históricos, pero excluir la
-función de la primera release.
+- seed únicamente sobre base descartable o expresamente demo;
+- cinco usuarios con claves solicitadas en cada `Start`/`Reset`;
+- ejecución doble idempotente;
+- demo persistente separada de los gates descartables;
+- no usar datos reales;
+- demo automatizada PASS no equivale a demo humana aprobada.
 
-No habilitar hasta definir:
+Estado: **AUTOMATIZADA Y VALIDADA; RECORRIDO HUMANO PENDIENTE**.
 
-- necesidad comercial;
-- permiso dedicado;
-- privacidad;
-- ownership;
-- endpoints y contratos coherentes;
-- pruebas de acceso propio y cruzado.
+### DEC-JP-001 — Emisor source-owned V7
 
-**Estado:** `TOMADA / DEFERRED`.
+- Gestudio conserva propiedad del perfil de estudiante;
+- exporta sólo ID, nombre de visualización y activo;
+- mapping deployment/academia → tenant UUID explícito;
+- secreto HMAC independiente y externo;
+- snapshots/páginas inmutables;
+- permiso doble administrativo;
+- feature deshabilitada por defecto;
+- sin push, scheduler, broker, UI ni Scalaris;
+- no declarar end-to-end operativo hasta cerrar `JerePrograma/jere-platform#59`.
 
-### DEC-ENV-001 — Entorno y mutaciones externas
+Estado: **CAPACIDAD INTEGRADA; OPERACIÓN EXTERNA BLOQUEADA**.
 
-**Decisión local:**
+### DEC-BACKUP-001 — Punto consistente de backup
 
-- `scripts/codex/setup.ps1` y `scripts/codex/validate.ps1` son el contrato
-  versionado;
-- no editar manualmente configuración autogenerada como fuente de verdad;
-- setup no inicia Docker ni acredita salud;
-- Docker y servicios se ejecutan conscientemente;
-- no usar una base real o `localhost:5432` para pruebas destructivas.
+- `pg_dump` custom es la copia de PostgreSQL;
+- los recibos se incluyen en archivo separado;
+- cuando se incluyen recibos, el backend debe detenerse para obtener consistencia de aplicación;
+- backup sólo DB puede ejecutarse con backend activo y se marca sin archivo de recibos;
+- paquete incompleto se elimina;
+- manifiesto registra HEAD, Flyway, tamaños y SHA-256;
+- paquetes reales se almacenan fuera de Git y del host de aplicación.
 
-**Decisión externa:** staging y producción requieren host, dominio, TLS,
-secretos, responsables, datos permitidos, ventana, backup/restore y rollback.
+Estado: **IMPLEMENTADA Y VALIDADA TÉCNICAMENTE**.
 
-**Estado:** local `TOMADA`; externo `PENDING / NO-GO`.
+### DEC-RESTORE-001 — Restaurar primero a base alternativa
 
-### DEC-RELEASE-001 — Estado de salida
+- restore destructivo requiere confirmación explícita;
+- bases reservadas y nombres inseguros se rechazan;
+- sobrescribir la base origen se rechaza por defecto;
+- el procedimiento recomendado restaura primero en una base distinta;
+- tamaños y hashes se validan antes de destruir destino;
+- Flyway se verifica después de `pg_restore`;
+- recibos requieren confirmación independiente y backend detenido;
+- base y archivos no forman una transacción distribuida.
 
-Se distinguen cinco decisiones:
+Estado: **IMPLEMENTADA Y VALIDADA TÉCNICAMENTE**.
+
+### DEC-ROLLBACK-001 — Rollback compatible con esquema aplicado
+
+- no usar una imagen que no contenga las migraciones ya registradas;
+- no borrar V7 ni su historial;
+- desactivar el emisor mediante feature flag es la primera respuesta operacional;
+- un artefacto de rollback debe incluir V1-V7 aunque revierta código funcional;
+- el drill debe volver después al artefacto actual y demostrar datos/Flyway intactos.
+
+Estado: **TOMADA; DRILL PENDIENTE**.
+
+### DEC-RELEASE-001 — Autorizaciones separadas
 
 | Salida | Estado |
 |---|---|
-| Continuar desarrollo y validación local | `GO` |
-| Demo interna | `NO-GO` hasta validación y recorridos |
-| Demo comercial | `NO-GO` hasta demo interna aprobada |
-| Staging | `NO-GO` hasta ambiente, restore, rollback y autorización |
-| Producción | `NO-GO` hasta todos los gates y autorización final |
+| Desarrollo y validación local | GO |
+| Demo automatizada | PASS |
+| Demo humana | pendiente |
+| Demo comercial | NO-GO |
+| Staging | NO-GO |
+| Producción | NO-GO |
 
-Un build, commit o smoke aislado no cambia estas decisiones.
+Ningún commit, merge, build, smoke o restore cambia por sí solo una autorización externa.
 
-## Bloqueos
+## Decisiones diferidas
 
-### BLK-001 — Autoridad para matriz RBAC
+- `PROFESOR`: sólo reabrir con ownership backend y prueba cruzada entre dos profesores.
+- Observaciones de profesores: conservar historia, sin superficie ni permisos activos.
+- Portal de alumnos/familias: fuera de primera release.
+- Mercado Pago y facturación electrónica: diferidos.
+- WhatsApp automático: diferido.
+- Multi-sede y multi-tenancy: diferidos.
+- Transporte automático a Jere Platform: diferido hasta contrato receptor y autorización.
 
-**Estado:** `CERRADO` el 2026-07-14.
+## Bloqueos cerrados
 
-La matriz fue aprobada, implementada, validada históricamente e integrada.
+| ID | Bloqueo | Evidencia de cierre |
+|---|---|---|
+| BLK-RBAC | matriz y autorización | GATE-1 integrado y revalidado |
+| BLK-FIN | doble fuente financiera | GATE-1B integrado; fuentes legacy fuera de operación |
+| BLK-DEMO-AUTO | falta de evidencia automatizada | smoke y seed doble PASS |
+| BLK-V7-SCHEMA | gates todavía esperaban V6 | smoke/seed reconciliados y V1-V7 PASS |
+| BLK-BACKUP | backup no implementado | dump, recibos, manifiesto y hashes probados |
+| BLK-RESTORE | restore no ensayado | base alternativa, V7, datos y recibo recuperados |
 
-### BLK-002 — Suite frontend roja del baseline
+## Bloqueos abiertos
 
-**Estado:** `CERRADO` el 2026-07-14.
+### BLK-JP-059 — Receptor multipágina externo
 
-Los tres fallos preexistentes fueron corregidos; la evidencia histórica terminó
-en 21 archivos/140 tests, lint y build verdes.
+Dependencia: `JerePrograma/jere-platform#59`.
 
-### BLK-003 — Integración remota RBAC
+Impacto: impide declarar operativa la reconciliación end-to-end. No bloquea el emisor local deshabilitado.
 
-**Estado:** `CERRADO`.
+### BLK-ROLLBACK — Artefacto anterior compatible
 
-La documentación histórica hablaba de un PR y merge pendientes. Los cambios ya
-forman parte de `main`; GATE-1B está habilitado.
+Falta demostrar:
 
-### BLK-004 — Evidencia actual del demo
+- artefacto rollback con V1-V7;
+- cambio de imagen sin down migration;
+- backend healthy;
+- datos y Flyway preservados;
+- retorno al artefacto actual.
 
-**Estado:** `BLOCKED POR EJECUCIÓN`.
+Bloquea staging y producción.
 
-El seed, validador y lanzador persistente existen en `main`, pero no se registró
-una corrida completa sobre el HEAD actual.
-
-Condición de cierre:
-
-- Backend, Frontend y All con exit codes;
-- smoke canónico;
-- `validate-demo-seed.ps1`;
-- segunda ejecución idéntica;
-- sin recursos Docker residuales;
-- cinco logins y matriz representativa 200/400/401/403;
-- entrada en la bitácora de continuidad.
-
-### BLK-005 — Doble fuente financiera
-
-**Estado:** `ABIERTO / TÉCNICO`.
-
-Mensualidades y matrículas todavía consumen campos legacy, mientras tarifas,
-condiciones y `cargo_liquidaciones` existen sin integración completa.
-
-Condición de cierre: completar `E1B-001..007` y GATE-1B.
-
-### BLK-006 — Ambiente externo y operación
-
-**Estado:** `BLOCKED`.
+### BLK-OBS — Observabilidad
 
 Faltan:
 
-- host y dominio;
-- TLS y CORS;
-- secretos;
-- responsables y ventana;
-- política y automatización de backup;
-- restore aislado;
-- artefacto anterior;
-- rollback ensayado;
-- health, métricas, alertas y runbook;
-- autorización explícita.
+- health de aplicación y dependencias;
+- métricas mínimas;
+- logs sanitizados y correlacionados;
+- alertas;
+- runbook de incidentes y escalamiento.
 
-No bloquea desarrollo local ni GATE-1B. Bloquea staging y producción.
+Bloquea staging y producción.
 
-## Próximas acciones
+### BLK-UX — Recorrido humano y GATE-2
 
-1. ejecutar y registrar validaciones del HEAD actual;
-2. corregir cualquier fallo del demo;
-3. iniciar `E1B-001`;
-4. cerrar GATE-1B;
-5. completar UX crítica;
-6. aprobar demo interna;
-7. definir y ensayar staging;
-8. considerar producción sólo con autorización.
+Faltan:
 
-El cambio de cualquier decisión debe actualizar este documento,
-[12_ESTADO_ACTUAL_Y_BACKLOG.md](./12_ESTADO_ACTUAL_Y_BACKLOG.md),
-[11_CHECKLIST_RELEASE.md](./11_CHECKLIST_RELEASE.md) y
-[13_BITACORA_CONTINUIDAD.md](./13_BITACORA_CONTINUIDAD.md).
+- IDs técnicos visibles;
+- búsquedas humanas exhaustivas;
+- estados loading/empty/error;
+- pagos, caja, egresos, recibos, stock y asistencia;
+- foco, teclado, labels, contraste y móvil;
+- recorridos de los cinco roles.
 
-<!-- GATE1B-DECISIONES-2026-07-20 -->
-## Decisiones incorporadas — 20 de julio de 2026
+Bloquea demo comercial.
 
-1. **Rama/PR excepcional**: se autorizó `agent/gate-1b-liquidacion-vigencia` y PR `#13` porque el entorno local no podía clonar GitHub ni ejecutar Docker/PowerShell. `main` quedó protegido hasta obtener evidencia.
-2. **Desempate de matrícula**: menor ID de inscripción después de comparar `importeFinal` descendente.
-3. **Compatibilidad API**: campos legacy permanecen temporalmente para deserialización, pero todo valor no nulo se rechaza; no hay pérdida silenciosa de intención.
-4. **Disciplina nueva**: se crea la ficha y se redirige a Tarifas para cargar una vigencia explícita; los importes legacy no se presentan como fuente efectiva.
-5. **Sin migración nueva**: V1-V6 cubren el snapshot requerido; no existe necesidad material para V7.
-6. **NO-GO sostenido**: cierre de GATE-1B no habilita demo comercial, staging ni producción.
+### BLK-OPS-POLICY — Política real de recuperación
+
+Aunque el drill técnico está verde, faltan:
+
+- destino externo cifrado;
+- frecuencia y retención;
+- RPO y RTO;
+- responsables;
+- prueba periódica;
+- gestión y rotación de secretos.
+
+Bloquea staging y producción.
+
+### BLK-ENV — Ambiente externo
+
+Faltan host, dominio, TLS, CORS, cookies, secret manager, responsables, ventana y autorización.
+
+Bloquea staging y producción.
+
+## Próximas acciones obligatorias
+
+1. integrar documentación y evidencia de backup/restore;
+2. ejecutar rollback forward-compatible;
+3. cerrar observabilidad mínima;
+4. completar GATE-2 y recorridos humanos;
+5. definir política operativa y secretos;
+6. disponer staging;
+7. repetir todos los gates en staging;
+8. mantener producción en NO-GO hasta decisión independiente.
