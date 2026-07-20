@@ -33,6 +33,9 @@ class SchedulerIdempotencyPostgreSqlTest extends PostgreSqlIntegrationTest {
     @Timeout(30)
     void dosEjecucionesSimultaneasNoDuplicanMensualidadesMatriculasCargosNiSnapshots() throws Exception {
         String suffix = UUID.randomUUID().toString();
+        // PostgreSqlIntegrationTest comparte un contenedor entre clases. El scheduler es global,
+        // por lo que la fixture debe excluir inscripciones activas creadas por pruebas anteriores.
+        jdbc.update("UPDATE inscripciones SET estado = 'INACTIVA' WHERE estado = 'ACTIVA'");
         Long usuario = usuario("scheduler-" + suffix);
         Long profesor = id("""
                 INSERT INTO profesores(nombre, apellido, activo) VALUES (?, 'Scheduler', true) RETURNING id
