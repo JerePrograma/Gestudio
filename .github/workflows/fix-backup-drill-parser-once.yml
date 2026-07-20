@@ -1,0 +1,48 @@
+name: Fix backup drill parser once
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.event.pull_request.head.ref == 'agent/ops-backup-restore-docs'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: agent/ops-backup-restore-docs
+          fetch-depth: 0
+
+      - name: Parse only the returned numeric id
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('scripts/ops/verify-backup-restore.ps1')
+          text = path.read_text(encoding='utf-8-sig')
+          old = '''        $studentId = Invoke-Sql -Database $sourceDatabase -Sql "INSERT INTO alumnos(nombre, apellido, fecha_incorporacion, activo) VALUES ('Backup', '$marker', DATE '2026-07-20', true) RETURNING id"
+          Assert-True -Condition (-not [string]::IsNullOrWhiteSpace($studentId)) -Message 'No se insertó el alumno sintético.'
+          '''
+          new = '''        $studentResult = Invoke-Sql -Database $sourceDatabase -Sql "INSERT INTO alumnos(nombre, apellido, fecha_incorporacion, activo) VALUES ('Backup', '$marker', DATE '2026-07-20', true) RETURNING id"
+          $studentId = (($studentResult -split "`r?`n") | Select-Object -First 1).Trim()
+          Assert-True -Condition ($studentId -match '^[0-9]+$') -Message "La inserción no devolvió un ID numérico: $studentResult"
+          '''
+          if old not in text:
+              if new not in text:
+                  raise SystemExit('No se encontró el bloque de inserción')
+          else:
+              path.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+      - name: Commit fix
+        shell: bash
+        run: |
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scripts/ops/verify-backup-restore.ps1
+          git commit -m "fix(ops): normaliza id devuelto por psql"
+          git push origin HEAD:agent/ops-backup-restore-docs
