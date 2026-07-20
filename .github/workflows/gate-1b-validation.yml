@@ -76,7 +76,26 @@ jobs:
 
       - name: Execute canonical smoke
         shell: pwsh
-        run: ./scripts/smoke-local.ps1
+        run: |
+          ./scripts/smoke-local.ps1 2>&1 | Tee-Object -FilePath smoke-local.log
+          exit $LASTEXITCODE
+
+      - name: Capture residual Docker resources
+        if: always()
+        shell: bash
+        run: |
+          docker ps -a --format '{{.ID}}|{{.Names}}|{{.Status}}' > smoke-docker-resources.log
+          docker volume ls --format '{{.Name}}' >> smoke-docker-resources.log
+
+      - name: Publish smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-evidence
+          path: |
+            smoke-local.log
+            smoke-docker-resources.log
+          if-no-files-found: ignore
 
   validate-demo-seed:
     name: Demo seed
@@ -97,4 +116,23 @@ jobs:
 
       - name: Validate demo seed twice
         shell: pwsh
-        run: ./scripts/validate-demo-seed.ps1
+        run: |
+          ./scripts/validate-demo-seed.ps1 2>&1 | Tee-Object -FilePath demo-seed.log
+          exit $LASTEXITCODE
+
+      - name: Capture residual Docker resources
+        if: always()
+        shell: bash
+        run: |
+          docker ps -a --format '{{.ID}}|{{.Names}}|{{.Status}}' > demo-docker-resources.log
+          docker volume ls --format '{{.Name}}' >> demo-docker-resources.log
+
+      - name: Publish demo evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-seed-evidence
+          path: |
+            demo-seed.log
+            demo-docker-resources.log
+          if-no-files-found: ignore
