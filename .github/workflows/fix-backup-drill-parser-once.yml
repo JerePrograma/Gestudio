@@ -22,24 +22,34 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
+
           path = Path('scripts/ops/verify-backup-restore.ps1')
-          text = path.read_text(encoding='utf-8-sig')
-          old = '''        $studentId = Invoke-Sql -Database $sourceDatabase -Sql "INSERT INTO alumnos(nombre, apellido, fecha_incorporacion, activo) VALUES ('Backup', '$marker', DATE '2026-07-20', true) RETURNING id"
-          Assert-True -Condition (-not [string]::IsNullOrWhiteSpace($studentId)) -Message 'No se insertó el alumno sintético.'
-          '''
-          new = '''        $studentResult = Invoke-Sql -Database $sourceDatabase -Sql "INSERT INTO alumnos(nombre, apellido, fecha_incorporacion, activo) VALUES ('Backup', '$marker', DATE '2026-07-20', true) RETURNING id"
-          $studentId = (($studentResult -split "`r?`n") | Select-Object -First 1).Trim()
-          Assert-True -Condition ($studentId -match '^[0-9]+$') -Message "La inserción no devolvió un ID numérico: $studentResult"
-          '''
-          if old not in text:
-              if new not in text:
-                  raise SystemExit('No se encontró el bloque de inserción')
+          lines = path.read_text(encoding='utf-8-sig').splitlines()
+          for index, line in enumerate(lines):
+              if '$studentId = Invoke-Sql' not in line or 'INSERT INTO alumnos' not in line:
+                  continue
+              indent = line[:len(line) - len(line.lstrip())]
+              replacement = [
+                  line.replace('$studentId =', '$studentResult =', 1),
+                  indent + '$studentId = (($studentResult -split "`r?`n") | Select-Object -First 1).Trim()',
+                  indent + "Assert-True -Condition ($studentId -match '^[0-9]+$') -Message \"La inserción no devolvió un ID numérico: $studentResult\"",
+              ]
+              if index + 1 < len(lines) and 'No se insertó el alumno sintético' in lines[index + 1]:
+                  lines[index:index + 2] = replacement
+              else:
+                  lines[index:index + 1] = replacement
+              path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+              break
           else:
-              path.write_text(text.replace(old, new, 1), encoding='utf-8')
+              if not any('$studentResult = Invoke-Sql' in line for line in lines):
+                  raise SystemExit('No se encontró la inserción de alumno')
 
       - name: Commit fix
         shell: bash
         run: |
+          if git diff --quiet -- scripts/ops/verify-backup-restore.ps1; then
+            exit 0
+          fi
           git diff --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
