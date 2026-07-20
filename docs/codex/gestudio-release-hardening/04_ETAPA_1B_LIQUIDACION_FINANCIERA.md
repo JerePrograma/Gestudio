@@ -281,3 +281,21 @@ Si cambia el esquema:
 
 Al cerrar GATE-1B, actualizar `main` directamente conforme a la preferencia
 operativa vigente y recién después cerrar GATE-2.
+
+<!-- GATE1B-IMPLEMENTADO-2026-07-20 -->
+## Estado de ejecución — 20 de julio de 2026
+
+| ID | Estado | Resultado |
+|---|---|---|
+| E1B-001 | COMPLETADO | caracterización PostgreSQL de vigencias, descuentos, errores, reintentos y cambios de tarifa |
+| E1B-002 | COMPLETADO | `ResultadoLiquidacion` inmutable y `LiquidacionPorVigenciaServicio` único |
+| E1B-003 | COMPLETADO | condición opcional sin alterar `vigente(...)` estricto |
+| E1B-004 | COMPLETADO | mensualidad por fecha efectiva y sin fuentes legacy |
+| E1B-005 | COMPLETADO | cargo + snapshot atómicos; inconsistencias fail-closed |
+| E1B-006 | COMPLETADO | matrícula multidisciplina por mayor importe final; empate por menor inscripción |
+| E1B-007 | COMPLETADO | alta de inscripción revierte agregado completo si falta tarifa |
+| E1B-008 | COMPLETADO | API rechaza valores legacy no nulos; `recargoId` conserva semántica tardía |
+| E1B-009 | COMPLETADO | UI retira edición legacy y dirige a tarifas/condiciones |
+| E1B-010 | COMPLETADO | 149 backend, 142 frontend, Scope All, smoke y seed PASS |
+
+Resultado: **GATE-1B cerrado técnicamente**. No se modificaron V1-V6, no se creó V7 y no se desplegó.

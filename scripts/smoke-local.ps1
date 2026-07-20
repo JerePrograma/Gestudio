@@ -439,6 +439,13 @@ try {
             nombre = "Disciplina-$suffix"; salonId = $salon.id; profesorId = $profesor.id
             valorCuota = "25.00"; matricula = "10.00"; claseSuelta = "5.00"; clasePrueba = "0.00"; horarios = @()
         } -ExpectedStatus 200).Json
+        $tarifaBusinessNow = Get-BusinessNow
+$tarifaVigenteDesde = [datetime]::new($tarifaBusinessNow.Year, 1, 1).ToString("yyyy-MM-dd")
+$tarifa = (Invoke-Api -Method "POST" -Path "/disciplinas/$($disciplina.id)/tarifas" -Body @{
+    vigenteDesde = $tarifaVigenteDesde; valorCuota = "25.00"; matricula = "10.00"
+    claseSuelta = "5.00"; clasePrueba = "0.00"; motivo = "Tarifa efectiva smoke $suffix"
+} -ExpectedStatus 201).Json
+Assert-Equal -Actual $tarifa.vigenteDesde -Expected $tarifaVigenteDesde -Message "Tarifa inicial sin vigencia efectiva"
         $subconcepto = (Invoke-Api -Method "POST" -Path "/sub-conceptos" -Body @{
             id = $null; descripcion = "SMOKE-$suffix"
         } -ExpectedStatus 200).Json
@@ -476,7 +483,7 @@ try {
 
         $inscripcionBody = @{
             id = $null; alumnoId = $alumno.id; disciplinaId = $disciplina.id
-            bonificacionId = $null; fechaInscripcion = $today; costoParticular = $null
+            fechaInscripcion = $today
         }
         $inscripcion = (Invoke-Api -Method "POST" -Path "/inscripciones" -Body $inscripcionBody -ExpectedStatus 201).Json
         Assert-Equal -Actual ([long]$inscripcion.alumnoId) -Expected ([long]$alumno.id) -Message "Alumno de inscripcion incorrecto"
@@ -488,7 +495,10 @@ try {
         $anio = $businessNow.Year
         $matricula = Invoke-Api -Method "GET" -Path "/matriculas/alumno/$($alumno.id)?anio=$anio" -ExpectedStatus 200
         Assert-Equal -Actual $matricula.Json.estado -Expected "EMITIDA" -Message "Matricula automatica ausente"
-        Pass "Inscripcion"
+        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM cargo_liquidaciones l JOIN cargos c ON c.id=l.cargo_id LEFT JOIN mensualidades m ON m.id=c.mensualidad_id LEFT JOIN matriculas ma ON ma.id=c.matricula_id WHERE (m.inscripcion_id=$($inscripcion.id) OR ma.alumno_id=$($alumno.id)) AND l.formula_version=1 AND l.origen_precio='TARIFA_HISTORICA'") -Expected "2" -Message "Mensualidad y matricula no tienen snapshots historicos"
+Assert-Equal -Actual (Invoke-Sql "SELECT c.importe_original FROM cargos c JOIN mensualidades m ON m.id=c.mensualidad_id WHERE m.inscripcion_id=$($inscripcion.id) AND m.anio=$anio AND m.mes=$($businessNow.Month)") -Expected "25.00" -Message "Mensualidad no uso tarifa efectiva"
+Assert-Equal -Actual (Invoke-Sql "SELECT c.importe_original FROM cargos c JOIN matriculas m ON m.id=c.matricula_id WHERE m.alumno_id=$($alumno.id) AND m.anio=$anio") -Expected "10.00" -Message "Matricula no uso tarifa efectiva"
+Pass "Inscripcion y liquidacion por vigencia"
 
         $cargoKey = "cargo-$suffix"
         $cargo = (Invoke-Api -Method "POST" -Path "/cargos/concepto" -Body @{

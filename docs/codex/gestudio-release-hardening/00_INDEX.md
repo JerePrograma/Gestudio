@@ -117,3 +117,8 @@ Esta evidencia no reemplaza una repetición sobre el HEAD actual.
 
 El repositorio está habilitado para continuar desarrollo y validación local. No
 está autorizado para declarar operación productiva.
+
+<!-- GATE1B-INDEX-2026-07-20 -->
+## Cierre de Etapa 1B
+
+- [`15_CIERRE_GATE_1B_2026-07-20.md`](15_CIERRE_GATE_1B_2026-07-20.md): evidencia consolidada, contrato implementado, pruebas, demo, riesgos y decisión global.

@@ -484,3 +484,19 @@ orquestación y en retirar las fuentes legacy.
 **Veredicto provisional:** implementar sin V7, comenzar por caracterización y no
 publicar cambios financieros hasta ejecutar PostgreSQL, backend, frontend y el
 gate integrado.
+
+<!-- GATE1B-AUDITORIA-CORREGIDA-2026-07-20 -->
+## Correcciones demostradas por implementación y pruebas
+
+- la auditoría confirmó correctamente que `cargo_liquidaciones` era suficiente; no se necesitó V7;
+- `CondicionEconomicaServicio.vigente(...)` conserva su contrato estricto y se agregó `vigenteOpcional(...)`;
+- mensualidad y matrícula comparten una única composición financiera;
+- los snapshots se crean dentro de la misma transacción que origen y cargo;
+- un cargo existente sin snapshot no se reconstruye tardíamente;
+- un fallo inducido de snapshot revierte cargo y origen;
+- un fallo inducido de cargo no deja snapshot;
+- el reintento no toma una tarifa creada después del cargo original;
+- matrícula compara importes finales y desempata por menor ID de inscripción;
+- `Disciplina.valorCuota`, `Disciplina.matricula`, `Inscripcion.costoParticular` y `Inscripcion.bonificacion` dejaron de ser fuentes financieras;
+- `bonificacionId`/`costoParticular` legacy se rechazan explícitamente en API y se retiraron de UI;
+- V1-V6 permanecen byte-identical dentro del alcance del PR.

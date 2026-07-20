@@ -136,3 +136,42 @@ Registrar la ejecución de:
 
 La entrada debe incluir HEAD, versiones, comandos, exit codes, conteos, fallos,
 recursos residuales y decisión de gate.
+
+<!-- GATE1B-CIERRE-2026-07-20 -->
+## 2026-07-20 — Implementación y validación de GATE-1B
+
+- HEAD inicial real de `main`: `15481e38f0cf714607d0f7d5c3279a46315d7b5d`.
+- HEAD funcional previo: `3f314ba8cc61a71bfa434a46593cd02336ec16e5`; los once commits posteriores eran documentales.
+- rama excepcional: `agent/gate-1b-liquidacion-vigencia`.
+- PR excepcional: `#13`.
+- motivo: entorno local sin resolución DNS a GitHub, Docker ni PowerShell; `main` se mantuvo intacta durante implementación.
+- entorno local: Git 2.47.3, Java/Javac 21.0.10, Node 22.16.0, npm 10.9.2; suites locales `NO_EJECUTADO`.
+- runner: Ubuntu 24.04.4, Git 2.54.0, Java/Javac 21.0.11, Maven Wrapper 3.9.9, Node 22.14.0, npm 10.9.2, Docker 28.0.4, Compose 2.38.2, PowerShell 7.5.2.
+- archivos funcionales inspeccionados/modificados: servicios de mensualidad, matrícula, inscripción, tarifas, snapshots; DTO/API; formularios de inscripción y disciplina; suites PostgreSQL; scripts de validación, smoke y seed.
+- decisión: tarifa obligatoria por vigencia; condición opcional; fórmula única; snapshot atómico; matrícula por mayor importe final con desempate por menor ID de inscripción; campos legacy rechazados y retirados de UI.
+- baseline reproducido: 129 tests, 128 PASS, 1 FAIL por fixture de stock no reconciliable; fixture corregido sin debilitar auditoría.
+- backend final previo al cierre documental: 149 tests, 149 PASS, 0 fallos, 0 errores, 0 omitidos; 54.655 s acumulados.
+- frontend: 142 tests PASS, lint PASS, build PASS.
+- Scope All: PASS, incluido `docker compose config --quiet`.
+- smoke: 20 pasos PASS, 0 fallos, 00:03:19, V1-V6/RBAC/integridad/reinicio/limpieza PASS, sin residuos Docker.
+- seed: PASS en primera y segunda aplicación, snapshot idéntico, 5/5 logins, denegaciones esperadas, Profesor no asignable, 32 permisos estables, duración 130.2 s, sin residuos Docker.
+- migraciones: V1-V6 sin cambios; no se creó V7.
+- commit de implementación previo al cierre documental: `faa9418eba896a6be49930873afa3dcc4b41d7b6`.
+- documento de evidencia detallada: `15_CIERRE_GATE_1B_2026-07-20.md`.
+- riesgo residual: recorridos humanos, GATE-2, backup/restore, rollback, observabilidad, staging y producción.
+- decisión global: GATE-1B PASS técnico; GATE-2 abierto; demo comercial/staging/producción NO-GO.
+
+## 2026-07-20 — Integración final de GATE-1B en `main`
+
+- PR `#13` fusionado mediante merge commit para preservar los commits temáticos.
+- merge SHA: `23546e025177ff810944808d468a60b91cf621eb`.
+- HEAD validado previo al merge: `37168b05426e6704d911d0685484443fbfabc4de`.
+- workflows sobre el HEAD validado: `GATE-1B validation` PASS y `CI Gestudio` PASS.
+- Backend final: 149/149 tests, `clean verify` PASS, exit code 0, total Maven `01:02 min`.
+- Frontend final: 142/142 tests, lint PASS, build PASS, exit code 0.
+- Scope All: backend, frontend y `docker compose config --quiet` PASS, exit code 0.
+- smoke final: 20/20 pasos, 0 fallos, `00:03:08`, exit code 0.
+- seed final: primera y segunda aplicación PASS con snapshot idéntico, 5/5 logins, `138.6 s`, exit code 0.
+- recursos Docker residuales de smoke y seed: ninguno.
+- revisiones e hilos pendientes del PR al fusionar: ninguno.
+- no se desplegó; no se usaron bases reales; staging y producción continúan `NO-GO`.

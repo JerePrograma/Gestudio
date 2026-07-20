@@ -352,3 +352,30 @@ Pendiente:
 El próximo cambio de estado debe actualizar este checklist,
 [12_ESTADO_ACTUAL_Y_BACKLOG.md](./12_ESTADO_ACTUAL_Y_BACKLOG.md) y
 [13_BITACORA_CONTINUIDAD.md](./13_BITACORA_CONTINUIDAD.md).
+
+<!-- GATE1B-CHECKLIST-2026-07-20 -->
+## Evidencia agregada — 20 de julio de 2026
+
+- [x] Java 21 y Maven Wrapper verificados.
+- [x] Backend `clean verify` sin `-SkipTests`: 149/149.
+- [x] PostgreSQL real mediante Testcontainers.
+- [x] Frontend lint: PASS.
+- [x] Frontend test: 142/142.
+- [x] Frontend build: PASS.
+- [x] Scope All: PASS.
+- [x] Docker Compose config: PASS.
+- [x] Smoke canónico: 20/20.
+- [x] Seed demo aplicado dos veces con snapshot idéntico.
+- [x] Cinco usuarios demo autenticados y matrices RBAC estables.
+- [x] PROFESOR inactivo/no asignable.
+- [x] V1-V6 verificadas y sin cambios.
+- [x] Recursos Docker residuales: ninguno.
+- [ ] Recorrido humano completo por rol.
+- [ ] GATE-2 UX crítica.
+- [ ] Backup/restore.
+- [ ] Rollback operativo.
+- [ ] Observabilidad.
+- [ ] Staging.
+- [ ] Producción.
+
+La aprobación técnica de GATE-1B no autoriza staging ni producción.

@@ -101,11 +101,13 @@ const DisciplinasFormulario = () => {
           activo: values.activo,
           horarios: values.horarios,
         });
+        toast.success("Disciplina guardada correctamente.");
+        navigate("/disciplinas");
       } else {
-        await disciplinasApi.registrarDisciplina(values);
+        const creada = await disciplinasApi.registrarDisciplina(values);
+        toast.success("Disciplina creada. Cargá ahora su tarifa inicial con vigencia.");
+        navigate(`/disciplinas/${creada.id}/tarifas`);
       }
-      toast.success("Disciplina guardada correctamente.");
-      navigate("/disciplinas");
     } catch {
       toast.error("No se pudo guardar la disciplina.");
     } finally {
@@ -121,12 +123,13 @@ const DisciplinasFormulario = () => {
           <TextField label="Nombre" value={values.nombre} onChange={(value) => setValues({ ...values, nombre: value })} required />
           <label className="auth-label">Salón<select className="form-input" required value={values.salonId} onChange={(event) => setValues({ ...values, salonId: Number(event.target.value) })}><option value={0}>Seleccione</option>{salones.map((salon) => <option key={salon.id} value={salon.id}>{salon.nombre}</option>)}</select></label>
           <label className="auth-label">Profesor<select className="form-input" required value={values.profesorId} onChange={(event) => setValues({ ...values, profesorId: Number(event.target.value) })}><option value={0}>Seleccione</option>{profesores.map((profesor) => <option key={profesor.id} value={profesor.id}>{profesor.apellido}, {profesor.nombre}</option>)}</select></label>
-          <TextField label="Valor de cuota" value={values.valorCuota} onChange={(value) => setValues({ ...values, valorCuota: value })} required />
-          <TextField label="Matrícula" value={values.matricula} onChange={(value) => setValues({ ...values, matricula: value })} />
-          <TextField label="Clase suelta" value={values.claseSuelta ?? ""} onChange={(value) => setValues({ ...values, claseSuelta: value })} />
-          <TextField label="Clase de prueba" value={values.clasePrueba ?? ""} onChange={(value) => setValues({ ...values, clasePrueba: value })} />
           {id && <label className="auth-label flex items-center gap-2"><input type="checkbox" checked={values.activo} onChange={(event) => setValues({ ...values, activo: event.target.checked })} />Activa</label>}
         </div>
+
+        <p className="mt-4 rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground">
+          Los importes no se editan en la disciplina. Cuota, matrícula, clase suelta y clase de prueba se administran en Tarifas con una fecha de vigencia explícita. Cambiar esta ficha no reescribe precios históricos.
+        </p>
+
         <div className="mt-6 space-y-3">
           <div className="flex justify-between items-center"><h2 className="text-lg font-semibold">Horarios</h2><Boton type="button" onClick={() => setValues({ ...values, horarios: [...values.horarios, emptyHorario()] })} className="page-button-secondary">Agregar horario</Boton></div>
           {values.horarios.map((horario, index) => (
@@ -148,7 +151,7 @@ const DisciplinasFormulario = () => {
 };
 
 const TextField = ({ label, value, onChange, required = false }: { label: string; value: string; onChange: (value: string) => void; required?: boolean }) => (
-  <label className="auth-label">{label}<input className="form-input" type="text" inputMode={label === "Nombre" ? undefined : "decimal"} value={value} required={required} onChange={(event) => onChange(event.target.value)} /></label>
+  <label className="auth-label">{label}<input className="form-input" type="text" value={value} required={required} onChange={(event) => onChange(event.target.value)} /></label>
 );
 
 export default DisciplinasFormulario;

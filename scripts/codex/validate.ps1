@@ -9,6 +9,7 @@ Set-StrictMode -Version Latest
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.."))
 $results = [ordered]@{}
 $firstExitCode = 0
+$isWindowsHost = [Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT
 
 function Invoke-Step {
     param(
@@ -44,19 +45,34 @@ if ($Scope -in "All", "Backend") {
     if ([string]::IsNullOrWhiteSpace($env:JAVA_HOME)) {
         throw "JAVA_HOME no está definido."
     }
-    $javac = Join-Path $env:JAVA_HOME "bin\javac.exe"
-    if (-not (Test-Path -LiteralPath $javac)) {
-        throw "JAVA_HOME no contiene bin\javac.exe: $env:JAVA_HOME"
+
+    $javacName = if ($isWindowsHost) { "javac.exe" } else { "javac" }
+    $javac = Join-Path $env:JAVA_HOME "bin/$javacName"
+    if (-not (Test-Path -LiteralPath $javac -PathType Leaf)) {
+        throw "JAVA_HOME no contiene bin/$javacName`: $env:JAVA_HOME"
     }
     $javacVersion = (& $javac -version | Out-String)
     if ($javacVersion -notmatch '^javac 21(?:\.|$)') {
         throw "La validación requiere JDK 21."
     }
 
+    $mavenWrapperName = if ($isWindowsHost) { "mvnw.cmd" } else { "mvnw" }
+    $mavenWrapper = Join-Path $repoRoot "backend/$mavenWrapperName"
+    if (-not (Test-Path -LiteralPath $mavenWrapper -PathType Leaf)) {
+        throw "No se encontró Maven Wrapper en $mavenWrapper"
+    }
+
     $env:GESTUDIO_HOME = $repoRoot
     Invoke-Step "backend clean verify" {
         Push-Location (Join-Path $repoRoot "backend")
-        try { & ".\mvnw.cmd" clean verify }
+        try {
+            if ($isWindowsHost) {
+                & $mavenWrapper clean verify
+            }
+            else {
+                & bash $mavenWrapper clean verify
+            }
+        }
         finally { Pop-Location }
     }
 }
@@ -68,7 +84,7 @@ if ($Scope -in "All", "Frontend") {
         finally { Pop-Location }
     }
 
-    $package = Get-Content -Raw (Join-Path $repoRoot "frontend\package.json") | ConvertFrom-Json
+    $package = Get-Content -Raw (Join-Path $repoRoot "frontend/package.json") | ConvertFrom-Json
     if ($package.scripts.PSObject.Properties.Name -contains "test") {
         Invoke-Step "frontend test" {
             Push-Location (Join-Path $repoRoot "frontend")

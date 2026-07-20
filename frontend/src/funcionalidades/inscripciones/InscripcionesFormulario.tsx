@@ -5,7 +5,6 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "react-toastify";
 import alumnosApi from "../../api/alumnosApi";
 import { getApiErrorMessage, getFieldErrors } from "../../api/apiError";
-import bonificacionesApi from "../../api/bonificacionesApi";
 import disciplinasApi from "../../api/disciplinasApi";
 import inscripcionesApi from "../../api/inscripcionesApi";
 import Boton from "../../componentes/comunes/Boton";
@@ -13,12 +12,10 @@ import EmptyState from "../../componentes/comunes/EmptyState";
 import ErrorState from "../../componentes/comunes/ErrorState";
 import FormField from "../../componentes/comunes/FormField";
 import LoadingState from "../../componentes/comunes/LoadingState";
-import MoneyInput from "../../componentes/comunes/MoneyInput";
 import PageHeader from "../../componentes/comunes/PageHeader";
 import SectionCard from "../../componentes/comunes/SectionCard";
 import { queryKeys } from "../../hooks/queryKeys";
 import type { AlumnoResponse, InscripcionRegistroRequest, Page } from "../../types/types";
-import { normalizeMoneyInput } from "../../utils/money";
 import { inscripcionEsquema } from "../../validaciones/inscripcionEsquema";
 
 const ALUMNOS_SEARCH_SIZE = 8;
@@ -32,9 +29,7 @@ const positiveId = (value: string | null): number => {
 const emptyRequest: InscripcionRegistroRequest = {
   alumnoId: 0,
   disciplinaId: 0,
-  bonificacionId: null,
   fechaInscripcion: "",
-  costoParticular: "",
 };
 
 const nombreCompletoAlumno = (alumno: AlumnoResponse): string =>
@@ -64,11 +59,6 @@ const InscripcionesFormulario = () => {
   const disciplinas = useQuery({
     queryKey: queryKeys.disciplinas,
     queryFn: disciplinasApi.listarDisciplinas,
-  });
-
-  const bonificaciones = useQuery({
-    queryKey: queryKeys.bonificaciones,
-    queryFn: bonificacionesApi.listarBonificaciones,
   });
 
   const detalle = useQuery({
@@ -104,9 +94,7 @@ const InscripcionesFormulario = () => {
     id: detalle.data.id,
     alumnoId: detalle.data.alumnoId,
     disciplinaId: detalle.data.disciplinaId,
-    bonificacionId: detalle.data.bonificacionId ?? null,
     fechaInscripcion: detalle.data.fechaInscripcion,
-    costoParticular: detalle.data.costoParticular ?? "",
   } : {
     ...emptyRequest,
     alumnoId: presetAlumnoId,
@@ -116,16 +104,9 @@ const InscripcionesFormulario = () => {
     values: InscripcionRegistroRequest,
     helpers: FormikHelpers<InscripcionRegistroRequest>,
   ) => {
-    const costo = values.costoParticular?.trim();
-
-    const request = {
-      ...values,
-      costoParticular: costo ? normalizeMoneyInput(costo) ?? costo : undefined,
-    };
-
     try {
-      if (id) await inscripcionesApi.actualizar(id, request);
-      else await inscripcionesApi.crear(request);
+      if (id) await inscripcionesApi.actualizar(id, values);
+      else await inscripcionesApi.crear(values);
 
       await queryClient.invalidateQueries({ queryKey: queryKeys.all.inscripciones });
       toast.success("Inscripción guardada correctamente.");
@@ -138,11 +119,11 @@ const InscripcionesFormulario = () => {
     }
   };
 
-  if (detalle.isLoading || disciplinas.isLoading || bonificaciones.isLoading) {
+  if (detalle.isLoading || disciplinas.isLoading) {
     return <LoadingState message="Cargando formulario..." />;
   }
 
-  if (detalle.isError || disciplinas.isError || bonificaciones.isError) {
+  if (detalle.isError || disciplinas.isError) {
     return <ErrorState message="No se pudieron cargar los datos del formulario." />;
   }
 
@@ -174,7 +155,7 @@ const InscripcionesFormulario = () => {
                       autoComplete="off"
                       className="form-input"
                       value={busquedaAlumno}
-                      placeholder="Buscar por nombre o apellido"
+                      placeholder="Buscar por nombre, apellido o documento"
                       onChange={(event) => {
                         setAlumnoSeleccionado(null);
                         setBusquedaAlumno(event.target.value);
@@ -198,7 +179,7 @@ const InscripcionesFormulario = () => {
                   </div>
 
                   <span className="form-help">
-                    Buscá el alumno por nombre o apellido. El ID queda sólo para uso interno del sistema.
+                    Buscá una referencia humana; el identificador queda sólo para uso interno.
                   </span>
 
                   {errors.alumnoId && <span className="auth-error">{errors.alumnoId}</span>}
@@ -285,26 +266,6 @@ const InscripcionesFormulario = () => {
                   {errors.disciplinaId && <span className="auth-error">{errors.disciplinaId}</span>}
                 </label>
 
-                <label className="auth-label" htmlFor="bonificacionId">
-                  Bonificación opcional
-                  <select
-                    id="bonificacionId"
-                    name="bonificacionId"
-                    className="form-input"
-                    value={values.bonificacionId ?? ""}
-                    onChange={(event) => void setFieldValue("bonificacionId", event.target.value ? Number(event.target.value) : null)}
-                  >
-                    <option value="">Sin bonificación</option>
-                    {(bonificaciones.data ?? [])
-                      .filter((item) => item.activo)
-                      .map((bonificacion) => (
-                        <option key={bonificacion.id} value={bonificacion.id}>
-                          {bonificacion.descripcion}
-                        </option>
-                      ))}
-                  </select>
-                </label>
-
                 <FormField
                   id="fechaInscripcion"
                   name="fechaInscripcion"
@@ -315,18 +276,10 @@ const InscripcionesFormulario = () => {
                   error={errors.fechaInscripcion}
                   onChange={(event) => void setFieldValue("fechaInscripcion", event.target.value)}
                 />
-
-                <MoneyInput
-                  id="costoParticular"
-                  label="Costo particular opcional"
-                  value={values.costoParticular ?? ""}
-                  error={errors.costoParticular}
-                  onChange={(value) => void setFieldValue("costoParticular", value)}
-                />
               </div>
 
               <p className="mt-4 rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground">
-                El costo particular es opcional. Los cargos y saldos finales se calculan en el backend.
+                La cuota y la matrícula se liquidan con la tarifa histórica vigente para el período. Cualquier costo particular o bonificación debe registrarse en Condiciones económicas con una fecha de vigencia explícita.
               </p>
             </SectionCard>
 

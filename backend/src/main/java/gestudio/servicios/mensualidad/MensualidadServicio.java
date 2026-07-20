@@ -1,9 +1,11 @@
 package gestudio.servicios.mensualidad;
 
 import jakarta.persistence.EntityNotFoundException;
+import gestudio.cuotas.application.LiquidacionCargoServicio;
+import gestudio.cuotas.application.LiquidacionPorVigenciaServicio;
+import gestudio.cuotas.application.ResultadoLiquidacion;
 import gestudio.dto.mensualidad.request.MensualidadRegistroRequest;
 import gestudio.dto.mensualidad.response.MensualidadResponse;
-import gestudio.entidades.Bonificacion;
 import gestudio.entidades.Cargo;
 import gestudio.entidades.EstadoCargo;
 import gestudio.entidades.EstadoInscripcion;
@@ -12,7 +14,6 @@ import gestudio.entidades.Inscripcion;
 import gestudio.entidades.Mensualidad;
 import gestudio.entidades.Recargo;
 import gestudio.infra.errores.TratadorDeErrores.OperacionNoPermitidaException;
-import gestudio.repositorios.BonificacionRepositorio;
 import gestudio.repositorios.CargoRepositorio;
 import gestudio.repositorios.InscripcionRepositorio;
 import gestudio.repositorios.MensualidadRepositorio;
@@ -39,50 +40,56 @@ import java.util.stream.Collectors;
 @Service
 public class MensualidadServicio {
     private static final Logger log = LoggerFactory.getLogger(MensualidadServicio.class);
-    private static final BigDecimal CIEN = new BigDecimal("100");
+
     private final MensualidadRepositorio mensualidades;
     private final InscripcionRepositorio inscripciones;
-    private final BonificacionRepositorio bonificaciones;
     private final RecargoRepositorio recargos;
     private final CargoRepositorio cargos;
     private final CargoServicio cargoServicio;
     private final CargoSaldoServicio saldos;
+    private final LiquidacionPorVigenciaServicio liquidacionesPorVigencia;
+    private final LiquidacionCargoServicio liquidacionesCargo;
     private final Clock clock;
 
     public MensualidadServicio(MensualidadRepositorio mensualidades,
                                InscripcionRepositorio inscripciones,
-                               BonificacionRepositorio bonificaciones,
                                RecargoRepositorio recargos,
                                CargoRepositorio cargos,
                                CargoServicio cargoServicio,
                                CargoSaldoServicio saldos,
+                               LiquidacionPorVigenciaServicio liquidacionesPorVigencia,
+                               LiquidacionCargoServicio liquidacionesCargo,
                                Clock clock) {
         this.mensualidades = mensualidades;
         this.inscripciones = inscripciones;
-        this.bonificaciones = bonificaciones;
         this.recargos = recargos;
         this.cargos = cargos;
         this.cargoServicio = cargoServicio;
         this.saldos = saldos;
+        this.liquidacionesPorVigencia = liquidacionesPorVigencia;
+        this.liquidacionesCargo = liquidacionesCargo;
         this.clock = clock;
     }
 
     @Transactional
     public MensualidadResponse crearMensualidad(MensualidadRegistroRequest request) {
+        validarBonificacionLegacy(request.bonificacionId());
         Inscripcion inscripcion = inscripciones.findByIdForUpdate(request.inscripcionId())
                 .orElseThrow(() -> new EntityNotFoundException("Inscripción no encontrada"));
-        return respuesta(generar(inscripcion, request.anio(), request.mes(), request.bonificacionId(), request.recargoId()));
+        return respuesta(generar(inscripcion, request.anio(), request.mes(), request.recargoId()));
     }
 
     @Transactional(readOnly = true)
     public MensualidadResponse obtenerMensualidad(Long id) {
-        return respuesta(mensualidades.findById(id).orElseThrow(() -> new EntityNotFoundException("Mensualidad no encontrada")));
+        return respuesta(mensualidades.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Mensualidad no encontrada")));
     }
 
     @Transactional(readOnly = true)
     public List<MensualidadResponse> listarPorInscripcion(Long inscripcionId) {
         return mensualidades.findByInscripcionIdOrderByAnioDescMesDesc(inscripcionId).stream()
-                .map(this::respuesta).toList();
+                .map(this::respuesta)
+                .toList();
     }
 
     @Transactional
@@ -112,7 +119,10 @@ public class MensualidadServicio {
         for (Inscripcion inscripcion : activas) {
             Mensualidad mensualidad = existentes.get(inscripcion.getId());
             if (mensualidad == null) {
-                mensualidad = generarNueva(inscripcion, periodo.getYear(), periodo.getMonthValue(), null, null);
+                mensualidad = generarNueva(inscripcion, periodo.getYear(), periodo.getMonthValue(), null);
+            }
+            else {
+                exigirCargoConLiquidacion(mensualidad);
             }
             resultado.add(respuesta(mensualidad));
         }
@@ -120,27 +130,32 @@ public class MensualidadServicio {
         return resultado;
     }
 
-    private Mensualidad generar(Inscripcion inscripcion, int anio, int mes, Long bonificacionId, Long recargoId) {
-        if (inscripcion.getEstado() != EstadoInscripcion.ACTIVA || !Boolean.TRUE.equals(inscripcion.getAlumno().getActivo())) {
+    private Mensualidad generar(Inscripcion inscripcion, int anio, int mes, Long recargoId) {
+        if (inscripcion.getEstado() != EstadoInscripcion.ACTIVA
+                || !Boolean.TRUE.equals(inscripcion.getAlumno().getActivo())) {
             throw new OperacionNoPermitidaException("La inscripción o el alumno están inactivos");
         }
-        Mensualidad previa = mensualidades.findByInscripcionIdAndAnioAndMes(inscripcion.getId(), anio, mes).orElse(null);
+        Mensualidad previa = mensualidades.findByInscripcionIdAndAnioAndMes(
+                inscripcion.getId(), anio, mes).orElse(null);
         if (previa != null) {
+            exigirCargoConLiquidacion(previa);
             return previa;
         }
-        return generarNueva(inscripcion, anio, mes, bonificacionId, recargoId);
+        return generarNueva(inscripcion, anio, mes, recargoId);
     }
 
-    private Mensualidad generarNueva(Inscripcion inscripcion, int anio, int mes,
-                                      Long bonificacionId, Long recargoId) {
-        Bonificacion bonificacion = bonificacionId == null ? inscripcion.getBonificacion()
-                : bonificaciones.findById(bonificacionId).orElseThrow(() -> new EntityNotFoundException("Bonificación no encontrada"));
+    private Mensualidad generarNueva(Inscripcion inscripcion, int anio, int mes, Long recargoId) {
         Recargo recargo = recargoId == null ? null
-                : recargos.findById(recargoId).orElseThrow(() -> new EntityNotFoundException("Recargo no encontrado"));
+                : recargos.findById(recargoId)
+                .orElseThrow(() -> new EntityNotFoundException("Recargo no encontrado"));
         YearMonth periodo = YearMonth.of(anio, mes);
+        LocalDate fechaEfectiva = periodo.atDay(1);
+        ResultadoLiquidacion liquidacion = liquidacionesPorVigencia.liquidarMensualidad(
+                inscripcion.getId(), fechaEfectiva);
+
         Mensualidad mensualidad = new Mensualidad();
         mensualidad.setInscripcion(inscripcion);
-        mensualidad.setBonificacion(bonificacion);
+        mensualidad.setBonificacion(null);
         mensualidad.setRecargo(recargo);
         mensualidad.setAnio(anio);
         mensualidad.setMes(mes);
@@ -149,34 +164,49 @@ public class MensualidadServicio {
         mensualidad.setDescripcion(inscripcion.getDisciplina().getNombre() + " " + periodo);
         mensualidad.setEstado(EstadoOrigenCargo.EMITIDA);
         mensualidades.save(mensualidad);
-        cargoServicio.crearParaMensualidad(mensualidad, importe(inscripcion, bonificacion));
+
+        Cargo cargo = cargoServicio.crearParaMensualidad(mensualidad, liquidacion.importeFinal());
+        if (liquidacionesCargo.existe(cargo.getId())) {
+            throw new IllegalStateException("El cargo nuevo de mensualidad ya posee una liquidación histórica");
+        }
+        liquidacionesCargo.registrar(cargo, liquidacion, null);
         return mensualidad;
     }
 
-    private BigDecimal importe(Inscripcion inscripcion, Bonificacion bonificacion) {
-        BigDecimal base = inscripcion.getCostoParticular() == null
-                ? inscripcion.getDisciplina().getValorCuota() : inscripcion.getCostoParticular();
-        BigDecimal descuento = BigDecimal.ZERO;
-        if (bonificacion != null) {
-            descuento = base.multiply(bonificacion.getPorcentajeDescuento())
-                    .divide(CIEN, 2, RoundingMode.HALF_UP)
-                    .add(bonificacion.getValorFijo());
+    private Cargo exigirCargoConLiquidacion(Mensualidad mensualidad) {
+        Cargo cargo = cargos.findByMensualidadId(mensualidad.getId())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Inconsistencia financiera: mensualidad sin cargo"));
+        if (!liquidacionesCargo.existe(cargo.getId())) {
+            throw new IllegalStateException(
+                    "Inconsistencia financiera: cargo de mensualidad sin snapshot; no se recalcula con configuración actual");
         }
-        BigDecimal total = base.subtract(descuento).setScale(2, RoundingMode.HALF_UP);
-        if (total.signum() < 0) {
-            throw new OperacionNoPermitidaException("La bonificación supera el valor de la mensualidad");
-        }
-        return total;
+        return cargo;
     }
 
     private MensualidadResponse respuesta(Mensualidad mensualidad) {
-        Cargo cargo = cargos.findByMensualidadId(mensualidad.getId()).orElse(null);
-        SaldoCargo saldo = cargo == null ? null : saldos.calcular(cargo);
-        return new MensualidadResponse(mensualidad.getId(), mensualidad.getInscripcion().getId(), mensualidad.getAnio(),
-                mensualidad.getMes(), mensualidad.getFechaGeneracion(), mensualidad.getFechaVencimiento(),
-                mensualidad.getEstado().name(), mensualidad.getDescripcion(), cargo == null ? null : cargo.getId(),
-                saldo == null ? "0.00" : decimal(saldo.importeOriginal()),
-                saldo == null ? "0.00" : decimal(saldo.saldo()));
+        Cargo cargo = exigirCargoConLiquidacion(mensualidad);
+        SaldoCargo saldo = saldos.calcular(cargo);
+        return new MensualidadResponse(
+                mensualidad.getId(),
+                mensualidad.getInscripcion().getId(),
+                mensualidad.getAnio(),
+                mensualidad.getMes(),
+                mensualidad.getFechaGeneracion(),
+                mensualidad.getFechaVencimiento(),
+                mensualidad.getEstado().name(),
+                mensualidad.getDescripcion(),
+                cargo.getId(),
+                decimal(saldo.importeOriginal()),
+                decimal(saldo.saldo())
+        );
+    }
+
+    private static void validarBonificacionLegacy(Long bonificacionId) {
+        if (bonificacionId != null) {
+            throw new OperacionNoPermitidaException(
+                    "bonificacionId ya no define el precio de una mensualidad; registre una condición económica con vigencia");
+        }
     }
 
     private static String decimal(BigDecimal valor) {
