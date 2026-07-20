@@ -253,6 +253,10 @@ class IdempotenciaCanonicaPostgreSqlTest extends PostgreSqlIntegrationTest {
                 VALUES (?, 5, 20, true, true)
                 RETURNING id
                 """, "Stock " + suffix);
+        jdbc.update("""
+                INSERT INTO movimientos_stock(stock_id, tipo, cantidad, motivo, idempotency_key, usuario_id)
+                VALUES (?, 'INGRESO', 20, 'Fixture inicial reconciliable', ?, ?)
+                """, stockId, key("stock-inicial"), user);
 
         return new Fixture(alumno, metodo, stockId, usuarios.findByIdConRolesYPermisos(user).orElseThrow());
     }
