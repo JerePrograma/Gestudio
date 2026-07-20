@@ -440,7 +440,7 @@ try {
             valorCuota = "25.00"; matricula = "10.00"; claseSuelta = "5.00"; clasePrueba = "0.00"; horarios = @()
         } -ExpectedStatus 200).Json
         $tarifaBusinessNow = Get-BusinessNow
-$tarifaVigenteDesde = [datetime]::new($tarifaBusinessNow.Year, $tarifaBusinessNow.Month, 1).ToString("yyyy-MM-dd")
+$tarifaVigenteDesde = [datetime]::new($tarifaBusinessNow.Year, 1, 1).ToString("yyyy-MM-dd")
 $tarifa = (Invoke-Api -Method "POST" -Path "/disciplinas/$($disciplina.id)/tarifas" -Body @{
     vigenteDesde = $tarifaVigenteDesde; valorCuota = "25.00"; matricula = "10.00"
     claseSuelta = "5.00"; clasePrueba = "0.00"; motivo = "Tarifa efectiva smoke $suffix"

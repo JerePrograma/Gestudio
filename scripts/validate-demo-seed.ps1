@@ -176,6 +176,10 @@ function Invoke-Native {
     )
 
     if (-not $IgnoreDeadline) { Assert-Deadline }
+if (-not $script:isWindowsHost -and [IO.Path]::GetFileName($FilePath) -eq "mvnw") {
+    $Arguments = @($FilePath) + $Arguments
+    $FilePath = "bash"
+}
     $previousErrorAction = $ErrorActionPreference
     try {
         $ErrorActionPreference = "Continue"
@@ -489,7 +493,7 @@ function Build-Backend {
     Push-Location $script:backendRoot
     try {
         Invoke-Native -FilePath $script:mavenWrapper -Arguments @(
-            "-q", "-DskipTests", "package"
+            "-q", "package"
         )
     }
     finally { Pop-Location }
