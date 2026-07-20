@@ -1,0 +1,50 @@
+name: Backup restore verification
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - "scripts/ops/**"
+      - "backend/src/main/resources/db/migration/**"
+      - "backend/Dockerfile"
+      - "docker-compose.yml"
+      - ".github/workflows/backup-restore-verification.yml"
+  push:
+    branches: [main]
+    paths:
+      - "scripts/ops/**"
+      - "backend/src/main/resources/db/migration/**"
+      - "backend/Dockerfile"
+      - "docker-compose.yml"
+      - ".github/workflows/backup-restore-verification.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup-restore-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: PostgreSQL backup and restore
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Execute disposable backup/restore drill
+        shell: pwsh
+        run: |
+          & pwsh -NoProfile -File ./scripts/ops/verify-backup-restore.ps1 2>&1 | Tee-Object -FilePath backup-restore.log
+          exit $LASTEXITCODE
+
+      - name: Publish drill evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backup-restore-evidence
+          path: backup-restore.log
+          if-no-files-found: error
