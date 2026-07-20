@@ -1,587 +1,299 @@
-# Estado actual, alcance y backlog maestro de Gestudio
+# Estado actual y backlog unificado
 
-> Estado: **CANÓNICO PARA CONTINUIDAD**  
-> Fecha de corte: **2026-07-20**  
+> Fecha de corte: 20 de julio de 2026  
 > Zona horaria: `America/Argentina/Buenos_Aires`  
-> Repositorio: `JerePrograma/Gestudio`  
-> Rama operativa: `main`  
-> HEAD remoto revisado: `3f314ba8cc61a71bfa434a46593cd02336ec16e5`  
-> Decisión global: **NO-GO para staging y producción**
+> Rama objetivo: `main`  
+> Estado global: **NO-GO para demo comercial, staging y producción**
 
-Este documento reconcilia el estado real de `main` después de la integración de
-RBAC, el seed de demostración, la estrategia comercial y las mejoras parciales
-de UX. Sustituye las referencias de estado que todavía hablen de una rama RBAC,
-un PR reemplazante pendiente o `origin/main` anterior a julio de 2026.
-
-No sustituye:
-
-- la estrategia comercial canónica;
-- las especificaciones detalladas de cada etapa;
-- la evidencia histórica de la bitácora anterior;
-- una corrida real de tests, smoke, backup/restore o despliegue.
+Este documento reemplaza los estados operativos anteriores. Los documentos históricos conservan la secuencia de decisiones y evidencias, pero este archivo es la fuente vigente para gates, prioridades y próximos pasos.
 
 ## 1. Resumen ejecutivo
 
-| Área | Estado | Veredicto |
+Gestudio tiene integrados y probados:
+
+- baseline reproducible;
+- seguridad y RBAC fail-closed;
+- catálogo de 32 permisos y matrices base;
+- liquidación financiera por vigencia;
+- snapshots atómicos de cargos;
+- Flyway V1-V7;
+- demo interna automatizada y seed idempotente;
+- emisor administrativo firmado de referencias mínimas de estudiantes, deshabilitado por defecto;
+- backup PostgreSQL con manifiesto e inclusión opcional de recibos;
+- restore protegido y drill descartable de recuperación.
+
+Continúan abiertos:
+
+- recorridos humanos completos por rol;
+- GATE-2 UX crítica;
+- rollback forward-compatible de aplicación;
+- observabilidad mínima y alertas;
+- política de backups: retención, cifrado, custodia, RPO y RTO;
+- staging;
+- producción;
+- receptor multipágina de Jere Platform, bloqueado externamente.
+
+## 2. Estado de gates
+
+| Gate o capacidad | Estado | Evidencia principal |
 |---|---|---|
-| Seguridad y RBAC | `INTEGRADO` | Catálogo, matrices, backend, frontend y smoke fueron validados antes de su integración. `PROFESOR` permanece inactivo. |
-| Migraciones | `V1-V6 VALIDADO` | V1-V6 son la cadena productiva conocida. No deben editarse. |
-| Seed demo | `INTEGRADO / EJECUCIÓN ACTUAL NO ACREDITADA` | El seed reconstruido, el validador y el lanzador persistente están en `main`; falta evidencia de corrida integral sobre el HEAD actual. |
-| UX operativa | `PARCIAL` | Hay mejoras en tablas, búsquedas y pantallas, pero GATE-2 no está cerrado. |
-| Liquidación por vigencia | `READY` | El bloqueo por merge RBAC terminó. La implementación aún no comenzó. |
-| Estrategia comercial | `CANÓNICA` | Precios, segmentación, piloto, mensajes y métricas están documentados. |
-| Demo interna | `BLOCKED` | Falta corrida reproducible y recorridos humanos completos por rol. |
-| Demo comercial | `PENDING` | Depende de demo interna aprobada. |
-| Staging | `PENDING / NO AUTORIZADO` | Faltan ambiente, secretos, TLS, backup/restore, monitoreo y rollback. |
-| Producción | `NO-GO` | No existe evidencia suficiente ni autorización. |
+| GATE-0 — baseline y documentación | CERRADO | scripts canónicos, Docker, CI y documentación |
+| GATE-1 — seguridad y RBAC | CERRADO / REVALIDADO | 401/403/409, backend fail-closed, frontend alineado, 32 permisos |
+| GATE-1B — liquidación por vigencia | CERRADO TÉCNICAMENTE | 149 pruebas al cierre y 162 después de V7; snapshot atómico |
+| Flyway V1-V7 | CERRADO | PostgreSQL vacío, smoke, seed y restore |
+| Demo interna automatizada | PASS | seed doble, cinco logins, RBAC e integridad |
+| Demo humana por rol | PENDIENTE | requiere recorrido visual y funcional documentado |
+| Integración Gestudio → Jere Platform | CAPACIDAD SOURCE INTEGRADA | emisor firmado y deshabilitado; end-to-end bloqueado por `jere-platform#59` |
+| Backup técnico | PASS | dump custom, recibos, manifiesto y hashes |
+| Restore técnico aislado | PASS | datos, V7 y recibos recuperados en base alternativa |
+| Política operativa de backup | ABIERTA | faltan destino externo, cifrado, retención, RPO/RTO y responsables |
+| Rollback de aplicación | ABIERTO | falta drill con artefacto compatible con migraciones aplicadas |
+| Observabilidad | ABIERTO | faltan métricas, alertas y runbook de incidentes |
+| GATE-2 — UX crítica | ABIERTO | mejoras parciales; falta recorrido exhaustivo |
+| Staging | NO-GO | no definido ni autorizado |
+| Producción | NO-GO | no autorizada |
 
-### Veredicto
+## 3. Evidencia ejecutada vigente
 
-Gestudio ya no está en el estado inicial de hardening. El RBAC y la base de
-demostración están materialmente más avanzados, y la oferta comercial está
-definida. El cuello de botella cambió:
+### Aplicación
 
-1. demostrar que el entorno demo actual funciona de punta a punta;
-2. corregir la liquidación financiera para usar vigencias y snapshots;
-3. cerrar la UX crítica;
-4. preparar operación real con backup, restore, observabilidad y rollback.
+- backend: **162/162 PASS** después de integrar V7;
+- frontend: **142/142 PASS**;
+- lint: PASS;
+- build frontend: PASS;
+- backend image: PASS;
+- frontend image: PASS;
+- `Scope All`: PASS;
+- Docker Compose local y productivo: configuración válida;
+- smoke canónico: PASS con Flyway V1-V7;
+- seed demo: PASS en primera y segunda aplicación;
+- residuos Docker de esos gates: ninguno.
 
-## 2. Fuentes de autoridad
+### Backup y restore
 
-La prioridad documental y técnica es:
+Drill ejecutado sobre el contenido del PR técnico:
 
-1. migraciones Flyway productivas V1-V6;
-2. código y tests presentes en `main`;
-3. este estado maestro y el checklist vigente;
-4. especificaciones de etapas;
-5. bitácoras históricas;
-6. estrategia comercial para precios y mensajes;
-7. seed manual únicamente como dataset ficticio.
+- runner: Ubuntu 24.04.4;
+- Git 2.54.0;
+- Docker 28.0.4;
+- Docker Compose 2.38.2;
+- PowerShell 7.6.3;
+- duración: `00:02:17`;
+- pasos aprobados: 9;
+- fallos: 0;
+- resultado global: PASS.
 
-Ante contradicción:
+Casos demostrados:
 
-- V1-V6 prevalecen sobre scripts demo;
-- backend prevalece sobre permisos o restricciones sólo visibles en frontend;
-- evidencia ejecutada prevalece sobre una casilla o una afirmación documental;
-- la estrategia comercial prevalece sobre precios copiados en correos o piezas;
-- un commit integrado no equivale a una prueba ejecutada sobre ese commit.
+1. stack aislado healthy;
+2. Flyway V1-V7 en origen;
+3. fixture sintética de alumno y recibo;
+4. backup consistente con backend detenido;
+5. manifiesto, tamaños y SHA-256 válidos;
+6. mutación posterior del origen;
+7. restore sin confirmación rechazado;
+8. overwrite del origen sin autorización rechazado;
+9. restore en base alternativa;
+10. alumno, tablas V7 y recibo recuperados;
+11. origen no modificado por el restore alternativo;
+12. cleanup sin contenedores, volúmenes ni redes residuales.
 
-## 3. Estado Git y remoto verificado
+## 4. Capacidades cerradas
 
-| Dato | Valor |
-|---|---|
-| Repositorio | `JerePrograma/Gestudio` |
-| Rama por defecto | `main` |
-| HEAD remoto | `3f314ba8cc61a71bfa434a46593cd02336ec16e5` |
-| Último commit observado | `feat(frontend): mejora tablas y pantallas de gestion` |
-| PR abiertos | Ninguno observado el 2026-07-20 |
-| Issues abiertos | Ninguno observado el 2026-07-20 |
-| Status checks para HEAD | Ninguno publicado por la API consultada |
-| Workflow runs para HEAD | Ninguno publicado por la API consultada |
-| Working tree local del usuario | No verificado desde la revisión remota |
+### Seguridad
 
-La ausencia de status checks no es un resultado verde. Significa que la revisión
-remota no encontró una ejecución asociada al HEAD actual.
-
-## 4. Cronología consolidada
-
-### 2026-07-10 a 2026-07-14 — baseline y RBAC
-
-Finalizado:
-
-- inventario de rutas, endpoints, permisos, migraciones y riesgos;
-- documentación inicial del hardening;
-- V6 con 32 permisos y matrices base;
-- autorización backend fail-closed;
-- semántica 401/403/409;
-- alineación de navegación, rutas y acciones frontend;
-- exclusión segura de `PROFESOR`;
-- retiro de STOMP y superficie de Observaciones;
-- tests backend 129/129;
-- tests frontend 140/140, lint y build;
-- validación integrada local;
-- smoke 20/20.
-
-La documentación histórica dejó el cierre remoto como pendiente, pero esos
-cambios ya forman parte de `main`.
-
-### 2026-07-15 — seed demo
-
-Integrado:
-
-- endurecimiento del seed manual;
-- separación estricta entre Flyway, RBAC y datos ficticios;
-- validaciones de conteos e integridad;
-- controles de idempotencia y no modificación de RBAC;
-- documentación de 914 filas gestionadas directamente;
-- reconciliación de pagos, aplicaciones, crédito, caja y stock.
-
-Persisten dos estados distintos:
-
-- **implementación integrada**: sí;
-- **corrida integral sobre HEAD actual registrada**: no acreditada.
-
-### 2026-07-16 — estrategia comercial
-
-Integrado en `docs/comercial/estrategia-comercial.md`:
-
-- posicionamiento;
-- cliente objetivo;
-- propuesta diferencial;
-- bandas por alumnos activos;
-- implementación inicial;
-- descuento anual;
-- promoción de lanzamiento;
-- programa piloto administrado;
-- mensajes de WhatsApp y correo;
-- seguimiento y objeciones;
-- métricas comerciales.
-
-Precios vigentes, cuya fuente normativa sigue siendo el documento comercial:
-
-| Plan | Alumnos activos | Precio mensual |
-|---|---:|---:|
-| Estudio | 1-50 | ARS 39.900 |
-| Academia | 51-150 | ARS 59.900 |
-| Academia Plus | 151-300 | ARS 89.900 |
-| Institución | 301 o más | Desde ARS 119.900 |
-
-### 2026-07-16 — entorno demo persistente
-
-Integrado:
-
-- `scripts/demo-local.ps1`;
-- acciones `Start`, `Status`, `Stop`, `Reset` y `SeedNative`;
-- puertos fijos y detección de conflictos;
-- credenciales solicitadas como `SecureString`;
-- cookie aislada para localhost;
-- ejecución doble del seed;
-- validaciones de frontend, CORS, login, RBAC e integridad;
-- documentación operativa en `docs/testing/demo-local.md`.
-
-No debe confundirse la existencia del script con una corrida verde registrada.
-
-### 2026-07-16 — UX parcial
-
-Integrado:
-
-- corrección de la tabla responsive para no representar `Acciones` como dato;
-- regresión para impedir `undefined` en tablas;
-- preservación de resultados durante búsquedas con `keepPreviousData`;
-- preservación de foco en búsqueda de alumnos;
-- alineación del contrato de roles y permisos;
-- exigencia de API explícita en producción y HTTPS fuera de localhost.
-
-Esto reduce deuda operativa, pero no cierra la lista completa de GATE-2.
-
-## 5. Alcance funcional actual
-
-### 5.1 Gestión académica
-
-Disponible en el producto:
-
-- alumnos e historial;
-- profesores;
-- disciplinas;
-- salones y horarios;
-- inscripciones;
-- asistencias diarias y mensuales.
-
-Pendientes relevantes:
-
-- búsqueda exhaustiva por nombre, apellido, ambos órdenes y documento;
-- recorrido móvil y teclado completo;
-- revisión de estados, textos y referencias humanas;
-- ownership seguro para habilitar `PROFESOR`.
-
-### 5.2 Gestión financiera
-
-Disponible:
-
-- mensualidades y matrículas;
-- cargos;
-- pagos totales y parciales;
-- aplicaciones de pago;
-- movimientos de crédito;
-- caja y egresos;
-- anulaciones y reversiones;
-- recibos y outbox de recibos;
-- tarifas y condiciones económicas con vigencia;
-- tabla de snapshots `cargo_liquidaciones`.
-
-Defecto estructural abierto:
-
-- mensualidades y matrículas todavía calculan con campos legacy;
-- el servicio de snapshots existe, pero no está conectado a esos flujos;
-- la UI conserva fuentes de precio paralelas.
-
-### 5.3 Stock
-
-Disponible:
-
-- productos;
-- movimientos;
-- ventas;
-- cargos asociados;
-- reversiones.
-
-Pendiente:
-
-- validar el recorrido humano completo y que ninguna edición directa rompa el
-  libro de movimientos.
-
-### 5.4 Usuarios y seguridad
-
-Disponible y cerrado para la primera release técnica:
-
-- roles múltiples;
+- roles múltiples efectivos;
+- `SUPERADMIN`, `DIRECCION`, `ADMINISTRADOR`, `SECRETARIA` y `CAJA`;
+- `PROFESOR` inactivo y no asignable;
 - catálogo de 32 permisos;
 - matrices base;
 - invalidación por `authVersion`;
-- roles y usuarios inactivos sin acceso efectivo;
-- separación de Dirección, Secretaría y Caja;
-- `PROFESOR` no asignable;
-- 401 sin autenticación;
-- 403 sin permiso;
-- 409 para conflictos reales;
-- frontend alineado con backend;
+- refresh token en cookie HttpOnly;
+- frontend condicionado por permisos del backend;
 - STOMP retirado.
 
-Pendiente:
+### Finanzas
 
-- sólo reabrir `PROFESOR` con ownership probado entre dos profesores.
+- mensualidades por primer día del mes;
+- matrículas por 1 de enero;
+- tarifa histórica obligatoria;
+- condición económica opcional;
+- costo particular únicamente desde condición efectiva;
+- descuentos con `BigDecimal`, escala 2 y `HALF_UP`;
+- matrícula multidisciplina por mayor importe final;
+- cargo y snapshot atómicos;
+- idempotencia secuencial y concurrente;
+- recargo tardío como cargo separado;
+- campos legacy rechazados en API y retirados de la UI operativa.
 
-## 6. Alcance comercial actual
+### Demo
 
-Se ofrece como **programa piloto administrado**, no como SaaS empresarial con
-SLA maduro.
+- dataset sintético;
+- cinco usuarios y matrices RBAC;
+- ejecución doble idempotente;
+- lanzador persistente `Start/Status/Stop/Reset/SeedNative`;
+- smoke, integridad financiera, caja, stock, recibos y outbox;
+- sin datos reales ni credenciales versionadas.
 
-Incluye comercialmente:
+### Integración V7
 
-- todos los módulos disponibles;
-- una sede;
-- usuarios administrativos sin cargo adicional;
-- cobro por alumnos con al menos una inscripción activa durante el mes;
-- configuración, importación básica, capacitación y acompañamiento inicial;
-- precio desde ARS 39.900 mensuales.
+- referencias mínimas `GESTUDIO_STUDENT`;
+- ID, nombre de visualización y activo únicamente;
+- mapping explícito a tenant UUID;
+- snapshots y páginas inmutables;
+- SHA-256 y HMAC-SHA256;
+- secreto dedicado externo;
+- permisos administrativos dobles;
+- auditoría sanitizada;
+- función deshabilitada por defecto;
+- sin transporte automático.
 
-No se ofrece como disponible:
+### Recuperación
 
-- Mercado Pago integrado;
+- `pg_dump` custom con `--no-owner --no-privileges`;
+- archivo de recibos opcional;
+- manifiesto con HEAD, Flyway, tamaños y SHA-256;
+- backup completo exige consistencia de aplicación;
+- restore destructivo protegido por switches explícitos;
+- restauración sobre base alternativa recomendada y probada;
+- verificación de Flyway posterior al restore;
+- drill permanente en GitHub Actions.
+
+## 5. Backlog priorizado
+
+### P0 — bloqueos de integridad
+
+No se identificó un defecto P0 abierto en el código integrado. Cualquier regresión de seguridad, liquidación, idempotencia, Flyway o restore reabre esta prioridad y bloquea todo lo demás.
+
+### P1 — demo humana y UX
+
+| ID | Tarea | Estado | Criterio de cierre |
+|---|---|---|---|
+| DEMO-HUM-001 | recorrido SUPERADMIN | PENDIENTE | circuito completo y evidencias visuales |
+| DEMO-HUM-002 | recorrido DIRECCION | PENDIENTE | accesos y denegaciones documentados |
+| DEMO-HUM-003 | recorrido ADMINISTRADOR | PENDIENTE | accesos y denegaciones documentados |
+| DEMO-HUM-004 | recorrido SECRETARIA | PENDIENTE | alumno, inscripción y asistencia sin errores |
+| DEMO-HUM-005 | recorrido CAJA | PENDIENTE | cargos, pagos, recibos, caja y stock |
+| UX-001 | eliminar IDs técnicos visibles | PARCIAL | cero IDs en flujos comerciales |
+| UX-002 | búsqueda humana completa | PARCIAL | nombre, apellido, ambos órdenes y documento |
+| UX-003 | loading, empty y error | PENDIENTE | feedback y siguiente acción claros |
+| UX-004 | pagos/caja/egresos/recibos | PENDIENTE | referencias humanas y ARS consistente |
+| UX-005 | stock y reversión | PENDIENTE | sin edición que eluda movimientos |
+| UX-006 | asistencia | PENDIENTE | guardado, error y estado vacío explícitos |
+| UX-007 | accesibilidad básica | PENDIENTE | foco, teclado, labels y contraste |
+| UX-008 | móvil real | PENDIENTE | recorridos principales utilizables |
+
+### P1 — operación
+
+| ID | Tarea | Estado | Criterio de cierre |
+|---|---|---|---|
+| OPS-004 | backup técnico | DONE | paquete, hashes y evidencia automatizada |
+| OPS-005 | restore aislado | DONE | recuperación de DB y recibos, cleanup |
+| OPS-006 | rollback de aplicación | EN PROGRESO | rollback forward-compatible y retorno a versión actual |
+| OPS-007 | observabilidad mínima | PENDIENTE | health real, métricas, logs y alertas |
+| OPS-008 | runbook local | DONE | arranque, uso, backup y diagnóstico |
+| OPS-009 | política de backup | PENDIENTE | cifrado, destino, retención, RPO/RTO y responsables |
+| OPS-010 | gestión de secretos | PENDIENTE | secret manager y rotación demostrados |
+| OPS-011 | TLS/CORS/cookies | PENDIENTE | validación en ambiente destino |
+| OPS-012 | staging | BLOCKED | host, dominio, responsables y ventana |
+
+### Bloqueos externos
+
+| ID | Bloqueo | Impacto |
+|---|---|---|
+| EXT-JP-059 | `JerePrograma/jere-platform#59` | impide declarar operativa la reconciliación multipágina end-to-end |
+| EXT-STAGING | ambiente no provisto | impide ejecutar gates de staging |
+| EXT-PROD | autorización inexistente | impide despliegue productivo |
+
+### P2 — evolución diferida
+
+- reconciliación para retiro físico de columnas legacy;
+- serialización estable de `PageImpl`;
+- configuración explícita del agente Mockito para JDK futuros;
+- política automática de retención de snapshots V7;
+- portal de alumnos/familias;
+- Mercado Pago;
 - WhatsApp automático;
 - facturación electrónica;
-- portal de alumnos o familias;
-- multi-sede real;
-- reservas automáticas;
-- multi-tenancy;
-- alta automática de academias;
-- SLA productivo.
+- multi-sede y multi-tenancy;
+- reapertura del rol Profesor con ownership demostrado.
 
-## 7. Gates vigentes
+## 6. Riesgos
 
-### GATE-0 — baseline y documentación
+### Bloqueantes para staging/producción
 
-Estado: `DONE`, con reconciliación posterior en este documento.
-
-### GATE-1 — seguridad y RBAC
-
-Estado: `DONE / INTEGRADO EN MAIN`.
-
-Evidencia histórica:
-
-- backend 129/129;
-- frontend 140/140;
-- lint y build;
-- validación integrada;
-- smoke 20/20;
-- V6 y matrices exactas.
-
-### GATE-1B — liquidación financiera
-
-Estado: `READY_TO_START`.
-
-Bloqueo anterior cerrado: RBAC ya está integrado en `main`.
-
-No está cerrado porque todavía faltan:
-
-- caracterización ejecutable;
-- servicio único de resolución;
-- integración de mensualidades;
-- integración de matrículas;
-- snapshot transaccional;
-- retiro de lecturas legacy;
-- matriz de regresión PostgreSQL.
-
-### GATE-2 — UX operativa
-
-Estado: `IN_PROGRESS PARCIAL`, sin tarea formal única activa en el repositorio.
-
-Hecho:
-
-- tablas responsive corregidas;
-- foco y continuidad de búsqueda mejorados;
-- algunos IDs técnicos retirados;
-- contratos de roles alineados.
-
-Falta:
-
-- auditoría completa de IDs visibles;
-- búsquedas humanas completas;
-- estados y acciones consistentes;
-- accesibilidad y teclado;
-- recorridos de pagos, caja, egresos, stock y asistencia;
-- validación móvil real.
-
-### GATE-3 — componentes y contratos
-
-Estado: `PENDING`.
-
-No debe convertirse en refactor general. Sólo se extraen contratos exigidos por
-GATE-1B y GATE-2.
-
-### GATE-4 — demo y publicación
-
-Estado: `PENDING / BLOCKED`.
-
-Preparación existente:
-
-- dataset;
-- validador;
-- lanzador persistente;
-- estrategia comercial;
-- circuito narrativo.
-
-Falta:
-
-- corrida completa registrada;
-- demo interna por roles;
-- guion cronometrado;
-- capturas definitivas;
-- procedimiento de recuperación ante fallo;
-- operación productiva.
-
-## 8. Backlog maestro
-
-### Prioridad P0 — integridad y demostrabilidad
-
-| ID | Tarea | Estado | Dependencias | Criterio de cierre |
-|---|---|---|---|---|
-| `DOC-RECON-001` | Reconciliar índice, checklist y estado postintegración | `DONE` al publicar este bloque | Ninguna | No quedan referencias operativas a PR RBAC pendiente |
-| `DEMO-VAL-001` | Ejecutar `validate-demo-seed.ps1` sobre HEAD actual | `READY / NO_EJECUTADO` | Docker, JDK 21, PowerShell | Exit 0, segunda ejecución idéntica y cleanup completo |
-| `DEMO-VAL-002` | Ejecutar Backend, Frontend, All y smoke en HEAD actual | `READY / NO_EJECUTADO` | Entorno local | Conteos y exit codes registrados |
-| `DEMO-RUN-001` | Levantar demo persistente desde cero | `BLOCKED POR EVIDENCIA` | `DEMO-VAL-001/002` | `Start`, logins, RBAC e integridad verdes |
-| `DEMO-RUN-002` | Completar recorrido humano por Dirección, Secretaría y Caja | `PENDING` | Demo persistente | Circuitos y denegaciones documentados |
-| `E1B-001` | Caracterizar cálculo vigente y casos de borde | `READY` | `main` actualizado | Tests rojos/verdes y tabla de casos |
-| `E1B-002` | Crear resolución única de liquidación | `PENDING` | `E1B-001` | Una fórmula y cero fallbacks legacy |
-| `E1B-003` | Integrar mensualidades por vigencia | `PENDING` | `E1B-002` | Cargo y snapshot correctos e idempotentes |
-| `E1B-004` | Integrar matrículas por vigencia | `PENDING` | `E1B-002` | Máximo efectivo entre disciplinas activas, probado |
-| `E1B-005` | Garantizar cargo + snapshot atómicos | `PENDING` | `E1B-003/004` | Cero cargos sin snapshot y cero duplicados |
-| `E1B-006` | Retirar cálculo y edición financiera legacy | `PENDING` | `E1B-003/005` | Cero lecturas financieras legacy |
-| `E1B-007` | Cerrar regresión financiera PostgreSQL | `PENDING` | `E1B-001..006` | Suites focalizadas y completas verdes |
-
-### Prioridad P1 — UX crítica
-
-| ID | Tarea | Estado | Criterio de cierre |
-|---|---|---|---|
-| `UX-001` | Inventario final de IDs técnicos visibles | `PARTIAL` | Cero IDs en flujos comerciales |
-| `UX-002` | Búsqueda humana de alumnos | `PARTIAL` | Nombre, apellido, órdenes y documento |
-| `UX-003` | Tablas responsive y acciones | `PARTIAL` | PC/móvil sin duplicados ni `undefined` |
-| `UX-004` | Estados loading/empty/error | `PENDING` | Feedback y siguiente acción autorizada |
-| `UX-005` | Pagos, caja, recibos y egresos | `PENDING` | Referencias humanas y ARS consistente |
-| `UX-006` | Stock y reversiones | `PENDING` | Sin edición que eluda movimientos |
-| `UX-007` | Asistencia diaria | `PENDING` | Estados y guardado explícitos |
-| `UX-008` | Accesibilidad básica | `PENDING` | Foco, labels, teclado y contraste revisados |
-
-### Prioridad P1 — operación y release
-
-| ID | Tarea | Estado | Criterio de cierre |
-|---|---|---|---|
-| `OPS-001` | Definir ambiente staging | `BLOCKED` | Host, dominio, responsables y ventana |
-| `OPS-002` | Gestión de secretos | `PENDING` | Secretos fuera de repo, imagen y logs |
-| `OPS-003` | TLS, CORS, cookies y URLs | `PENDING` | Configuración de ambiente verificada |
-| `OPS-004` | Backup automatizado | `PENDING` | Frecuencia, retención, cifrado y destino |
-| `OPS-005` | Restore aislado | `PENDING` | Restauración y smoke sobre copia |
-| `OPS-006` | Rollback de aplicación | `PENDING` | Artefacto anterior y comandos exactos |
-| `OPS-007` | Observabilidad mínima | `PENDING` | Health, logs, métricas y alertas |
-| `OPS-008` | Runbook operativo | `PENDING` | Diagnóstico, escalamiento y abortar |
-
-### Prioridad P2 — evolución de producto
-
-| ID | Tarea | Estado | Condición de reapertura |
-|---|---|---|---|
-| `PROD-PORTAL-001` | Portal de alumnos/familias | `DEFERRED` | Release interna estable |
-| `PROD-PAY-001` | Integración de cobros | `DEFERRED` | Contrato financiero cerrado |
-| `PROD-WA-001` | WhatsApp/push | `DEFERRED` | Necesidad y costos confirmados |
-| `PROD-MULTI-001` | Multi-sede y multi-tenancy | `DEFERRED` | Modelo institucional definido |
-| `PROD-FISCAL-001` | Facturación electrónica | `DEFERRED` | Alcance fiscal y proveedor definidos |
-| `PROF-OWN-001` | Habilitar rol Profesor | `DEFERRED` | Ownership backend y pruebas cruzadas |
-
-## 9. Próxima ejecución técnica recomendada
-
-El orden correcto es:
-
-1. ejecutar las validaciones completas del HEAD actual;
-2. registrar resultados reales en la bitácora de continuidad;
-3. corregir cualquier fallo del demo antes de usarlo comercialmente;
-4. iniciar `E1B-001` con tests de caracterización;
-5. completar GATE-1B;
-6. retomar el inventario UX con los flujos financieros ya estabilizados;
-7. aprobar demo interna;
-8. recién después preparar staging.
-
-No se debe comenzar staging ni prometer operación productiva mientras el demo
-interno y el restore no estén probados.
-
-## 10. Comandos de evidencia requeridos
-
-Desde PowerShell en la raíz del repositorio:
-
-```powershell
-git status --short --branch
-git rev-parse HEAD
-git fetch --prune origin
-git rev-parse origin/main
-git diff --check
-
-powershell -NoProfile -ExecutionPolicy Bypass `
-  -File .\scripts\codex\validate.ps1 -Scope Backend
-
-powershell -NoProfile -ExecutionPolicy Bypass `
-  -File .\scripts\codex\validate.ps1 -Scope Frontend
-
-powershell -NoProfile -ExecutionPolicy Bypass `
-  -File .\scripts\codex\validate.ps1 -Scope All
-
-powershell -NoProfile -ExecutionPolicy Bypass `
-  -File .\scripts\smoke-local.ps1
-
-powershell -NoProfile -ExecutionPolicy Bypass `
-  -File .\scripts\validate-demo-seed.ps1
-```
-
-Para la demo persistente, sólo después de los gates anteriores:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass `
-  -File .\scripts\demo-local.ps1 -Action Reset
-
-powershell -NoProfile -ExecutionPolicy Bypass `
-  -File .\scripts\demo-local.ps1 -Action Status
-```
-
-Cada comando debe registrar:
-
-- fecha y hora;
-- HEAD exacto;
-- versión de herramientas;
-- exit code;
-- cantidad de tests;
-- fallos y clasificación;
-- recursos residuales;
-- decisión resultante.
-
-## 11. Riesgos actuales
-
-### Bloqueantes
-
-- no hay evidencia ejecutada del HEAD actual en el repositorio;
-- demo interna no aprobada;
-- liquidación financiera sigue usando precios legacy;
-- staging no está definido;
-- restore y rollback no fueron probados.
+- rollback no probado;
+- observabilidad y alertas no cerradas;
+- política de secretos no demostrada en ambiente destino;
+- TLS, CORS, cookies y URLs no validados en un host real;
+- staging inexistente;
+- recorridos humanos incompletos.
 
 ### Altos
 
-- vender el piloto como SaaS maduro;
-- usar el seed sobre una base no descartable;
-- mantener dos fuentes de precio;
-- confundir integración con validación;
-- asumir que ausencia de checks significa CI verde.
+- confundir backup técnico con política operacional completa;
+- restaurar sobre la base origen sin validar antes una base alternativa;
+- usar un artefacto viejo que no contenga migraciones ya aplicadas;
+- habilitar el emisor V7 sin receptor multipágina compatible;
+- vender la demo como SaaS con SLA maduro.
 
 ### Medios
 
-- PDFs demo sin archivo físico;
-- estados y mensajes técnicos en UX;
-- cobertura HTTP representativa pero no exhaustiva en el validador demo;
-- puertos fijos ocupados;
-- tiempo de ejecución alto en Docker frío.
+- PostgreSQL y recibos no se restauran en una transacción distribuida;
+- cobertura visual no exhaustiva;
+- columnas legacy aún presentes físicamente;
+- warnings de `open-in-view`, dialecto y Mockito;
+- tiempo de Docker frío.
 
 ### Aceptados temporalmente
 
 - `PROFESOR` inactivo;
 - Observaciones fuera de superficie;
-- seed no apto para producción;
-- programa piloto sin SLA;
-- una instalación o base separada por cliente mientras no exista multi-tenancy.
+- una instalación/base por cliente;
+- seed sólo para demo descartable;
+- integración V7 manual y deshabilitada;
+- programa piloto sin SLA productivo.
 
-## 12. Criterios para cambiar el veredicto
+## 7. Secuencia obligatoria siguiente
 
-### A demo interna `GO`
+1. integrar el cierre de backup/restore en `main`;
+2. ejecutar un rollback forward-compatible conservando V7;
+3. volver a la versión actual y comprobar datos/Flyway;
+4. cerrar observabilidad mínima;
+5. completar GATE-2 y recorridos humanos por rol;
+6. definir política de backup, secretos y responsables;
+7. obtener un ambiente staging;
+8. ejecutar todos los gates en staging;
+9. mantener producción en NO-GO hasta autorización independiente.
 
-Se requiere:
+## 8. Comandos canónicos
 
-- suites completas verdes sobre el HEAD exacto;
-- seed demo verde e idempotente;
-- demo persistente reproducible;
-- recorridos humanos por rol;
-- circuito alumno → inscripción → cargo → pago → recibo → caja;
-- ausencia de IDs técnicos y acciones rotas en ese circuito;
-- evidencia en bitácora.
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\validate.ps1 -Scope Backend
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\validate.ps1 -Scope Frontend
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\validate.ps1 -Scope All
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke-local.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\validate-demo-seed.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\ops\verify-backup-restore.ps1
+```
 
-### A demo comercial `GO`
+Demo persistente:
 
-Además:
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\demo-local.ps1 -Action Start
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\demo-local.ps1 -Action Status
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\demo-local.ps1 -Action Stop
+```
 
-- guion de 10-15 minutos;
-- capturas definitivas;
-- mensajes alineados con la estrategia canónica;
-- plan de recuperación si falla la demo;
-- aprobación explícita.
+## 9. Veredicto vigente
 
-### A staging `GO`
-
-Además:
-
-- host y dominio;
-- secretos;
-- TLS y CORS;
-- backup y restore;
-- monitoreo;
-- rollback;
-- autorización específica.
-
-### A producción `GO`
-
-Además:
-
-- staging aprobado;
-- artefacto congelado;
-- ventana y responsables;
-- migración y recovery revisados;
-- smoke post-deploy;
-- riesgos residuales aceptados;
-- autorización explícita previa.
-
-## 13. Decisión vigente
-
-**Gestudio continúa en `NO-GO` para staging y producción.**
-
-Está en condiciones de continuar trabajo técnico y preparar una demo interna,
-pero no de afirmar disponibilidad productiva. La próxima tarea de código es
-`E1B-001`; la próxima tarea de evidencia es `DEMO-VAL-001`.
-
-<!-- GATE1B-ESTADO-2026-07-20 -->
-## Estado supersedente al 20 de julio de 2026
-
-| Gate | Estado | Evidencia |
-|---|---|---|
-| GATE-0 | CERRADO | baseline y documentación |
-| GATE-1 | CERRADO / revalidado | RBAC, 401/403/409, backend fail-closed, frontend alineado |
-| GATE-1B | CERRADO TÉCNICAMENTE | 149 backend + 142 frontend, Scope All, smoke y seed PASS |
-| GATE-2 | ABIERTO | UX crítica y recorrido humano pendientes |
-| Demo interna automatizada | PASS | seed doble, 5 logins, RBAC e integridad |
-| Demo comercial | NO-GO | falta recorrido humano y GATE-2 |
-| Staging | NO-GO | backup/restore, rollback y observabilidad pendientes |
-| Producción | NO-GO | no autorizada |
-
-Finalizado: E1B-001 a E1B-010. Pendientes P1: recorridos humanos por rol, GATE-2, backup/restore, rollback, observabilidad y staging. Pendientes P2: reconciliación para retiro físico futuro de columnas legacy, serialización estable de `PageImpl` y agente Mockito para futuros JDK.
+- código financiero: integrado y probado;
+- seguridad: integrada y probada;
+- V7: integrada y probada;
+- demo automatizada: PASS;
+- backup/restore técnico: PASS;
+- demo humana: pendiente;
+- demo comercial: NO-GO;
+- staging: NO-GO;
+- producción: NO-GO;
+- desplegado: no.
