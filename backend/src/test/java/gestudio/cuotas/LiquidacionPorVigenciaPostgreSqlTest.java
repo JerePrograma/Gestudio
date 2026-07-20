@@ -31,12 +31,9 @@ class LiquidacionPorVigenciaPostgreSqlTest extends PostgreSqlIntegrationTest {
         Long marzo = tarifa(fixture, LocalDate.of(2026, 3, 1), "130.00", "60.00");
         tarifa(fixture, LocalDate.of(2026, 8, 1), "180.00", "90.00");
 
-        ResultadoLiquidacion febrero = liquidaciones.liquidarMensualidad(
-                fixture.inscripcionId(), LocalDate.of(2026, 2, 1));
-        ResultadoLiquidacion exacta = liquidaciones.liquidarMensualidad(
-                fixture.inscripcionId(), LocalDate.of(2026, 3, 1));
-        ResultadoLiquidacion julio = liquidaciones.liquidarMensualidad(
-                fixture.inscripcionId(), LocalDate.of(2026, 7, 1));
+        ResultadoLiquidacion febrero = mensualidad(fixture, LocalDate.of(2026, 2, 1));
+        ResultadoLiquidacion exacta = mensualidad(fixture, LocalDate.of(2026, 3, 1));
+        ResultadoLiquidacion julio = mensualidad(fixture, LocalDate.of(2026, 7, 1));
 
         assertThat(febrero.tarifa().getId()).isEqualTo(enero);
         assertThat(febrero.importeBase()).isEqualByComparingTo("100.00");
@@ -49,10 +46,9 @@ class LiquidacionPorVigenciaPostgreSqlTest extends PostgreSqlIntegrationTest {
     @Test
     void condicionEsOpcionalYSeleccionaAnteriorOExactaSinTomarUnaFutura() {
         Fixture fixture = fixture("condiciones", null, null);
-        tarifa(fixture, LocalDate.of(2026, 1, 1), "100.00", "50.00");
+        tarifa(fixture, LocalDate.of(2025, 1, 1), "100.00", "50.00");
 
-        ResultadoLiquidacion sinCondicion = liquidaciones.liquidarMensualidad(
-                fixture.inscripcionId(), LocalDate.of(2025, 12, 1));
+        ResultadoLiquidacion sinCondicion = mensualidad(fixture, LocalDate.of(2025, 12, 1));
         assertThat(sinCondicion.condicion()).isEmpty();
         assertThat(sinCondicion.origen()).isEqualTo(OrigenPrecioLiquidacion.TARIFA_HISTORICA);
 
@@ -60,25 +56,25 @@ class LiquidacionPorVigenciaPostgreSqlTest extends PostgreSqlIntegrationTest {
         Long marzo = condicion(fixture, LocalDate.of(2026, 3, 1), "200.00", "20.0000", "0.00");
         condicion(fixture, LocalDate.of(2026, 8, 1), "900.00", "0.0000", "0.00");
 
-        ResultadoLiquidacion febrero = liquidaciones.liquidarMensualidad(
-                fixture.inscripcionId(), LocalDate.of(2026, 2, 1));
-        ResultadoLiquidacion exacta = liquidaciones.liquidarMensualidad(
-                fixture.inscripcionId(), LocalDate.of(2026, 3, 1));
-        ResultadoLiquidacion julio = liquidaciones.liquidarMensualidad(
-                fixture.inscripcionId(), LocalDate.of(2026, 7, 1));
+        ResultadoLiquidacion febrero = mensualidad(fixture, LocalDate.of(2026, 2, 1));
+        ResultadoLiquidacion exacta = mensualidad(fixture, LocalDate.of(2026, 3, 1));
+        ResultadoLiquidacion julio = mensualidad(fixture, LocalDate.of(2026, 7, 1));
 
-        assertThat(febrero.condicion()).hasValueSatisfying(value -> assertThat(value.getId()).isEqualTo(enero));
+        assertThat(febrero.condicion()).hasValueSatisfying(value ->
+                assertThat(value.getId()).isEqualTo(enero));
         assertThat(febrero.importeBase()).isEqualByComparingTo("100.00");
         assertThat(febrero.descuentoPorcentaje()).isEqualByComparingTo("10.0000");
         assertThat(febrero.descuentoImporte()).isEqualByComparingTo("15.00");
         assertThat(febrero.importeFinal()).isEqualByComparingTo("85.00");
 
-        assertThat(exacta.condicion()).hasValueSatisfying(value -> assertThat(value.getId()).isEqualTo(marzo));
+        assertThat(exacta.condicion()).hasValueSatisfying(value ->
+                assertThat(value.getId()).isEqualTo(marzo));
         assertThat(exacta.origen()).isEqualTo(OrigenPrecioLiquidacion.COSTO_PARTICULAR);
         assertThat(exacta.importeBase()).isEqualByComparingTo("200.00");
         assertThat(exacta.descuentoImporte()).isEqualByComparingTo("40.00");
         assertThat(exacta.importeFinal()).isEqualByComparingTo("160.00");
-        assertThat(julio.condicion()).hasValueSatisfying(value -> assertThat(value.getId()).isEqualTo(marzo));
+        assertThat(julio.condicion()).hasValueSatisfying(value ->
+                assertThat(value.getId()).isEqualTo(marzo));
     }
 
     @Test
@@ -89,12 +85,9 @@ class LiquidacionPorVigenciaPostgreSqlTest extends PostgreSqlIntegrationTest {
         condicion(fixture, LocalDate.of(2026, 2, 1), null, "0.0000", "5.00");
         condicion(fixture, LocalDate.of(2026, 3, 1), null, "10.0000", "5.00");
 
-        ResultadoLiquidacion porcentaje = liquidaciones.liquidarMensualidad(
-                fixture.inscripcionId(), LocalDate.of(2026, 1, 1));
-        ResultadoLiquidacion fijo = liquidaciones.liquidarMensualidad(
-                fixture.inscripcionId(), LocalDate.of(2026, 2, 1));
-        ResultadoLiquidacion combinado = liquidaciones.liquidarMensualidad(
-                fixture.inscripcionId(), LocalDate.of(2026, 3, 1));
+        ResultadoLiquidacion porcentaje = mensualidad(fixture, LocalDate.of(2026, 1, 1));
+        ResultadoLiquidacion fijo = mensualidad(fixture, LocalDate.of(2026, 2, 1));
+        ResultadoLiquidacion combinado = mensualidad(fixture, LocalDate.of(2026, 3, 1));
 
         assertThat(porcentaje.descuentoImporte()).isEqualByComparingTo("12.35");
         assertThat(porcentaje.importeFinal()).isEqualByComparingTo("87.65");
@@ -111,8 +104,7 @@ class LiquidacionPorVigenciaPostgreSqlTest extends PostgreSqlIntegrationTest {
         tarifa(fixture, LocalDate.of(2026, 1, 1), "100.00", "50.00");
         condicion(fixture, LocalDate.of(2026, 1, 1), null, "50.0000", "60.00");
 
-        assertThatThrownBy(() -> liquidaciones.liquidarMensualidad(
-                fixture.inscripcionId(), LocalDate.of(2026, 1, 1)))
+        assertThatThrownBy(() -> mensualidad(fixture, LocalDate.of(2026, 1, 1)))
                 .isInstanceOf(OperacionNoPermitidaException.class)
                 .hasMessageContaining("supera");
     }
@@ -127,20 +119,20 @@ class LiquidacionPorVigenciaPostgreSqlTest extends PostgreSqlIntegrationTest {
                 fixture.inscripcionId(), LocalDate.of(2026, 1, 1));
 
         assertThat(resultado.tarifa().getId()).isEqualTo(tarifaId);
-        assertThat(resultado.condicion()).hasValueSatisfying(value -> assertThat(value.getId()).isEqualTo(condicionId));
+        assertThat(resultado.condicion()).hasValueSatisfying(value ->
+                assertThat(value.getId()).isEqualTo(condicionId));
         assertThat(resultado.importeBase()).isEqualByComparingTo("70.00");
         assertThat(resultado.descuentoImporte()).isEqualByComparingTo("12.00");
         assertThat(resultado.importeFinal()).isEqualByComparingTo("58.00");
     }
 
     @Test
-    void costoParticularDeCondicionTienePrioridadTambienEnMatricula() {
+    void costoParticularDeCondicionTienePrioridadEnMensualidadYMatricula() {
         Fixture fixture = fixture("particular", null, null);
         tarifa(fixture, LocalDate.of(2026, 1, 1), "100.00", "50.00");
         condicion(fixture, LocalDate.of(2026, 1, 1), "80.00", "25.0000", "0.00");
 
-        ResultadoLiquidacion mensualidad = liquidaciones.liquidarMensualidad(
-                fixture.inscripcionId(), LocalDate.of(2026, 1, 1));
+        ResultadoLiquidacion mensualidad = mensualidad(fixture, LocalDate.of(2026, 1, 1));
         ResultadoLiquidacion matricula = liquidaciones.liquidarMatricula(
                 fixture.inscripcionId(), LocalDate.of(2026, 1, 1));
 
@@ -156,8 +148,7 @@ class LiquidacionPorVigenciaPostgreSqlTest extends PostgreSqlIntegrationTest {
         Fixture fixture = fixture("legacy", "777.00", bonificacion("Legacy", "90.0000", "500.00"));
         tarifa(fixture, LocalDate.of(2026, 1, 1), "100.00", "50.00");
 
-        ResultadoLiquidacion resultado = liquidaciones.liquidarMensualidad(
-                fixture.inscripcionId(), LocalDate.of(2026, 1, 1));
+        ResultadoLiquidacion resultado = mensualidad(fixture, LocalDate.of(2026, 1, 1));
 
         assertThat(resultado.condicion()).isEmpty();
         assertThat(resultado.origen()).isEqualTo(OrigenPrecioLiquidacion.TARIFA_HISTORICA);
@@ -170,8 +161,7 @@ class LiquidacionPorVigenciaPostgreSqlTest extends PostgreSqlIntegrationTest {
     void ausenciaDeTarifaAbortaAunqueExistanPreciosLegacy() {
         Fixture fixture = fixture("sin-tarifa", "10.00", null);
 
-        assertThatThrownBy(() -> liquidaciones.liquidarMensualidad(
-                fixture.inscripcionId(), LocalDate.of(2026, 1, 1)))
+        assertThatThrownBy(() -> mensualidad(fixture, LocalDate.of(2026, 1, 1)))
                 .isInstanceOf(TarifaDisciplinaServicio.TarifaHistoricaNoDefinidaException.class);
         assertThatThrownBy(() -> liquidaciones.liquidarMatricula(
                 fixture.inscripcionId(), LocalDate.of(2026, 1, 1)))
@@ -185,12 +175,9 @@ class LiquidacionPorVigenciaPostgreSqlTest extends PostgreSqlIntegrationTest {
         tarifa(fixture, LocalDate.of(2026, 1, 1), "100.00", "50.00");
         tarifa(fixture, LocalDate.of(2027, 1, 1), "120.00", "60.00");
 
-        ResultadoLiquidacion pasada = liquidaciones.liquidarMensualidad(
-                fixture.inscripcionId(), LocalDate.of(2025, 6, 1));
-        ResultadoLiquidacion actual = liquidaciones.liquidarMensualidad(
-                fixture.inscripcionId(), LocalDate.of(2026, 7, 1));
-        ResultadoLiquidacion futura = liquidaciones.liquidarMensualidad(
-                fixture.inscripcionId(), LocalDate.of(2027, 3, 1));
+        ResultadoLiquidacion pasada = mensualidad(fixture, LocalDate.of(2025, 6, 1));
+        ResultadoLiquidacion actual = mensualidad(fixture, LocalDate.of(2026, 7, 1));
+        ResultadoLiquidacion futura = mensualidad(fixture, LocalDate.of(2027, 3, 1));
 
         assertThat(pasada.fechaEfectiva()).isEqualTo(LocalDate.of(2025, 6, 1));
         assertThat(pasada.importeFinal()).isEqualByComparingTo("80.00");
@@ -198,6 +185,10 @@ class LiquidacionPorVigenciaPostgreSqlTest extends PostgreSqlIntegrationTest {
         assertThat(actual.importeFinal()).isEqualByComparingTo("100.00");
         assertThat(futura.fechaEfectiva()).isEqualTo(LocalDate.of(2027, 3, 1));
         assertThat(futura.importeFinal()).isEqualByComparingTo("120.00");
+    }
+
+    private ResultadoLiquidacion mensualidad(Fixture fixture, LocalDate fecha) {
+        return liquidaciones.liquidarMensualidad(fixture.inscripcionId(), fecha);
     }
 
     private Fixture fixture(String prefix, String costoLegacy, Long bonificacionLegacyId) {
