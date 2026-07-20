@@ -876,27 +876,29 @@ function Assert-HttpAndRbac {
 
 function Assert-FlywayAndSchema {
     $localMigrations = @(Get-ChildItem -LiteralPath $script:migrationRoot -Filter "V*__*.sql" -File | Sort-Object Name)
-    Assert-Equal -Actual $localMigrations.Count -Expected 6 -Message "Se esperaban exactamente V1-V6"
-    Assert-Equal -Actual $localMigrations[-1].Name -Expected "V6__rbac_permission_catalog_and_base_roles.sql" -Message "V6 no es la última migración productiva"
+    Assert-Equal -Actual $localMigrations.Count -Expected 7 -Message "Se esperaban exactamente V1-V7"
+    Assert-Equal -Actual $localMigrations[-1].Name -Expected "V7__jere_platform_student_source_exports.sql" -Message "V7 no es la última migración productiva"
     Assert-Equal -Actual @($localMigrations | Where-Object { $_.Name -match '(?i)demo.*seed|seed.*demo' }).Count -Expected 0 -Message "Existe una migración demo"
 
     $history = Invoke-Sql -Query @"
 SELECT count(*) || '|' || max(version::int) || '|' ||
        count(*) FILTER (WHERE NOT success) || '|' ||
        count(*) FILTER (WHERE script='V6__rbac_permission_catalog_and_base_roles.sql' AND success) || '|' ||
+       count(*) FILTER (WHERE script='V7__jere_platform_student_source_exports.sql' AND success) || '|' ||
        count(*) FILTER (WHERE lower(script) LIKE '%demo%seed%' OR lower(script) LIKE '%seed%demo%')
 FROM flyway_schema_history;
 "@
     $parts = $history.Split("|")
-    Assert-Equal -Actual $parts.Count -Expected 5 -Message "Historial Flyway ilegible"
-    Assert-Equal -Actual $parts[0] -Expected "6" -Message "Cantidad Flyway inesperada"
-    Assert-Equal -Actual $parts[1] -Expected "6" -Message "Versión Flyway inesperada"
+    Assert-Equal -Actual $parts.Count -Expected 6 -Message "Historial Flyway ilegible"
+    Assert-Equal -Actual $parts[0] -Expected "7" -Message "Cantidad Flyway inesperada"
+    Assert-Equal -Actual $parts[1] -Expected "7" -Message "Versión Flyway inesperada"
     Assert-Equal -Actual $parts[2] -Expected "0" -Message "Hay migraciones fallidas"
     Assert-Equal -Actual $parts[3] -Expected "1" -Message "V6 productiva ausente"
-    Assert-Equal -Actual $parts[4] -Expected "0" -Message "Hay una migración demo"
+    Assert-Equal -Actual $parts[4] -Expected "1" -Message "V7 productiva ausente"
+    Assert-Equal -Actual $parts[5] -Expected "0" -Message "Hay una migración demo"
     Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM roles WHERE codigo='PROFESOR' AND NOT activo AND sistema AND NOT editable;") -Expected "1" -Message "PROFESOR no conserva su contrato"
     Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM rol_permisos rp JOIN roles r ON r.id=rp.rol_id WHERE r.codigo='PROFESOR';") -Expected "0" -Message "PROFESOR tiene permisos"
-    Pass "Flyway/Hibernate/RBAC" "V1-V6, ddl-auto=validate, sin migración demo"
+    Pass "Flyway/Hibernate/RBAC" "V1-V7, ddl-auto=validate, sin migración demo"
 }
 
 function Assert-DatabaseEmptyForDemo {
@@ -921,7 +923,7 @@ BEGIN
 END
 $$;
 '@ | Out-Null
-    Pass "Base local vacía" "sin datos ajenos al catálogo productivo V1-V6"
+    Pass "Base local vacía" "sin datos ajenos al catálogo productivo V1-V7"
 }
 
 function Configure-DemoEnvironment {

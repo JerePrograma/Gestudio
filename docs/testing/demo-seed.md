@@ -701,7 +701,7 @@ Además de las validaciones SQL, `validate-demo-seed.ps1` comprueba:
 - backend iniciado con Flyway y Hibernate validate;
 - `flyway_schema_history` correcto;
 - checksums presentes;
-- V6 productiva presente;
+- cadena productiva V1-V7 presente, incluida V6 RBAC;
 - ninguna migración demo;
 - login de los cinco usuarios;
 - 32 permisos en el perfil técnico;
