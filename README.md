@@ -13,41 +13,40 @@ Integrado y probado:
 - liquidación financiera por vigencia;
 - Flyway V1-V7;
 - demo interna automatizada;
-- emisor firmado de referencias mínimas de estudiantes, deshabilitado por defecto;
-- backup PostgreSQL y recibos con manifiesto SHA-256;
-- restore protegido en base alternativa.
+- emisor firmado mínimo de estudiantes, deshabilitado por defecto;
+- backup PostgreSQL/recibos con manifiesto SHA-256;
+- restore protegido en base alternativa;
+- rollback backend forward-compatible con backup previo y retorno al artefacto actual.
 
 Continúan abiertos:
 
-- recorridos humanos por rol;
-- GATE-2 UX crítica;
-- rollback forward-compatible;
 - observabilidad y alertas;
-- política de retención, cifrado, RPO/RTO y responsables;
+- GATE-2 y recorridos humanos;
+- políticas de backups, artefactos y secretos;
+- TLS/CORS/cookies en ambiente real;
 - staging;
 - producción.
 
-**El repositorio no constituye autorización de despliegue. Demo comercial, staging y producción permanecen en NO-GO.**
+**Demo comercial, staging y producción permanecen en NO-GO.**
 
 Fuentes vigentes:
 
-- [Estado actual y backlog](docs/codex/gestudio-release-hardening/12_ESTADO_ACTUAL_Y_BACKLOG.md)
-- [Checklist de release](docs/codex/gestudio-release-hardening/11_CHECKLIST_RELEASE.md)
-- [Bitácora de continuidad](docs/codex/gestudio-release-hardening/13_BITACORA_CONTINUIDAD.md)
+- [Estado y backlog](docs/codex/gestudio-release-hardening/12_ESTADO_ACTUAL_Y_BACKLOG.md)
+- [Checklist](docs/codex/gestudio-release-hardening/11_CHECKLIST_RELEASE.md)
+- [Bitácora](docs/codex/gestudio-release-hardening/13_BITACORA_CONTINUIDAD.md)
 - [Cierre GATE-1B](docs/codex/gestudio-release-hardening/15_CIERRE_GATE_1B_2026-07-20.md)
 - [Cierre V7 y recuperación](docs/codex/gestudio-release-hardening/16_CIERRE_BACKUP_RESTORE_Y_V7_2026-07-20.md)
+- [Cierre rollback](docs/codex/gestudio-release-hardening/17_CIERRE_ROLLBACK_FORWARD_COMPATIBLE_2026-07-20.md)
 
 ## Stack
 
 - Backend: Java 21, Spring Boot 3.4.1, Maven Wrapper, PostgreSQL 15 y Flyway.
 - Frontend: React 18, TypeScript, Vite 6, Node 22.14.0 y npm 10.x.
-- Operación local: PowerShell, Docker y Docker Compose v2.
+- Operación: PowerShell, Docker y Docker Compose v2.
 
-Flyway parte de `V1__canonical_schema.sql` y aplica migraciones forward-only V2-V7. V5 incorpora estructuras RBAC y backfill de roles múltiples; V6 incorpora el catálogo y matrices productivas; V7 agrega snapshots firmados de integración. **V1-V7 son inmutables.**
+V1-V7 son migraciones forward-only e inmutables.
 
 ## Inicio recomendado: demo persistente
-
-Requisitos: Git, JDK 21, Node 22.14.0, npm 10 y Docker Desktop con Compose.
 
 ```powershell
 git clone https://github.com/JerePrograma/Gestudio.git
@@ -66,33 +65,24 @@ El script solicita claves para:
 - `demo-secretaria`;
 - `demo-caja`.
 
-Direcciones:
+URLs:
 
 - frontend: `http://localhost:18081`;
 - backend: `http://localhost:18080`;
 - API: `http://localhost:18080/api`;
 - PostgreSQL: `localhost:15432`.
 
-Consultar o detener:
-
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\demo-local.ps1 -Action Status
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\demo-local.ps1 -Action Stop
 ```
 
-Guía completa: [Puesta en marcha y flujo de uso](docs/operations/local-runbook.md).
+Guía: [Puesta en marcha y flujo de uso](docs/operations/local-runbook.md).
 
 ## Desarrollo local
 
-Crear configuración Compose no versionada:
-
 ```powershell
 Copy-Item .env.local.example .env
-```
-
-Preparar e iniciar componentes separados:
-
-```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\setup.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev\start-db.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev\start-backend.ps1
@@ -106,14 +96,12 @@ docker compose --env-file .env -p gestudio up -d --build
 docker compose --env-file .env -p gestudio ps
 ```
 
-URLs predeterminadas de Compose:
+URLs predeterminadas:
 
 - frontend: `http://localhost:8081`;
 - backend: `http://localhost:8080`;
 - API: `http://localhost:8080/api`;
 - PostgreSQL: `localhost:5432`.
-
-Más detalle: [Desarrollo local](docs/development/local-development.md).
 
 ## Validación canónica
 
@@ -124,13 +112,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\validate.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke-local.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\validate-demo-seed.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\ops\verify-backup-restore.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\ops\verify-application-rollback.ps1
 ```
 
-No usar `-SkipTests`. Las pruebas PostgreSQL requieren Docker/Testcontainers.
+No usar `-SkipTests`.
 
 ## Backup
-
-Backup consistente de base y recibos:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass `
@@ -141,29 +128,45 @@ powershell -NoProfile -ExecutionPolicy Bypass `
   -StopBackend
 ```
 
-Procedimiento completo: [Backup y restore](docs/operations/backup-restore.md).
+Runbook: [Backup y restore](docs/operations/backup-restore.md).
+
+## Rollback backend
+
+La imagen objetivo debe contener exactamente todas las migraciones aplicadas. Una base V7 rechaza una imagen V6.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File .\scripts\ops\rollback-backend.ps1 `
+  -TargetBackendImage registry.example/gestudio-backend:rollback-20260720 `
+  -ExpectedCurrentImage registry.example/gestudio-backend:current-20260720 `
+  -EnvFile .\.env `
+  -ProjectName gestudio `
+  -BackupOutputDirectory D:\Backups\Gestudio\Rollback `
+  -ConfirmRollback
+```
+
+Runbook: [Rollback compatible con Flyway](docs/operations/rollback.md).
 
 ## Dominio financiero
 
-Mensualidades y matrículas resuelven tarifas históricas y condiciones efectivas por fecha. Cada cargo nuevo persiste un snapshot en `cargo_liquidaciones` dentro de la misma transacción. La API rechaza fuentes financieras legacy y la UI dirige la operación a tarifas y condiciones económicas.
-
-Los pagos usan cargos y aplicaciones explícitas, ledgers compensatorios e idempotency keys con request hash. Los recibos se procesan fuera de la transacción financiera mediante `ReciboPendiente`.
+Mensualidades y matrículas resuelven tarifas históricas y condiciones efectivas por fecha. Cada cargo persiste un snapshot en `cargo_liquidaciones` dentro de la misma transacción. La API rechaza fuentes legacy y la UI dirige a tarifas y condiciones económicas.
 
 ## Integración Jere Platform
 
-V7 incorpora un emisor administrativo de referencias `GESTUDIO_STUDENT` con ID, nombre de visualización y activo. Está deshabilitado por defecto, requiere mapping de tenant y secreto independiente, y no realiza push automático.
+V7 incorpora un emisor administrativo `GESTUDIO_STUDENT` con ID, nombre visible y activo. Está apagado por defecto, requiere tenant y secreto independiente y no realiza push automático.
 
-La reconciliación multipágina end-to-end continúa bloqueada por `JerePrograma/jere-platform#59`. No habilitar la función como integración productiva hasta cerrar ese contrato.
+La reconciliación multipágina end-to-end continúa bloqueada por `JerePrograma/jere-platform#59`.
 
 ## Documentación
 
 - [Puesta en marcha y flujo de uso](docs/operations/local-runbook.md)
 - [Backup y restore](docs/operations/backup-restore.md)
-- [Demo local persistente](docs/testing/demo-local.md)
+- [Rollback](docs/operations/rollback.md)
+- [Demo persistente](docs/testing/demo-local.md)
 - [Dataset demo](docs/testing/demo-seed.md)
 - [Variables de entorno](docs/development/environment-variables.md)
-- [Emisor Jere Platform V1](docs/integrations/jere-platform-student-export-v1.md)
+- [Integración V7](docs/integrations/jere-platform-student-export-v1.md)
 - [Estrategia comercial](docs/comercial/estrategia-comercial.md)
 - [Release hardening](docs/codex/gestudio-release-hardening/00_INDEX.md)
 
-No uses `.env.example` como configuración de producción. Los secretos reales, backups, dumps y recibos deben permanecer fuera de Git, imágenes, artefactos públicos y logs.
+No versionar `.env`, secretos, backups, dumps, recibos ni artefactos sensibles.
