@@ -35,10 +35,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
+      - name: Capture environment
+        shell: bash
+        run: |
+          {
+            echo "UTC=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+            echo "SHA=$GITHUB_SHA"
+            git status --short --branch
+            git --version
+            docker --version
+            docker compose version
+            pwsh --version
+          } | tee backup-restore.log
+
       - name: Execute disposable backup/restore drill
         shell: pwsh
         run: |
-          & pwsh -NoProfile -File ./scripts/ops/verify-backup-restore.ps1 2>&1 | Tee-Object -FilePath backup-restore.log
+          & pwsh -NoProfile -File ./scripts/ops/verify-backup-restore.ps1 2>&1 | Tee-Object -FilePath backup-restore-run.log
+          Get-Content backup-restore-run.log | Add-Content backup-restore.log
           exit $LASTEXITCODE
 
       - name: Publish drill evidence
@@ -46,5 +60,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: backup-restore-evidence
-          path: backup-restore.log
+          path: |
+            backup-restore.log
+            backup-restore-run.log
           if-no-files-found: error
