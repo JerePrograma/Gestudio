@@ -57,9 +57,9 @@ public class SecurityConfigurations {
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(errors -> errors
                         .authenticationEntryPoint((request, response, exception) ->
-                                response.sendError(HttpStatus.FORBIDDEN.value()))
+                                response.sendError(HttpStatus.UNAUTHORIZED.value()))
                         .accessDeniedHandler((request, response, exception) ->
-                                response.sendError(HttpStatus.FORBIDDEN.value())))
+                                response.sendError(HttpStatus.UNAUTHORIZED.value())))
                 .authorizeHttpRequests(req -> req
                         .requestMatchers(HttpMethod.GET, "/actuator/health", "/actuator/health/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/actuator/prometheus")
