@@ -1,17 +1,14 @@
 package gestudio.infra.observabilidad;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.security.authorization.AuthorizationManager;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.web.access.intercept.RequestAuthorizationContext;
-import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.function.Supplier;
 
-@Component
 public final class MetricsTokenAuthorizationManager
         implements AuthorizationManager<RequestAuthorizationContext> {
 
@@ -20,8 +17,7 @@ public final class MetricsTokenAuthorizationManager
 
     private final byte[] expectedToken;
 
-    public MetricsTokenAuthorizationManager(
-            @Value("${app.observability.metrics-token:}") String configuredToken) {
+    public MetricsTokenAuthorizationManager(String configuredToken) {
         String normalized = configuredToken == null ? "" : configuredToken.trim();
         this.expectedToken = normalized.getBytes(StandardCharsets.UTF_8);
     }
