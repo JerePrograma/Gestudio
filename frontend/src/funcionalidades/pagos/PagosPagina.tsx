@@ -42,6 +42,9 @@ const detalleAlumno = (alumno: AlumnoResponse): string => {
   return partes.length > 0 ? partes.join(" · ") : "Sin datos de contacto cargados";
 };
 
+const referenciaPago = (pago: PagoResumenResponse): string =>
+  `pago del ${pago.fecha} por $ ${formatMoney(pago.montoRecibido)}`;
+
 export default function PagosPagina() {
   const [searchParams] = useSearchParams();
   const initialAlumnoId = positiveId(searchParams.get("alumnoId"));
@@ -156,7 +159,7 @@ export default function PagosPagina() {
                 className="form-input"
                 value={busquedaAlumno}
                 onChange={(event) => cambiarBusquedaAlumno(event.target.value)}
-                placeholder="Buscar por nombre o apellido"
+                placeholder="Buscar por nombre, apellido o documento"
               />
               {alumnoSeleccionado && (
                 <Boton type="button" secondary onClick={limpiarAlumno} className="shrink-0">
@@ -164,7 +167,7 @@ export default function PagosPagina() {
                 </Boton>
               )}
             </div>
-            <span className="form-help">Buscá el alumno por nombre o apellido. El ID queda sólo para uso interno del sistema.</span>
+            <span className="form-help">Buscá el alumno por nombre, apellido o documento. El ID queda sólo para uso interno del sistema.</span>
 
             {alumnoInicial.isLoading && consultaId > 0 && !alumnoSeleccionado && (
               <p className="text-xs text-muted-foreground">Cargando alumno del enlace...</p>
@@ -241,7 +244,6 @@ export default function PagosPagina() {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th scope="col">ID</th>
                   <th scope="col">Fecha</th>
                   <th scope="col">Monto</th>
                   <th scope="col">Estado</th>
@@ -251,7 +253,6 @@ export default function PagosPagina() {
               <tbody>
                 {pagos.data.content.map((pago) => (
                   <tr key={pago.id}>
-                    <td>{pago.id}</td>
                     <td>{pago.fecha}</td>
                     <td className="numeric-cell">$ {formatMoney(pago.montoRecibido)}</td>
                     <td>
@@ -262,7 +263,7 @@ export default function PagosPagina() {
                     <td>
                       <div className="row-actions">
                         <RowActions
-                          label={`Acciones del pago ${pago.id}`}
+                          label={`Acciones del ${referenciaPago(pago)}`}
                           actions={[
                             { label: "Descargar recibo", icon: Download, onSelect: () => void descargar(pago.id) },
                             ...(pago.estado === "REGISTRADO"
