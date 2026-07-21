@@ -2,18 +2,22 @@
 
 > Estado: desarrollo y evaluación interna `GO`; demo comercial, staging y producción `NO-GO`.
 
-Este documento es el procedimiento operativo principal para levantar Gestudio, recorrer sus funciones y ejecutar sus controles técnicos.
+Este es el procedimiento operativo principal para instalar, levantar, usar, validar y diagnosticar Gestudio.
 
-## 1. Modalidades soportadas
+## 1. Modalidades
 
-| Modalidad | Uso recomendado | Persistencia |
+| Modalidad | Uso | Persistencia |
 |---|---|---|
 | Demo persistente | evaluación funcional y recorridos por rol | conserva datos hasta `Reset` |
-| Docker Compose completo | entorno local integrado cercano al runtime | volúmenes `postgres_data` y `receipts_data` |
-| Desarrollo separado | backend y frontend en primer plano | PostgreSQL Docker persistente |
-| Smoke, seed y drills | gates automatizados | descartable |
+| Docker Compose completo | entorno local integrado cercano al runtime | volúmenes PostgreSQL y recibos |
+| Desarrollo separado | programación y depuración | PostgreSQL Docker persistente |
+| Smoke, seed y drills | validación automatizada | descartable |
 
-Para una primera evaluación funcional usar **Demo persistente**. Para programar y depurar usar **Desarrollo separado**. Para comprobar imágenes, red y volúmenes usar **Docker Compose completo**.
+Recomendación:
+
+- primera evaluación: **Demo persistente**;
+- desarrollo: **Desarrollo separado**;
+- comprobación de imágenes/red/volúmenes: **Docker Compose completo**.
 
 ## 2. Requisitos
 
@@ -24,8 +28,6 @@ Para una primera evaluación funcional usar **Demo persistente**. Para programar
 - Docker Desktop o Docker Engine activo;
 - Docker Compose v2;
 - PowerShell 7 o Windows PowerShell 5.1.
-
-Verificación:
 
 ```powershell
 git --version
@@ -38,9 +40,9 @@ docker compose version
 $PSVersionTable.PSVersion
 ```
 
-No continuar si Java no es 21 o Docker no muestra información del servidor.
+No continuar si Java no es 21 o Docker no informa el servidor.
 
-## 3. Obtener el código
+## 3. Obtener y validar el código
 
 ```powershell
 git clone https://github.com/JerePrograma/Gestudio.git
@@ -51,30 +53,20 @@ git pull --ff-only origin main
 
 git status --short --branch
 git rev-parse HEAD
-```
 
-El estado debe estar limpio antes de levantar el entorno.
-
-## 4. Preparar y validar dependencias
-
-```powershell
 powershell -NoProfile -ExecutionPolicy Bypass `
   -File .\scripts\codex\setup.ps1
-```
 
-Validación completa:
-
-```powershell
 powershell -NoProfile -ExecutionPolicy Bypass `
   -File .\scripts\codex\validate.ps1 `
   -Scope All
 ```
 
-No usar `-SkipTests` para declarar un gate aprobado.
+El árbol debe estar limpio. No usar `-SkipTests` para declarar un gate aprobado.
 
-## 5. Opción recomendada: demo persistente
+# 4. Opción recomendada: demo persistente
 
-### Iniciar
+## Iniciar
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass `
@@ -82,7 +74,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass `
   -Action Start
 ```
 
-El script solicita contraseñas para:
+Solicita claves para:
 
 - `demo-superadmin`;
 - `demo-direccion`;
@@ -92,7 +84,7 @@ El script solicita contraseñas para:
 
 No reutilizar contraseñas reales.
 
-### Direcciones
+## Direcciones
 
 | Servicio | Dirección |
 |---|---|
@@ -104,25 +96,21 @@ No reutilizar contraseñas reales.
 | Liveness | `http://localhost:18080/actuator/health/liveness` |
 | Readiness | `http://localhost:18080/actuator/health/readiness` |
 
-En la demo persistente Prometheus permanece cerrado si no se configura un token explícito. Esto es intencional.
+Prometheus permanece cerrado si no se configura un token. Es intencional.
 
-### Consultar estado
+## Estado, detención y reset
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass `
   -File .\scripts\demo-local.ps1 `
   -Action Status
-```
 
-### Detener conservando datos
-
-```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass `
   -File .\scripts\demo-local.ps1 `
   -Action Stop
 ```
 
-### Recrear desde cero
+`Stop` conserva datos.
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass `
@@ -130,27 +118,27 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass `
   -Action Reset
 ```
 
-`Reset` elimina los datos de la demo. No usarlo sobre información que se quiera conservar.
+`Reset` elimina los datos de la demo.
 
-## 6. Docker Compose completo
+# 5. Docker Compose completo
 
-### Crear configuración local
+## Crear `.env`
 
 ```powershell
 Copy-Item .env.local.example .env
 ```
 
-`.env` no debe versionarse.
+`.env` no se versiona.
 
 Editar como mínimo:
 
 - `POSTGRES_PASSWORD`;
 - `JWT_SECRET`;
-- `APP_OBSERVABILITY_METRICS_TOKEN` si se desea consultar Prometheus;
-- usuario y clave de bootstrap inicial si la base no tiene usuarios;
-- puertos cuando `5432`, `8080` o `8081` estén ocupados.
+- `APP_OBSERVABILITY_METRICS_TOKEN` para consultar Prometheus;
+- bootstrap inicial si la base no tiene usuarios;
+- puertos si `5432`, `8080` o `8081` están ocupados.
 
-Generar valores locales aleatorios:
+Generar secretos locales independientes:
 
 ```powershell
 function New-HexSecret([int]$Bytes) {
@@ -166,11 +154,11 @@ $jwtSecret
 $metricsToken
 ```
 
-No usar el mismo valor para JWT y métricas.
+No reutilizar el secreto JWT como token de métricas.
 
-### Primer superadministrador
+## Primer superadministrador
 
-Sólo cuando la base todavía no tiene usuarios:
+Sólo en una base sin usuarios:
 
 ```text
 APP_BOOTSTRAP_SUPERADMIN_ENABLED=true
@@ -178,22 +166,15 @@ APP_BOOTSTRAP_SUPERADMIN_USERNAME=admin-inicial
 APP_BOOTSTRAP_SUPERADMIN_PASSWORD=<clave de 16 a 72 bytes UTF-8>
 ```
 
-### Validar Compose
+## Validar y levantar
 
 ```powershell
 docker compose --env-file .env -p gestudio config --quiet
-```
-
-### Levantar
-
-```powershell
 docker compose --env-file .env -p gestudio up -d --build
 docker compose --env-file .env -p gestudio ps
 ```
 
-Esperar que `db` y `backend` queden `healthy`.
-
-### Direcciones predeterminadas
+Esperar `db` y `backend` en estado `healthy`.
 
 | Servicio | Dirección |
 |---|---|
@@ -205,15 +186,13 @@ Esperar que `db` y `backend` queden `healthy`.
 | Readiness | `http://localhost:8080/actuator/health/readiness` |
 | Prometheus | `http://localhost:8080/actuator/prometheus` |
 
-### Desactivar bootstrap después del primer login
+## Apagar bootstrap
 
-1. cambiar en `.env`:
+Después del primer login:
 
 ```text
 APP_BOOTSTRAP_SUPERADMIN_ENABLED=false
 ```
-
-2. recrear backend:
 
 ```powershell
 docker compose --env-file .env -p gestudio `
@@ -222,63 +201,63 @@ docker compose --env-file .env -p gestudio `
 
 La bandera no debe permanecer activa.
 
-### Detener conservando datos
+## Detener
+
+Conservar datos:
 
 ```powershell
 docker compose --env-file .env -p gestudio down --remove-orphans
 ```
 
-### Eliminar también base y recibos
+Eliminar también base y recibos:
 
 ```powershell
 docker compose --env-file .env -p gestudio `
   down --volumes --remove-orphans
 ```
 
-Este comando es destructivo.
+El segundo comando es destructivo.
 
-## 7. Desarrollo separado
+# 6. Desarrollo separado
 
-### PostgreSQL
+Terminal 1 — PostgreSQL:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass `
   -File .\scripts\dev\start-db.ps1
 ```
 
-### Backend, en otra terminal
+Terminal 2 — Backend:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass `
   -File .\scripts\dev\start-backend.ps1
 ```
 
-### Frontend, en otra terminal
+Terminal 3 — Frontend:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass `
   -File .\scripts\dev\start-frontend.ps1
 ```
 
-Direcciones habituales:
+Direcciones:
 
-- frontend Vite: `http://localhost:5173`;
-- backend: `http://localhost:8080`;
+- Vite: `http://localhost:5173`;
+- Backend: `http://localhost:8080`;
 - API: `http://localhost:8080/api`;
 - PostgreSQL: `localhost:5432`.
 
 Maven y Vite se detienen con `Ctrl+C`.
-
-Contenedores:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass `
   -File .\scripts\dev\stop.ps1
 ```
 
-## 8. Comprobar salud y métricas
+# 7. Health y métricas
 
-### Health
+## Health
 
 ```powershell
 $base = 'http://localhost:8080'
@@ -287,15 +266,15 @@ Invoke-RestMethod "$base/actuator/health/liveness"
 Invoke-RestMethod "$base/actuator/health/readiness"
 ```
 
-Resultado esperado:
+Esperado:
 
 ```json
 {"status":"UP"}
 ```
 
-No deben exponerse detalles de componentes.
+No deben exponerse detalles internos.
 
-### Prometheus
+## Prometheus
 
 ```powershell
 $headers = @{
@@ -311,27 +290,25 @@ Contrato:
 
 - sin token o token incorrecto: `401`;
 - token exacto: `200`;
-- no enviar el token desde el navegador;
-- no ponerlo en una URL;
+- no enviarlo desde el navegador;
+- no incluirlo en URLs;
 - no reutilizar `JWT_SECRET`.
 
-Runbook: [Observabilidad y diagnóstico](observability.md).
+# 8. Flujo funcional recomendado
 
-## 9. Flujo funcional recomendado
+## 8.1 Login y permisos
 
-### 9.1 Iniciar sesión y confirmar permisos
-
-Ingresar inicialmente con `SUPERADMIN` o `demo-superadmin`.
+Ingresar como `SUPERADMIN` o `demo-superadmin`.
 
 Verificar:
 
-- menú condicionado por permisos;
-- una ruta sin autenticación devuelve `401`;
-- una operación sin permiso devuelve `403`;
-- un conflicto real devuelve `409`;
-- la respuesta incluye `X-Request-ID`.
+- menú según permisos;
+- sin sesión: `401`;
+- sin permiso: `403`;
+- conflicto real: `409`;
+- cabecera `X-Request-ID` presente.
 
-### 9.2 Configurar la operación
+## 8.2 Configuración inicial
 
 Orden recomendado:
 
@@ -343,11 +320,11 @@ Orden recomendado:
 6. conceptos y subconceptos;
 7. usuarios y roles.
 
-`PROFESOR` permanece inactivo y no debe asignarse como rol de acceso.
+`PROFESOR` permanece inactivo y no asignable como rol de acceso.
 
-### 9.3 Crear tarifas efectivas
+## 8.3 Tarifas efectivas
 
-Después de crear una disciplina, abrir **Tarifas** y registrar:
+En cada disciplina registrar:
 
 - `vigenteDesde`;
 - valor mensual;
@@ -356,9 +333,9 @@ Después de crear una disciplina, abrir **Tarifas** y registrar:
 - clase de prueba cuando corresponda;
 - motivo.
 
-No utilizar `valorCuota` o `matricula` legacy como fuente operativa.
+No usar `valorCuota` o `matricula` legacy como fuente operativa.
 
-### 9.4 Crear alumno
+## 8.4 Alumno
 
 Registrar:
 
@@ -367,9 +344,9 @@ Registrar:
 - documento;
 - contacto;
 - fecha de incorporación;
-- sólo datos sintéticos durante pruebas o demo.
+- sólo datos sintéticos durante demo o pruebas.
 
-### 9.5 Crear inscripción
+## 8.5 Inscripción
 
 1. abrir Inscripciones;
 2. seleccionar alumno;
@@ -377,82 +354,91 @@ Registrar:
 4. informar fecha;
 5. confirmar.
 
-La operación crea obligaciones iniciales dentro de una transacción. Si falta una tarifa efectiva, no deben quedar inscripción, mensualidad, matrícula, cargo ni snapshot parciales.
+Si falta una tarifa efectiva, no deben quedar inscripción, mensualidad, matrícula, cargo ni snapshot parciales.
 
-### 9.6 Configurar condición económica
+## 8.6 Condición económica
 
-Sólo para excepciones comerciales:
+Sólo para una excepción comercial:
 
 - vigencia;
 - costo particular opcional;
 - porcentaje;
 - importe fijo.
 
-No editar bonificación o costo particular mediante campos legacy de inscripción.
+No editar bonificaciones o costos mediante campos legacy.
 
-### 9.7 Revisar mensualidad y matrícula
+## 8.7 Mensualidad y matrícula
 
 - mensualidad: tarifa efectiva al primer día del mes;
 - matrícula: tarifa efectiva al 1 de enero;
 - condición económica: opcional y resuelta por fecha;
 - matrícula multidisciplina: mayor importe final;
-- recargo: cargo tardío separado.
+- recargo: cargo tardío separado;
+- cada cargo: snapshot en `cargo_liquidaciones`.
 
-Cada cargo nuevo debe tener snapshot en `cargo_liquidaciones`.
-
-### 9.8 Registrar pago y recibo
+## 8.8 Pago y recibo
 
 1. abrir cargos del alumno;
 2. seleccionar obligación;
 3. registrar pago y método;
 4. verificar aplicaciones;
 5. generar o consultar recibo;
-6. comprobar movimiento en caja.
+6. comprobar movimiento de caja.
 
-Un reintento con la misma idempotency key no debe duplicar pago, aplicación, recibo ni movimiento.
+La misma idempotency key no debe duplicar pago, aplicación, recibo ni movimiento.
 
-### 9.9 Caja y egresos
+## 8.9 Caja y egresos
 
 - consultar resumen por fecha;
 - registrar egreso sólo con rol autorizado;
 - anular o revertir;
-- verificar movimiento compensatorio;
+- comprobar movimiento compensatorio;
 - no borrar historia.
 
-### 9.10 Stock
+## 8.10 Stock
 
 1. crear producto;
 2. registrar entrada o ajuste;
 3. registrar venta;
 4. verificar movimiento y caja;
 5. revertir;
-6. comprobar que el stock nunca sea negativo.
+6. confirmar que el stock nunca sea negativo.
 
-### 9.11 Asistencia
+## 8.11 Asistencia
 
 - seleccionar disciplina, horario o clase;
 - buscar alumno por referencia humana;
 - marcar asistencia;
 - confirmar guardado;
-- revisar estado vacío, error y navegación por teclado.
+- revisar estado vacío, error y teclado.
 
-## 10. Recorridos por rol
+# 9. Recorridos por rol
 
-| Rol | Flujo principal | Denegaciones esperadas |
+| Rol | Flujo | Denegaciones esperadas |
 |---|---|---|
-| SUPERADMIN | configuración, seguridad y operación completa | ninguna dentro del inventario habilitado |
+| SUPERADMIN | configuración, seguridad y operación completa | ninguna dentro del inventario |
 | DIRECCION | gestión y reportes | administración de roles |
 | ADMINISTRADOR | operación amplia | administración de roles |
 | SECRETARIA | alumnos, inscripciones y asistencia | egresos y seguridad |
 | CAJA | cargos, pagos, recibos, caja y stock permitido | gestión académica restringida |
 
-Los cinco recorridos humanos siguen siendo una tarea pendiente de GATE-2. La automatización no los reemplaza.
+La matriz detallada está en `docs/testing/human-role-walkthrough.md`.
 
-## 11. Integración Jere Platform V7
+Los recorridos siguen pendientes. La automatización no sustituye una revisión visual y funcional humana.
 
-Está deshabilitada por defecto. No habilitarla para uso local normal.
+# 10. Integración Jere Platform
 
-Requiere:
+Gestudio V7 incluye un emisor `GESTUDIO_STUDENT`:
+
+- ID;
+- nombre visible;
+- activo;
+- snapshots/páginas firmadas;
+- tenant explícito;
+- feature apagada por defecto;
+- sin push automático.
+
+Configuración:
 
 ```text
 APP_JERE_PLATFORM_STUDENT_EXPORT_ENABLED=true
@@ -461,9 +447,16 @@ APP_JERE_PLATFORM_STUDENT_EXPORT_TENANT_ID=<UUID externo>
 APP_JERE_PLATFORM_STUDENT_EXPORT_CURRENT_SECRET=<secreto independiente de 32 bytes o más>
 ```
 
-Sólo exporta ID, nombre visible y activo. No existe push automático. La operación multipágina end-to-end continúa bloqueada por `JerePrograma/jere-platform#59`.
+No habilitarla para uso local normal.
 
-## 12. Backup
+Estado verificado:
+
+- Jere Platform PR `#60` incorporó el receptor multipágina;
+- issue técnico `#59` está cerrado;
+- el coordinador `#51` continúa abierto por Scalaris y requisitos productivos;
+- el transporte desplegado Gestudio → Jere Platform no fue ejecutado ni autorizado.
+
+# 11. Backup
 
 Antes de migraciones, despliegues o rollback:
 
@@ -476,22 +469,20 @@ powershell -NoProfile -ExecutionPolicy Bypass `
   -StopBackend
 ```
 
-Runbook: [Backup y restore](backup-restore.md).
+Runbook: `docs/operations/backup-restore.md`.
 
-## 13. Restore
+# 12. Restore
 
-Restaurar primero sobre una base alternativa. No sobrescribir el origen sin validación previa y confirmaciones explícitas.
-
-Ejecutar el drill:
+Restaurar primero sobre una base alternativa. No sobrescribir origen sin validación y confirmaciones explícitas.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass `
   -File .\scripts\ops\verify-backup-restore.ps1
 ```
 
-## 14. Rollback backend
+# 13. Rollback backend
 
-La imagen objetivo debe declarar exactamente todas las migraciones aplicadas. Una base V7 rechaza una imagen V6.
+Una imagen objetivo debe contener exactamente todas las migraciones aplicadas. Una base V7 rechaza una imagen V6.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass `
@@ -504,13 +495,16 @@ powershell -NoProfile -ExecutionPolicy Bypass `
   -ConfirmRollback
 ```
 
-Nunca ejecutar down migrations para adaptar la base a una imagen anterior.
+Nunca ejecutar down migrations.
 
-Runbook: [Rollback compatible con Flyway](rollback.md).
+Contratos health:
 
-## 15. Gates técnicos
+- actual: `actuator-readiness-v1`;
+- pre-Actuator: `legacy-api-401-v1`.
 
-Ejecutar secuencialmente:
+Runbook: `docs/operations/rollback.md`.
+
+# 14. Gates técnicos
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\validate.ps1 -Scope Backend
@@ -525,7 +519,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\ops\verify-observa
 
 Los drills usan stacks descartables y no deben compartir datos reales.
 
-## 16. Diagnóstico rápido
+# 15. Diagnóstico
 
 ```powershell
 docker compose --env-file .env -p gestudio ps
@@ -541,23 +535,23 @@ docker network ls --filter label=com.docker.compose.project=gestudio
 Problemas frecuentes:
 
 - Java distinto de 21: corregir `JAVA_HOME`;
-- Docker CLI sin Engine: iniciar Docker Desktop/Engine;
-- puerto ocupado: cambiarlo en `.env`;
+- Docker sin Engine: iniciar Docker Desktop/Engine;
+- puerto ocupado: cambiar `.env`;
 - Flyway falla: no editar una migración aplicada;
-- Hibernate no valida: no cambiar `ddl-auto` a `update`;
-- login inicial no existe: revisar bootstrap sólo en una base sin usuarios;
-- backend falla tras crear el superadmin: apagar bootstrap;
-- tarifa ausente: crear tarifa histórica, no completar campos legacy;
+- Hibernate no valida: no usar `ddl-auto=update`;
+- login inicial ausente: revisar bootstrap sólo en base sin usuarios;
+- backend falla tras bootstrap: apagar la bandera;
+- tarifa ausente: crear tarifa histórica;
 - readiness DOWN: revisar PostgreSQL, disco y Flyway;
 - Prometheus `401`: revisar cabecera y token exactos;
-- restore rechazado: usar base alternativa y confirmaciones explícitas;
-- rollback rechazado: revisar metadata Flyway de la imagen objetivo.
+- restore rechazado: usar base alternativa;
+- rollback rechazado: revisar metadata Flyway y health de la imagen.
 
-## 17. Límites
+# 16. Límites
 
 Un entorno local verde no autoriza demo comercial, staging ni producción.
 
-Para staging todavía faltan:
+Para staging faltan:
 
 - ambiente y dominio;
 - TLS, CORS y cookies reales;
@@ -566,6 +560,7 @@ Para staging todavía faltan:
 - destino cifrado y retención de backups;
 - Prometheus o equivalente, almacenamiento, dashboard y alertas;
 - responsables y escalamiento;
-- recorridos humanos de GATE-2.
+- recorridos humanos GATE-2;
+- smoke desplegado Gestudio → Jere Platform.
 
 Producción permanece en `NO-GO` hasta autorización independiente.
