@@ -1,4 +1,4 @@
-# Integración final de observabilidad y compatibilidad de rollback
+# Integración final de observabilidad, rollback y receptor multipágina
 
 > Fecha operativa: 20 de julio de 2026, zona `America/Argentina/Buenos_Aires`  
 > Integración efectiva en GitHub: 21 de julio de 2026 UTC  
@@ -6,7 +6,7 @@
 > Rama operativa: `main`  
 > Estado externo: **NO-GO para demo comercial, staging y producción**
 
-Este documento es la adenda final posterior al merge del PR `#20`. Reemplaza cualquier instrucción anterior que todavía indicara “fusionar PR #20” como tarea pendiente.
+Este documento es la adenda final posterior al merge del PR `#20`. Reemplaza cualquier instrucción anterior que todavía indicara “fusionar PR #20” como tarea pendiente y corrige el estado histórico del receptor multipágina de Jere Platform.
 
 ## 1. Integración
 
@@ -130,7 +130,32 @@ Evidencia final:
 
 Ningún fallo fue ocultado. El PR permaneció bloqueado hasta que los cinco workflows cerraron verdes sobre el mismo SHA.
 
-## 7. Capacidades cerradas técnicamente
+## 7. Estado real de la integración Jere Platform
+
+La documentación anterior indicaba que `JerePrograma/jere-platform#59` bloqueaba el receptor multipágina. Ese dato quedó obsoleto antes del cierre operativo final.
+
+Estado verificado:
+
+- Jere Platform PR `#60` fue fusionado;
+- head del receptor: `41d18faf5a2606f39570a36769b66671ed304885`;
+- merge Jere Platform: `22b1d2bd02d2a7b3d3dd415b26f56761285611a2`;
+- issue `#59`: cerrado como completado;
+- el receptor soporta páginas, checkpoints, replays exactos, orden, completitud y reconciliación sobre la unión de IDs aceptados;
+- incluye Flyway V8, pruebas PostgreSQL, fixtures reales del emisor Gestudio, auditoría, outbox y métricas;
+- no conecta bases fuente ni afirma despliegue productivo.
+
+La capacidad source/receptor multipágina está integrada en código en ambos repositorios. El issue coordinador `JerePrograma/jere-platform#51` continúa abierto porque incluye además el adaptador Scalaris y requisitos operativos/productivos.
+
+Evidencia histórica rescatada del PR documental Gestudio `#17`:
+
+- Gestudio PR `#15` head final: `0650d18599da173a3443f73e979f2842ab1357ea`;
+- merge Gestudio: `e1afec960ddeb72d61932a1eb1f4a83a65899540`;
+- runs exactos indicados: `29767996880` y `29767996913`, PASS;
+- receptor Jere Platform: PR `#60`, merge `22b1d2bd02d2a7b3d3dd415b26f56761285611a2`.
+
+Esto no autoriza transporte ni despliegue. Gestudio mantiene el emisor apagado por defecto y requiere configuración, secreto, tenant, operación y ambiente explícitos.
+
+## 8. Capacidades cerradas técnicamente
 
 - GATE-0 baseline/documentación;
 - GATE-1 seguridad/RBAC;
@@ -138,13 +163,14 @@ Ningún fallo fue ocultado. El PR permaneció bloqueado hasta que los cinco work
 - Flyway V1-V7;
 - demo automatizada y seed idempotente;
 - emisor V7 source-owned apagado por defecto;
+- receptor Jere Platform multipágina integrado en su repositorio;
 - backup PostgreSQL/recibos;
 - restore aislado;
 - rollback backend forward-compatible;
 - observabilidad source-owned;
 - runbooks de arranque, recuperación, rollback y diagnóstico.
 
-## 8. Tareas pendientes
+## 9. Tareas pendientes
 
 ### Próximo trabajo interno
 
@@ -158,8 +184,10 @@ Ningún fallo fue ocultado. El PR permaneció bloqueado hasta que los cinco work
 8. corregir sólo defectos demostrados;
 9. repetir suites, smoke y seed después de las correcciones.
 
-### Operación externa
+### Integración y operación externa
 
+- ejecutar un smoke end-to-end desplegado Gestudio → Jere Platform con secretos/tenant reales de staging;
+- completar los criterios restantes del coordinador Jere Platform `#51`, especialmente Scalaris;
 - destino cifrado, retención, RPO/RTO y responsables de backups;
 - registry por digest, firma, promoción y retención de imágenes;
 - secret manager y rotación;
@@ -171,16 +199,14 @@ Ningún fallo fue ocultado. El PR permaneció bloqueado hasta que los cinco work
 - staging;
 - autorización productiva.
 
-### Bloqueo externo
-
-- `JerePrograma/jere-platform#59` continúa bloqueando el receptor multipágina end-to-end.
-
-## 9. Decisión final
+## 10. Decisión final
 
 | Salida | Estado |
 |---|---|
 | Desarrollo local | GO |
 | Validación técnica local/CI | GO |
+| Emisor y receptor multipágina en código | PASS |
+| Transporte desplegado Gestudio → Jere Platform | NO EJECUTADO |
 | Demo automatizada | PASS |
 | Demo humana | PENDIENTE |
 | Demo comercial | NO-GO |
