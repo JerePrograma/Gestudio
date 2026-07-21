@@ -24,6 +24,8 @@ if ([string]::IsNullOrWhiteSpace($BackupOutputDirectory)) {
     $BackupOutputDirectory = Join-Path $repoRoot 'backups/rollback'
 }
 $backupScript = Join-Path $PSScriptRoot 'backup-postgres.ps1'
+$readinessHealthContract = 'actuator-readiness-v1'
+$legacyHealthContract = 'legacy-api-401-v1'
 
 function Invoke-Native {
     param(
@@ -101,6 +103,24 @@ function Get-ImageFlywayLatest {
     return [int]$value
 }
 
+function Get-ImageHealthContract {
+    param([Parameter(Mandatory)][string] $Image)
+
+    $value = Invoke-Native -FilePath 'docker' -Arguments @(
+        'run', '--rm', '--entrypoint', 'sh', $Image, '-ec',
+        'if [ -f /app/build-metadata/health-contract ]; then cat /app/build-metadata/health-contract; else printf "__MISSING__"; fi'
+    ) -Capture
+
+    if ($value -eq '__MISSING__') {
+        Write-Warning "La imagen '$Image' es anterior a la metadata de health. Se usará el contrato compatible '$legacyHealthContract'."
+        return $legacyHealthContract
+    }
+    if ($value -notin @($readinessHealthContract, $legacyHealthContract)) {
+        throw "La imagen '$Image' declara un contrato de health no soportado: '$value'."
+    }
+    return $value
+}
+
 function Get-DatabaseFlywayLatest {
     param([Parameter(Mandatory)][string] $DbContainer)
 
@@ -137,12 +157,18 @@ function Wait-BackendHealthy {
 }
 
 function Switch-BackendImage {
-    param([Parameter(Mandatory)][string] $Image)
+    param(
+        [Parameter(Mandatory)][string] $Image,
+        [Parameter(Mandatory)][string] $HealthContract
+    )
 
-    $hadOverride = Test-Path Env:BACKEND_IMAGE
-    $previousOverride = if ($hadOverride) { $env:BACKEND_IMAGE } else { $null }
+    $hadImageOverride = Test-Path Env:BACKEND_IMAGE
+    $previousImageOverride = if ($hadImageOverride) { $env:BACKEND_IMAGE } else { $null }
+    $hadHealthOverride = Test-Path Env:BACKEND_HEALTHCHECK_MODE
+    $previousHealthOverride = if ($hadHealthOverride) { $env:BACKEND_HEALTHCHECK_MODE } else { $null }
     try {
         $env:BACKEND_IMAGE = $Image
+        $env:BACKEND_HEALTHCHECK_MODE = $HealthContract
         Invoke-Compose -Arguments @('up', '-d', '--no-deps', '--force-recreate', $BackendService) | Out-Null
         $containerId = Wait-BackendHealthy
         $actual = Invoke-Native -FilePath 'docker' -Arguments @(
@@ -151,11 +177,19 @@ function Switch-BackendImage {
         if ($actual -ne $Image) {
             throw "Compose inició '$actual' en lugar de '$Image'."
         }
+        $actualHealthContract = Invoke-Native -FilePath 'docker' -Arguments @(
+            'inspect', '--format', '{{range .Config.Env}}{{println .}}{{end}}', $containerId
+        ) -Capture
+        if ($actualHealthContract -notmatch "(?m)^BACKEND_HEALTHCHECK_MODE=$([regex]::Escape($HealthContract))$") {
+            throw "El contenedor no recibió el contrato de health '$HealthContract'."
+        }
         return $containerId
     }
     finally {
-        if ($hadOverride) { $env:BACKEND_IMAGE = $previousOverride }
+        if ($hadImageOverride) { $env:BACKEND_IMAGE = $previousImageOverride }
         else { Remove-Item Env:BACKEND_IMAGE -ErrorAction SilentlyContinue }
+        if ($hadHealthOverride) { $env:BACKEND_HEALTHCHECK_MODE = $previousHealthOverride }
+        else { Remove-Item Env:BACKEND_HEALTHCHECK_MODE -ErrorAction SilentlyContinue }
     }
 }
 
@@ -200,6 +234,9 @@ if ($targetFlyway -ne $databaseFlyway) {
     throw "Rollback incompatible: la base está en Flyway V$databaseFlyway y la imagen objetivo declara V$targetFlyway. El artefacto debe contener exactamente todas las migraciones ya aplicadas."
 }
 
+$previousHealthContract = Get-ImageHealthContract -Image $previousImage
+$targetHealthContract = Get-ImageHealthContract -Image $TargetBackendImage
+
 $backupDirectory = $null
 if (-not $SkipBackup) {
     New-Item -ItemType Directory -Path $BackupOutputDirectory -Force | Out-Null
@@ -219,16 +256,17 @@ if (-not $SkipBackup) {
 Write-Host "Imagen actual: $previousImage"
 Write-Host "Imagen objetivo: $TargetBackendImage"
 Write-Host "Flyway base/objetivo: V$databaseFlyway"
+Write-Host "Health actual/objetivo: $previousHealthContract -> $targetHealthContract"
 if ($backupDirectory) { Write-Host "Backup previo: $backupDirectory" }
 
 try {
-    Switch-BackendImage -Image $TargetBackendImage | Out-Null
+    Switch-BackendImage -Image $TargetBackendImage -HealthContract $targetHealthContract | Out-Null
 }
 catch {
     $rollbackFailure = $_
     Write-Warning "La imagen objetivo no quedó operativa. Se intentará recuperar '$previousImage'."
     try {
-        Switch-BackendImage -Image $previousImage | Out-Null
+        Switch-BackendImage -Image $previousImage -HealthContract $previousHealthContract | Out-Null
     }
     catch {
         throw "Falló el rollback y también la recuperación automática. Rollback: $($rollbackFailure.Exception.Message). Recuperación: $($_.Exception.Message)"
@@ -239,7 +277,9 @@ catch {
 Write-Host "Rollback de aplicación completado: $previousImage -> $TargetBackendImage" -ForegroundColor Green
 Write-Output ([ordered]@{
     previousImage = $previousImage
+    previousHealthContract = $previousHealthContract
     targetImage = $TargetBackendImage
+    targetHealthContract = $targetHealthContract
     flywayVersion = $databaseFlyway
     backupDirectory = $backupDirectory
 } | ConvertTo-Json -Compress)
