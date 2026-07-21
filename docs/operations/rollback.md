@@ -1,10 +1,12 @@
-# Rollback de aplicación compatible con Flyway
+# Rollback de aplicación compatible con Flyway y health
 
 ## Principio
 
-Gestudio usa migraciones Flyway forward-only. Un rollback de aplicación **no** puede borrar migraciones ni iniciar una imagen que desconozca versiones ya aplicadas.
+Gestudio usa migraciones Flyway forward-only. Un rollback de aplicación no puede borrar migraciones ni iniciar una imagen que desconozca versiones ya aplicadas.
 
 Si la base registra V7, la imagen objetivo debe contener V1-V7 aunque su código funcional corresponda a una versión anterior. Una imagen que declare V6 se rechaza antes de recrear el backend.
+
+El rollback también debe conocer cómo comprobar que cada artefacto quedó operativo. Las imágenes anteriores a Actuator no publican readiness, por lo que no pueden validarse con el mismo endpoint que una imagen actual.
 
 ## Primera respuesta ante un incidente V7
 
@@ -19,33 +21,46 @@ La feature flag es una mitigación, no una down migration.
 
 ## Metadata obligatoria de imagen
 
-El `backend/Dockerfile` genera:
+El Dockerfile genera:
 
 ```text
 /app/build-metadata/flyway-latest
 /app/build-metadata/git-revision
+/app/build-metadata/health-contract
 ```
 
-`flyway-latest` se deriva de los archivos `V*__*.sql` incluidos en la imagen. El rollback compara ese valor con `max(version)` de `flyway_schema_history`.
+`flyway-latest` se deriva de los archivos `V*__*.sql` incluidos en la imagen.
 
-Regla:
+`health-contract` admite:
+
+| Contrato | Uso | Sonda |
+|---|---|---|
+| `actuator-readiness-v1` | imágenes con Actuator | `/actuator/health/readiness` debe responder `UP` |
+| `legacy-api-401-v1` | imágenes anteriores a Actuator | `/api/alumnos` debe responder HTTP `401` sin credencial |
+
+La sonda legacy no es un simple puerto. Exige que la aplicación haya terminado de iniciar y que su capa HTTP/seguridad responda con el contrato esperado. Se usa sólo para permitir una retirada temporal a un artefacto anterior aprobado.
+
+Imágenes creadas antes de incorporar `health-contract`, pero que sí tienen metadata Flyway válida, se clasifican con advertencia como `legacy-api-401-v1`.
+
+Regla de esquema:
 
 ```text
 Flyway máximo de imagen objetivo == Flyway máximo exitoso de base
 ```
 
-Una imagen sin metadata, con un valor inválido, anterior o posterior se rechaza.
+Una imagen sin metadata Flyway, con valor inválido, anterior o posterior se rechaza. Un contrato de health desconocido también se rechaza.
 
 ## Preparar un artefacto rollback
 
-El artefacto rollback debe construirse y publicarse antes de una ventana operativa. Si se revierte código a un commit anterior a V7:
+Debe construirse y publicarse antes de una ventana operativa. Si se revierte código a un commit anterior a V7 o Actuator:
 
-1. crear un checkout separado del commit funcional anterior;
+1. crear checkout separado del commit funcional anterior;
 2. incorporar todas las migraciones aplicadas después de ese commit;
-3. construir con el Dockerfile actual, que genera metadata;
-4. ejecutar pruebas de esa fuente compatible;
-5. etiquetar la imagen de forma inmutable;
-6. registrar commit funcional, migraciones incorporadas, digest y fecha.
+3. construir con el Dockerfile actual;
+4. dejar que el build derive el contrato de health según las dependencias presentes;
+5. ejecutar pruebas de esa fuente compatible;
+6. etiquetar/publicar de forma inmutable;
+7. registrar commit funcional, migraciones, contrato health, digest y fecha.
 
 No usar `latest` como único identificador.
 
@@ -63,14 +78,19 @@ docker build `
   .\.rollback-source\backend
 ```
 
-Este ejemplo no publica nada automáticamente. El registry, permisos y política de firmas deben definirse para staging/producción.
+Comprobar metadata:
+
+```powershell
+docker run --rm --entrypoint cat <imagen> /app/build-metadata/flyway-latest
+docker run --rm --entrypoint cat <imagen> /app/build-metadata/health-contract
+```
 
 ## Ejecutar rollback local o controlado
 
 Requisitos:
 
 - base y backend ya creados por Compose;
-- imagen objetivo presente localmente o descargada explícitamente;
+- imagen objetivo presente o descargada explícitamente;
 - directorio seguro para backup;
 - ventana de mantenimiento;
 - autorización operativa.
@@ -89,22 +109,28 @@ powershell -NoProfile -ExecutionPolicy Bypass `
 El script:
 
 1. verifica Docker y Compose;
-2. identifica la imagen actual del contenedor;
-3. impide carreras mediante `ExpectedCurrentImage` cuando se informa;
-4. lee la versión Flyway de la base;
-5. lee la metadata Flyway de la imagen objetivo;
+2. identifica imagen actual;
+3. impide carreras mediante `ExpectedCurrentImage`;
+4. lee Flyway de la base;
+5. lee Flyway de la imagen objetivo;
 6. rechaza cualquier diferencia;
-7. crea un backup consistente previo;
-8. recrea sólo el backend;
-9. espera health;
-10. confirma que el contenedor usa la imagen exacta;
-11. si falla, intenta restaurar automáticamente la imagen anterior.
+7. obtiene contratos de health actual y objetivo;
+8. crea backup consistente previo;
+9. recrea sólo backend con el contrato objetivo;
+10. espera health;
+11. confirma imagen y contrato exactos;
+12. si falla, recupera la imagen anterior con su propio contrato.
 
-El resultado JSON incluye imagen anterior, imagen objetivo, Flyway y directorio del backup.
+El JSON final incluye:
+
+- imagen anterior y objetivo;
+- contrato health anterior y objetivo;
+- Flyway;
+- directorio de backup.
 
 ## `-SkipBackup`
 
-Existe únicamente para drills o para el retorno inmediato a un artefacto ya respaldado:
+Existe sólo para drills o retorno inmediato a un artefacto ya respaldado:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass `
@@ -116,13 +142,17 @@ powershell -NoProfile -ExecutionPolicy Bypass `
   -ConfirmRollback
 ```
 
-No usar en un cambio destructivo real sin una copia verificada y una decisión explícita.
+No usar en un cambio real sin copia verificada y decisión explícita.
 
-## Verificación después del cambio
+## Verificación posterior
 
 ```powershell
 docker compose --env-file .env -p gestudio ps
 docker compose --env-file .env -p gestudio logs --tail 200 backend
+
+$backend = docker compose --env-file .env -p gestudio ps -q backend
+docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' $backend | Select-String BACKEND_HEALTHCHECK_MODE
+
 docker compose --env-file .env -p gestudio exec db sh -ec `
   'PGPASSWORD="$POSTGRES_PASSWORD" psql --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" --command="SELECT version, success FROM flyway_schema_history ORDER BY installed_rank"'
 ```
@@ -130,16 +160,17 @@ docker compose --env-file .env -p gestudio exec db sh -ec `
 Verificar además:
 
 - login;
-- lectura de un alumno previo;
-- consulta de cargos y pagos;
-- emisión o lectura de recibo;
-- caja y stock;
+- alumno previo;
+- cargos/pagos;
+- recibo;
+- caja/stock;
 - ausencia de nuevas excepciones;
-- health estable durante la ventana acordada.
+- health estable;
+- si el contrato es legacy, registrar explícitamente que readiness Actuator no está disponible durante la mitigación.
 
 ## Retorno al artefacto actual
 
-El retorno se ejecuta con el mismo script, usando la imagen actual como objetivo y la imagen rollback como `ExpectedCurrentImage`. No se modifica el esquema.
+Se ejecuta con el mismo script. Al volver, la imagen actual recupera `actuator-readiness-v1` automáticamente.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass `
@@ -161,44 +192,44 @@ powershell -NoProfile -ExecutionPolicy Bypass `
 
 El drill:
 
-1. construye la imagen actual;
-2. crea un worktree de `ef4f9c31...`, anterior a V7;
-3. incorpora V7 y el Dockerfile actual para producir un artefacto compatible;
-4. construye una imagen incompatible que declara V6;
-5. inicia la versión actual y aplica V1-V7;
-6. crea un alumno sintético;
-7. verifica rechazo sin confirmación;
-8. verifica rechazo de la imagen V6;
-9. crea backup y cambia al artefacto anterior compatible;
-10. comprueba health, dato, Flyway y tablas V7;
-11. vuelve al artefacto actual;
-12. verifica nuevamente datos y Flyway;
-13. elimina stack, volúmenes, imágenes, worktree y temporales.
-
-Usar `-KeepStack` sólo para diagnóstico.
+1. construye imagen actual con `actuator-readiness-v1`;
+2. crea worktree de `ef4f9c31...`, anterior a V7 y Actuator;
+3. incorpora V7 y Dockerfile actual;
+4. construye artefacto compatible `legacy-api-401-v1`;
+5. construye imagen incompatible V6;
+6. inicia actual y aplica V1-V7;
+7. crea alumno sintético;
+8. verifica rechazo sin confirmación;
+9. verifica rechazo V6;
+10. crea backup;
+11. cambia al artefacto legacy compatible;
+12. verifica health 401, dato, Flyway y tablas V7;
+13. vuelve al artefacto actual;
+14. verifica readiness, datos y Flyway;
+15. elimina stack, volúmenes, imágenes, worktree y temporales.
 
 ## Qué no es rollback
 
 - editar o borrar V7;
 - eliminar filas de `flyway_schema_history`;
-- restaurar una base antigua sobre datos actuales sin procedimiento aprobado;
-- ejecutar `ddl-auto=update`;
-- usar una imagen pre-V7 sin incorporar V7;
-- cambiar `latest` sin registrar digest;
-- ignorar un backend unhealthy;
-- confundir desactivar una feature con revertir datos ya publicados externamente.
+- restaurar una base antigua sin procedimiento;
+- usar `ddl-auto=update`;
+- usar imagen pre-V7 sin incorporar V7;
+- cambiar `latest` sin digest;
+- aceptar un backend unhealthy;
+- usar únicamente una sonda TCP cuando hay contrato HTTP disponible;
+- confundir feature flag con reversión de efectos externos.
 
 ## Límites
 
-El drill técnico no define:
+El drill no define:
 
 - registry productivo;
 - firma de imágenes;
-- retención de artefactos;
-- responsables;
-- tiempo máximo de decisión;
-- monitoreo durante la ventana;
-- rollback coordinado con frontend;
+- retención/promoción;
+- responsables y tiempo máximo;
+- monitoreo externo durante ventana;
+- rollback coordinado del frontend;
 - reconciliación de efectos externos.
 
-Esos puntos continúan bloqueando staging y producción aunque el drill local sea verde.
+Un rollback legacy es una mitigación temporal y pierde readiness detallada mientras permanece activo. Estos puntos continúan bloqueando staging y producción.
