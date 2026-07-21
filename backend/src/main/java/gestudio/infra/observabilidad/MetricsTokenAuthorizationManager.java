@@ -40,7 +40,7 @@ public final class MetricsTokenAuthorizationManager
             return false;
         }
 
-        byte[] candidateBytes = candidate.trim().getBytes(StandardCharsets.UTF_8);
+        byte[] candidateBytes = candidate.getBytes(StandardCharsets.UTF_8);
         return MessageDigest.isEqual(expectedToken, candidateBytes);
     }
 }
