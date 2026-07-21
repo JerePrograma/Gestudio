@@ -11,7 +11,7 @@ Sólo se marca lo demostrado con ejecución o evidencia verificable.
 - [x] `git diff --check` sin errores en gates integrados.
 - [x] secretos reales fuera de Git.
 - [x] imágenes backend y frontend construidas en CI.
-- [x] imagen backend declara revisión Git y versión Flyway.
+- [x] imagen backend declara revisión Git, versión Flyway y contrato de health.
 
 ## Backend y base
 
@@ -24,7 +24,7 @@ Sólo se marca lo demostrado con ejecución o evidencia verificable.
 - [x] backend fail-closed.
 - [x] idempotencia secuencial y concurrente.
 - [x] liquidación por vigencia y snapshot atómico.
-- [x] contexts no web y slices MVC revalidados con el chain Actuator.
+- [x] contexts no web y slices MVC revalidados con Actuator.
 
 ## Frontend
 
@@ -78,14 +78,20 @@ Sólo se marca lo demostrado con ejecución o evidencia verificable.
 
 - [x] PR `#19` fusionado en `main`.
 - [x] metadata Flyway por imagen.
+- [x] metadata health por imagen.
+- [x] `actuator-readiness-v1` para artefactos actuales.
+- [x] `legacy-api-401-v1` para artefactos anteriores a Actuator.
+- [x] sonda legacy HTTP; no simple puerto TCP.
+- [x] fallback documentado para imágenes previas a metadata health.
+- [x] contrato desconocido rechazado.
 - [x] confirmación explícita.
 - [x] race guard de imagen actual.
 - [x] imagen V6 rechazada antes del cambio.
 - [x] backup consistente previo.
 - [x] rollback a artefacto anterior compatible.
 - [x] dato, Flyway V7 y tablas V7 preservados.
-- [x] retorno al artefacto actual.
-- [x] recuperación automática ante target unhealthy implementada.
+- [x] retorno al artefacto actual y readiness recuperada.
+- [x] recuperación automática ante target unhealthy.
 - [x] cleanup de stack, imágenes, worktree y temporales.
 - [ ] registry productivo por digest.
 - [ ] firma, promoción y retención de artefactos.
@@ -97,7 +103,7 @@ Sólo se marca lo demostrado con ejecución o evidencia verificable.
 - [x] Actuator y Micrometer Prometheus integrados.
 - [x] liveness público mínimo.
 - [x] readiness con aplicación, PostgreSQL y disco.
-- [x] healthchecks Docker basados en readiness real.
+- [x] healthchecks Docker basados en readiness real para imágenes actuales.
 - [x] `/actuator/prometheus` protegido por secreto independiente.
 - [x] credencial ausente o inválida devuelve 401.
 - [x] token exacto y comparación en tiempo constante.
@@ -126,4 +132,4 @@ Sólo se marca lo demostrado con ejecución o evidencia verificable.
 
 ## Decisión
 
-Seguridad, finanzas, V7, demo automatizada, backup, restore, rollback y observabilidad source-owned están aprobados técnicamente dentro de infraestructura descartable. GATE-2, demo humana, políticas operativas, monitoreo externo y ambiente real siguen bloqueando demo comercial, staging y producción.
+Seguridad, finanzas, V7, demo automatizada, backup, restore, rollback y observabilidad source-owned están aprobados técnicamente dentro de infraestructura descartable una vez que el HEAD final revalide todos los workflows. GATE-2, demo humana, políticas operativas, monitoreo externo y ambiente real siguen bloqueando demo comercial, staging y producción.
