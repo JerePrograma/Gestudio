@@ -2,124 +2,115 @@
 
 > Fecha: 21 de julio de 2026  
 > Rama operativa: `main`  
-> Estado externo: **NO-GO para demo comercial, staging y producción**
+> Merge funcional GATE-2: `7d8872a59acb923fae664f806b01e459f372dc1c`  
+> Estado externo: **NO-GO para demo humana, demo comercial, staging y producción**
 
-Git/GitHub son autoridad si este documento queda desactualizado. Fuente vigente: `docs/codex/gestudio-release-hardening/12_ESTADO_ACTUAL_Y_BACKLOG.md`.
+Git y GitHub son autoridad. El backlog vigente está en `docs/codex/gestudio-release-hardening/12_ESTADO_ACTUAL_Y_BACKLOG.md` y la evidencia de esta iteración en `21_GATE_2_UX_OPERATIVA_2026-07-21.md`.
 
-## Snapshot
-
-| Campo | Valor |
-|---|---|
-| Baseline continuidad | `15481e38f0cf714607d0f7d5c3279a46315d7b5d` |
-| Merge GATE-1B | `23546e025177ff810944808d468a60b91cf621eb` |
-| Registro GATE-1B | `ef4f9c31dab9a3dfce43f913177089f80ae0205a` |
-| Merge integración V7 | `e1afec960ddeb72d61932a1eb1f4a83a65899540` |
-| Merge backup/restore | `57731d7132ae5df19371153cd2f5e1a8d77fc94a` |
-| Merge rollback | `2eb9a8442c9a0c329c7ddaea42d3ea5c5827f35c` |
-| Merge observabilidad | `7dc07d649a468934f3c099a92e5d32747cf64347` (`#20`) |
-| HEAD reconciliado antes de GATE-2 | `db89c3e11056e95417cc093034c821bc3dfdd015` |
-| Siguiente gate interno | GATE-2 y recorridos humanos |
-
-## Estado
+## Capacidades integradas
 
 | Área | Estado |
 |---|---|
-| RBAC y 32 permisos | integrado/probado |
-| Liquidación por vigencia | integrado/probado |
+| RBAC fail-closed y 32 permisos | integrado/probado |
+| Finanzas por vigencia e idempotencia | integrado/probado |
 | Flyway V1-V7 | integrado/probado |
-| Demo automatizada | PASS histórico; revalidación requerida sobre cada SHA candidato |
-| Emisor firmado de estudiantes | integrado, apagado |
-| Receptor multipágina Jere Platform | integrado mediante `jere-platform#60`; `#59` cerrado |
-| Transporte desplegado Gestudio → Jere Platform | no ejecutado ni autorizado |
+| Demo automatizada | PASS sobre SHA `52175e49...` |
 | Backup/restore | PASS técnico |
-| Rollback backend | PASS e integrado en main |
-| Observabilidad source-owned | PASS técnico e integrada en main mediante `#20` |
-| Monitoreo/alertas externas | bloqueado por ambiente |
+| Rollback | PASS técnico |
+| Observabilidad source-owned | PASS técnico, PR `#20` |
+| Emisor Jere Platform | integrado y apagado |
+| Receptor Jere Platform | integrado mediante PR `#60` |
+| Transporte desplegado | no demostrado |
+| Búsqueda humana de alumnos | integrada mediante PR `#21` |
+| Pagos sin ID técnico visible | integrado mediante PR `#21` |
 | Demo humana | pendiente |
-| GATE-2 | pendiente |
-| Staging/producción | no autorizados |
+| Staging/producción | no provistos/no autorizados |
 
-## Evidencia vigente
+## Evidencia final PR #21
 
-- backend previo a observabilidad: 162/162 PASS;
-- backend con observabilidad: 171 pruebas y regresiones de contexts/slices corregidas;
-- frontend: 142/142 PASS;
-- lint/build/imágenes: PASS en gates integrados;
-- Scope All: PASS después de correcciones;
-- smoke V1-V7 y seed doble: PASS en gates integrados y obligatorios sobre cada HEAD final;
-- backup/restore: 9 PASS, 0 fallos;
-- rollback: 8 PASS, 0 fallos, `00:03:21`;
-- observabilidad: 8 PASS, 0 fallos, `00:01:34.3933724`;
-- imagen V6 rechazada;
-- dato y Flyway V7 preservados;
-- Prometheus cerrado sin token y abierto con token exacto;
-- request ID y logs sanitizados verificados;
-- recursos residuales: ninguno en drills verdes.
+SHA candidato: `52175e49b03a2fc7b4e1c729a0f8a4a7f1c30113`.
 
-Los conteos anteriores son evidencia histórica integrada. No sustituyen workflows verdes sobre un SHA nuevo ni la validación visual humana.
+- backend: **172/172 PASS**;
+- frontend: **142/142 PASS**;
+- lint: PASS;
+- build frontend: PASS;
+- Scope All: PASS;
+- Compose local/productivo: PASS;
+- imágenes backend/frontend: PASS;
+- smoke GATE: PASS;
+- smoke CI aislado: PASS;
+- seed doble: PASS;
+- hilos pendientes: ninguno;
+- merge protegido: `7d8872a59acb923fae664f806b01e459f372dc1c`.
 
-## Operación
+## Correcciones GATE-2 integradas
 
-Runbooks:
+1. Alumnos se buscan por nombre, apellido, ambos órdenes, documento y fragmentos, sólo activos.
+2. Pagos deja de exponer el ID interno como referencia comercial y usa fecha/monto en el nombre accesible.
+3. La primera ejecución CI detectó una colisión de sesión causada por un segundo truncate en la prueba; se corrigió sin tocar lógica productiva.
+4. La documentación dejó de presentar observabilidad `#20` o `jere-platform#59` como pendientes.
 
-- `docs/operations/local-runbook.md`;
-- `docs/operations/backup-restore.md`;
-- `docs/operations/rollback.md`;
-- `docs/operations/observability.md`.
+## Recorridos humanos
 
-Scripts:
+| Rol | Estado |
+|---|---|
+| SUPERADMIN | PENDIENTE |
+| DIRECCION | PENDIENTE |
+| ADMINISTRADOR | PENDIENTE |
+| SECRETARIA | PENDIENTE |
+| CAJA | PENDIENTE |
 
-- `scripts/ops/backup-postgres.ps1`;
-- `scripts/ops/restore-postgres.ps1`;
-- `scripts/ops/rollback-backend.ps1`;
-- `scripts/ops/verify-backup-restore.ps1`;
-- `scripts/ops/verify-application-rollback.ps1`;
-- `scripts/ops/verify-observability.ps1`.
+La ausencia de navegador operativo en esta ejecución impide cerrar accesibilidad, responsive y operación visual. Una suite verde no equivale a demo humana aprobada.
 
-Workflows permanentes:
+## Operación local
 
-- `CI Gestudio`;
-- `GATE-1B validation`;
-- `Backup restore verification`;
-- `Application rollback verification`;
-- `Observability verification`.
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File .\scripts\codex\setup.ps1
 
-## Integración Jere Platform
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File .\scripts\codex\validate.ps1 `
+  -Scope All
 
-El emisor V7 produce referencias mínimas firmadas y permanece apagado. No realiza transporte automático. El receptor multipágina fue integrado en `JerePrograma/jere-platform` mediante PR `#60`, y el bloqueo técnico `#59` fue cerrado. El issue coordinador `#51` permanece abierto porque también incluye transporte desplegado, Scalaris y requisitos productivos.
+powershell.exe -NoProfile -ExecutionPolicy Bypass `
+  -File .\scripts\demo-local.ps1 `
+  -Action Start
+```
 
-No existe evidencia de conexión desplegada Gestudio → Jere Platform. La existencia de emisor y receptor en código no equivale a integración operativa.
+Estado y detención:
 
-## Siguiente trabajo exacto
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass `
+  -File .\scripts\demo-local.ps1 `
+  -Action Status
 
-1. ejecutar los cinco recorridos humanos por rol sobre un SHA exacto;
-2. inventariar y corregir únicamente IDs técnicos y estados loading/empty/error reproducibles;
-3. validar pagos/caja/egresos/recibos, stock y asistencia con evidencia funcional;
-4. validar foco, teclado, labels, contraste y anchos 360, 390, 768 y escritorio;
-5. ejecutar backend, frontend, Scope All, smoke y seed después de cada corrección;
-6. definir política de backups, artefactos y secretos;
-7. proveer Prometheus/storage/dashboard/alertas y responsables;
-8. obtener staging y repetir todos los gates;
-9. mantener producción en NO-GO.
+powershell.exe -NoProfile -ExecutionPolicy Bypass `
+  -File .\scripts\demo-local.ps1 `
+  -Action Stop
+```
+
+Runbook: `docs/operations/local-runbook.md`.
+
+## Próximos pasos exactos
+
+1. levantar la demo con datos sintéticos;
+2. ejecutar `SUPERADMIN` completo;
+3. ejecutar `DIRECCION` y probar URL directas prohibidas;
+4. ejecutar `ADMINISTRADOR`;
+5. ejecutar `SECRETARIA`: alumno → inscripción → asistencia;
+6. ejecutar `CAJA`: cargo → pago → recibo → caja → stock/reversión;
+7. repetir en 360, 390, 768 y escritorio;
+8. validar foco, tabulación, labels, modales, contraste y errores;
+9. registrar evidencia con SHA exacto;
+10. mantener staging y producción en NO-GO hasta que existan ambientes y autorización.
 
 ## Riesgos abiertos
 
-- alertas y retención externas ausentes;
-- registry, digest, firma y promoción no definidos;
-- política real de backup incompleta;
-- secret manager y rotación no demostrados;
-- recorridos humanos y GATE-2 pendientes;
-- ambiente staging inexistente;
+- GATE-2 humano no cerrado;
+- accesibilidad y móvil sin evidencia completa;
+- búsqueda amplia puede requerir optimización futura por volumen;
+- políticas de backup, imágenes y secretos incompletas;
+- monitoreo externo no provisto;
+- staging inexistente;
 - producción no autorizada;
-- transporte Gestudio → Jere Platform no desplegado ni probado end-to-end.
-
-## Restricciones
-
-- no usar bases reales para drills;
-- no editar V1-V7;
-- no ejecutar down migrations;
-- no habilitar Profesor/Observaciones/STOMP;
-- no activar V7 como integración productiva;
-- no exponer Prometheus sin token y segmentación;
-- no registrar cuerpos, cookies, tokens ni secretos;
-- no desplegar.
+- transporte Jere Platform no desplegado.
