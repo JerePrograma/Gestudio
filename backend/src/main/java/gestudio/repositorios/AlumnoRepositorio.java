@@ -25,13 +25,20 @@ public interface AlumnoRepositorio extends JpaRepository<Alumno, Long> {
     @Query("select a from Alumno a where a.id = :id and a.activo = true")
     Optional<Alumno> findActivoByIdForUpdate(@Param("id") Long id);
 
-    // Buscar por nombre completo **solo** activos
+    // Búsqueda operativa por referencias humanas, únicamente sobre alumnos activos.
     @Query("""
       SELECT a
         FROM Alumno a
        WHERE a.activo = true
-         AND LOWER(CONCAT(a.nombre, ' ', a.apellido)) 
-             LIKE LOWER(CONCAT('%', :nombre, '%'))
+         AND (
+              LOWER(a.nombre) LIKE LOWER(CONCAT('%', :nombre, '%'))
+           OR LOWER(COALESCE(a.apellido, '')) LIKE LOWER(CONCAT('%', :nombre, '%'))
+           OR LOWER(CONCAT(CONCAT(a.nombre, ' '), COALESCE(a.apellido, '')))
+                LIKE LOWER(CONCAT('%', :nombre, '%'))
+           OR LOWER(CONCAT(CONCAT(COALESCE(a.apellido, ''), ' '), a.nombre))
+                LIKE LOWER(CONCAT('%', :nombre, '%'))
+           OR LOWER(COALESCE(a.documento, '')) LIKE LOWER(CONCAT('%', :nombre, '%'))
+         )
       """)
     Page<Alumno> buscarPorNombreCompleto(@Param("nombre") String nombre, Pageable pageable);
 }

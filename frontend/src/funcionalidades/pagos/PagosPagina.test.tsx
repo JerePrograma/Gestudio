@@ -32,6 +32,7 @@ vi.mock("react-toastify", () => ({
     error: toastError,
   },
 }));
+
 vi.mock("../../hooks/context/useAuth", () => ({
   useAuth: () => ({ hasPermission }),
 }));
@@ -75,6 +76,11 @@ describe("PagosPagina", () => {
     expect(screen.getAllByText("Ana Prueba").length).toBeGreaterThan(0);
     expect(await screen.findByRole("cell", { name: "$ 100,50" })).toBeVisible();
     expect(screen.getByText("REGISTRADO")).toBeVisible();
+    expect(screen.queryByRole("columnheader", { name: "ID" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("cell", { name: "99" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", {
+      name: "Acciones del pago del 2026-07-09 por $ 100,50",
+    })).toBeVisible();
   });
 
   it("resuelve el alumno del enlace interno y conserva la consulta por ID hacia backend", async () => {

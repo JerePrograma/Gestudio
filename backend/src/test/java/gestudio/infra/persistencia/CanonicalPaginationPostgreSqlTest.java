@@ -98,6 +98,25 @@ class CanonicalPaginationPostgreSqlTest extends PostgreSqlIntegrationTest {
             "PERM_ALUMNOS_LEER",
             "PERM_ALUMNOS_ADMIN"
     })
+    void buscaAlumnosPorNombreApellidoAmbosOrdenesDocumentoYParciales() throws Exception {
+        alumnos.saveAndFlush(alumno("Ana María", "Pérez", "30123456", true));
+        alumnos.saveAndFlush(alumno("Ana", "Pérez", "30999999", false));
+
+        assertBusquedaUnica("Ana");
+        assertBusquedaUnica("Pérez");
+        assertBusquedaUnica("Ana María Pérez");
+        assertBusquedaUnica("Pérez Ana");
+        assertBusquedaUnica("30123456");
+        assertBusquedaUnica("1234");
+        assertBusquedaUnica("maría pé");
+    }
+
+    @Test
+    @WithMockUser(authorities = {
+            "PERM_APP_ACCESO",
+            "PERM_ALUMNOS_LEER",
+            "PERM_ALUMNOS_ADMIN"
+    })
     void filtroSinResultadosYPaginaUsanDosConsultas() throws Exception {
         SessionFactory sessionFactory = entityManagerFactory.unwrap(SessionFactory.class);
         sessionFactory.getStatistics().clear();
@@ -136,12 +155,29 @@ class CanonicalPaginationPostgreSqlTest extends PostgreSqlIntegrationTest {
                 .andExpect(status().isUnauthorized());
     }
 
+    private void assertBusquedaUnica(String termino) throws Exception {
+        mockMvc.perform(get("/api/alumnos/buscar")
+                        .queryParam("nombre", termino)
+                        .queryParam("page", "0")
+                        .queryParam("size", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.content[0].nombre").value("Ana María"))
+                .andExpect(jsonPath("$.content[0].apellido").value("Pérez"))
+                .andExpect(jsonPath("$.content[0].documento").value("30123456"));
+    }
+
     private static Alumno alumno(String nombre, String apellido) {
+        return alumno(nombre, apellido, null, true);
+    }
+
+    private static Alumno alumno(String nombre, String apellido, String documento, boolean activo) {
         Alumno alumno = new Alumno();
         alumno.setNombre(nombre);
         alumno.setApellido(apellido);
+        alumno.setDocumento(documento);
         alumno.setFechaIncorporacion(LocalDate.of(2026, 1, 1));
-        alumno.setActivo(true);
+        alumno.setActivo(activo);
         alumno.setAutorizadoParaSalirSolo(false);
         return alumno;
     }
