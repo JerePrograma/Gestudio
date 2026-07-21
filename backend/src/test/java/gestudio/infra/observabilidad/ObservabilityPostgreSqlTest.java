@@ -40,11 +40,11 @@ class ObservabilityPostgreSqlTest extends PostgreSqlIntegrationTest {
     @Test
     void prometheusPermaneceCerradoSinElTokenExacto() throws Exception {
         mockMvc.perform(get("/actuator/prometheus"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
 
         mockMvc.perform(get("/actuator/prometheus")
                         .header(MetricsTokenAuthorizationManager.HEADER_NAME, "wrong-token"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
 
         mockMvc.perform(get("/actuator/prometheus")
                         .header(MetricsTokenAuthorizationManager.HEADER_NAME, "test-metrics-token"))
