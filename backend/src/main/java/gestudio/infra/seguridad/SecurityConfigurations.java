@@ -2,8 +2,10 @@ package gestudio.infra.seguridad;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import gestudio.infra.errores.ApiErrorResponse;
+import gestudio.infra.observabilidad.MetricsTokenAuthorizationManager;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authorization.AuthorizationManager;
@@ -42,9 +44,35 @@ public class SecurityConfigurations {
     }
 
     @Bean
+    @Order(1)
+    public SecurityFilterChain observabilitySecurityFilterChain(
+            HttpSecurity http,
+            MetricsTokenAuthorizationManager metricsTokenAuthorizationManager) throws Exception {
+        return http
+                .securityMatcher("/actuator/**")
+                .csrf(AbstractHttpConfigurer::disable)
+                .cors(AbstractHttpConfigurer::disable)
+                .formLogin(AbstractHttpConfigurer::disable)
+                .httpBasic(AbstractHttpConfigurer::disable)
+                .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .exceptionHandling(errors -> errors
+                        .authenticationEntryPoint((request, response, exception) ->
+                                response.sendError(HttpStatus.FORBIDDEN.value()))
+                        .accessDeniedHandler((request, response, exception) ->
+                                response.sendError(HttpStatus.FORBIDDEN.value())))
+                .authorizeHttpRequests(req -> req
+                        .requestMatchers(HttpMethod.GET, "/actuator/health", "/actuator/health/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/actuator/prometheus")
+                        .access(metricsTokenAuthorizationManager)
+                        .anyRequest().denyAll())
+                .build();
+    }
+
+    @Bean
+    @Order(2)
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
-                                                   SecurityFilter securityFilter,
-                                                   AuthenticationEntryPoint authenticationEntryPoint) throws Exception {
+                                                    SecurityFilter securityFilter,
+                                                    AuthenticationEntryPoint authenticationEntryPoint) throws Exception {
         return http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(Customizer.withDefaults())
