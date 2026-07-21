@@ -95,7 +95,32 @@ Estado: **VALIDADO TÉCNICAMENTE**.
 - feature flag es mitigación, no reversión de efectos externos;
 - artefactos operativos deben identificarse por digest, no sólo tag.
 
+Estado: **INTEGRADA EN MAIN Y VALIDADA TÉCNICAMENTE**.
+
+### Observabilidad source-owned
+
+- liveness y readiness públicos con estado agregado únicamente;
+- readiness real en Dockerfile y Compose;
+- Prometheus protegido por token externo independiente;
+- token ausente, incorrecto, vacío o alterado devuelve `401`;
+- comparación exacta en tiempo constante;
+- todos los demás endpoints Actuator denegados o no expuestos;
+- `X-Request-ID` propagado o reemplazado por UUID;
+- MDC limpiado en `finally`;
+- logs HTTP sin query strings, cuerpos, cookies ni secretos;
+- drill descartable y workflow permanente;
+- runbook de diagnóstico, umbrales iniciales y rollback.
+
 Estado: **IMPLEMENTADA Y VALIDADA TÉCNICAMENTE**.
+
+### Monitoreo externo
+
+- el código no incorpora un servidor Prometheus ni Grafana;
+- alertas, retención y canales dependen del ambiente destino;
+- health y métricas source-owned no equivalen a un SLA productivo;
+- los umbrales iniciales deben calibrarse con carga real.
+
+Estado: **BLOQUEADO POR AMBIENTE Y RESPONSABLES**.
 
 ### Release
 
@@ -119,12 +144,24 @@ Estado: **IMPLEMENTADA Y VALIDADA TÉCNICAMENTE**.
 | BLK-BACKUP | backup inexistente | dump/recibos/manifiesto |
 | BLK-RESTORE | restore no probado | base alternativa y recibo |
 | BLK-ROLLBACK | artefacto anterior incompatible | drill ida/vuelta con V7 y datos preservados |
+| BLK-OBS-SOURCE | health/métricas/correlación/logs ausentes | Actuator, token, request ID, drill y runbook |
 
 ## Bloqueos abiertos
 
-### BLK-OBS — Observabilidad
+### BLK-OBS-EXTERNAL — Monitoreo y alertas reales
 
-Faltan health/readiness/liveness, métricas, correlación, logs sanitizados, alertas y runbook de incidentes. Bloquea staging y producción.
+Faltan:
+
+- scraper Prometheus o equivalente;
+- almacenamiento y retención de métricas;
+- dashboard;
+- alertas entregadas a responsables;
+- retención centralizada de logs;
+- prueba de rotación del token;
+- on-call y escalamiento;
+- calibración con carga real.
+
+Bloquea staging y producción.
 
 ### BLK-JP-059 — Receptor externo
 
@@ -154,6 +191,7 @@ Faltan host, dominio, TLS, CORS, cookies, responsables, ventana y autorización.
 
 - Profesor sólo con ownership y pruebas cruzadas;
 - Observaciones sin superficie;
+- tracing distribuido cuando exista más de un servicio;
 - portal familias;
 - Mercado Pago/facturación;
 - WhatsApp automático;
@@ -162,10 +200,10 @@ Faltan host, dominio, TLS, CORS, cookies, responsables, ventana y autorización.
 
 ## Próximas acciones
 
-1. integrar cierre de rollback;
-2. cerrar observabilidad mínima;
-3. completar GATE-2 y recorridos humanos;
-4. definir políticas operativas;
+1. fusionar observabilidad sólo con todos los gates verdes sobre un SHA único;
+2. completar GATE-2 y recorridos humanos;
+3. definir políticas operativas;
+4. proveer monitoreo externo y responsables;
 5. disponer staging;
 6. repetir gates en staging;
 7. mantener producción en NO-GO hasta autorización independiente.
