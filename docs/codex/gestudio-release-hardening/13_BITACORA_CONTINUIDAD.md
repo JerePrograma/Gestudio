@@ -282,3 +282,46 @@ La capacidad source está integrada y probada. La operación multipágina end-to
 ### Decisión
 
 Backup y restore quedan cerrados técnicamente en infraestructura descartable. Permanecen abiertos destino externo cifrado, retención, RPO/RTO, responsables, rollback, observabilidad, GATE-2, staging y producción.
+
+<!-- ROLLBACK-FORWARD-COMPATIBLE-2026-07-20 -->
+## 2026-07-20 — Rollback backend forward-compatible
+
+### Implementación
+
+- rama: `agent/ops-rollback-forward-compatible`;
+- PR: `#19`;
+- Dockerfile agrega metadata `flyway-latest` y `git-revision`;
+- `rollback-backend.ps1` exige confirmación, compara Flyway base/imagen, crea backup y recupera imagen anterior si el target falla;
+- `verify-application-rollback.ps1` construye imagen actual, anterior-compatible e incompatible V6;
+- runbook: `docs/operations/rollback.md`.
+
+### Evidencia ejecutada
+
+- branch head inicial probado: `6ec180cee4fe69a5f0d60e9aa394f7893179dd24`;
+- merge ref de Actions: `235c26544b10c0aedbe6ab50463911462d7a9509`;
+- runner: Ubuntu 24.04.4;
+- Git: 2.54.0;
+- Docker: 28.0.4;
+- Docker Compose: 2.38.2;
+- PowerShell: 7.6.3;
+- duración: `00:03:21`;
+- pasos: 8 PASS;
+- fallos: 0;
+- resultado global: PASS;
+- artefacto digest: `sha256:7c00914e46ce19e5cb987c5fe7477ad7aa21800f9215823e2fc41dd49b9b14b1`.
+
+### Casos demostrados
+
+- versión actual healthy con V1-V7;
+- dato sintético creado antes del cambio;
+- rollback sin confirmación rechazado;
+- imagen V6 rechazada sin alterar backend;
+- backup previo generado;
+- artefacto anterior compatible healthy;
+- dato, historial Flyway y tablas V7 preservados;
+- retorno al artefacto actual;
+- cleanup de stack, volúmenes, redes, imágenes, worktree y temporales.
+
+### Decisión
+
+Rollback backend queda cerrado técnicamente en infraestructura descartable. Permanecen abiertos registry/digest/firma, promoción y retención de artefactos, coordinación frontend, observabilidad, GATE-2, staging y producción.

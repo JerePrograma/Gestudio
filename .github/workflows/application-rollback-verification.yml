@@ -1,0 +1,74 @@
+name: Application rollback verification
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - "backend/Dockerfile"
+      - "backend/src/main/resources/db/migration/**"
+      - "scripts/ops/rollback-backend.ps1"
+      - "scripts/ops/backup-postgres.ps1"
+      - "scripts/ops/verify-application-rollback.ps1"
+      - "docker-compose.yml"
+      - "docs/operations/rollback.md"
+      - ".github/workflows/application-rollback-verification.yml"
+  push:
+    branches: [main]
+    paths:
+      - "backend/Dockerfile"
+      - "backend/src/main/resources/db/migration/**"
+      - "scripts/ops/rollback-backend.ps1"
+      - "scripts/ops/backup-postgres.ps1"
+      - "scripts/ops/verify-application-rollback.ps1"
+      - "docker-compose.yml"
+      - "docs/operations/rollback.md"
+      - ".github/workflows/application-rollback-verification.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: application-rollback-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Forward-compatible backend rollback
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
+
+      - name: Capture environment
+        shell: bash
+        run: |
+          {
+            echo "UTC=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+            echo "SHA=$GITHUB_SHA"
+            git status --short --branch
+            git --version
+            docker --version
+            docker compose version
+            pwsh --version
+          } | tee application-rollback.log
+
+      - name: Execute disposable rollback drill
+        shell: pwsh
+        run: |
+          & pwsh -NoProfile -File ./scripts/ops/verify-application-rollback.ps1 2>&1 | Tee-Object -FilePath application-rollback-run.log
+          Get-Content application-rollback-run.log | Add-Content application-rollback.log
+          exit $LASTEXITCODE
+
+      - name: Publish rollback evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: application-rollback-evidence
+          path: |
+            application-rollback.log
+            application-rollback-run.log
+          if-no-files-found: error
