@@ -41,6 +41,6 @@ ENV GESTUDIO_HOME=/app \
 USER gestudio
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-  CMD nc -z 127.0.0.1 "$SERVER_PORT" || exit 1
+  CMD wget -qO- "http://127.0.0.1:${SERVER_PORT}/actuator/health/readiness" | grep -q '"status":"UP"' || exit 1
 
 ENTRYPOINT ["java", "-jar", "app.jar"]
