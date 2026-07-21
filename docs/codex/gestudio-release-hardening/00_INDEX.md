@@ -12,7 +12,7 @@
 | Liquidación financiera | GATE-1B cerrado técnicamente |
 | Flyway | V1-V7 integradas e inmutables |
 | Demo automatizada | PASS |
-| Demo humana | pendiente |
+| Demo humana | pendiente con guion reproducible |
 | Integración Jere Platform | source integrada; end-to-end bloqueado externamente |
 | Backup técnico | PASS |
 | Restore aislado | PASS |
@@ -45,8 +45,9 @@ La fuente operativa vigente es [12_ESTADO_ACTUAL_Y_BACKLOG.md](12_ESTADO_ACTUAL_
 16. [Cierre V7, backup y restore](16_CIERRE_BACKUP_RESTORE_Y_V7_2026-07-20.md)
 17. [Cierre rollback forward-compatible](17_CIERRE_ROLLBACK_FORWARD_COMPATIBLE_2026-07-20.md)
 18. [Cierre observabilidad mínima](18_CIERRE_OBSERVABILIDAD_MINIMA_2026-07-20.md)
+19. [Bitácora de cierre operativo](19_BITACORA_CIERRE_OPERATIVO_2026-07-20.md)
 
-## Runbooks
+## Runbooks y pruebas humanas
 
 - [Puesta en marcha y flujo de uso](../../operations/local-runbook.md)
 - [Backup y restore](../../operations/backup-restore.md)
@@ -55,6 +56,7 @@ La fuente operativa vigente es [12_ESTADO_ACTUAL_Y_BACKLOG.md](12_ESTADO_ACTUAL_
 - [Desarrollo local](../../development/local-development.md)
 - [Demo persistente](../../testing/demo-local.md)
 - [Dataset demo](../../testing/demo-seed.md)
+- [Recorridos humanos por rol](../../testing/human-role-walkthrough.md)
 - [Integración Jere Platform](../../integrations/jere-platform-student-export-v1.md)
 
 ## Evidencia vigente
@@ -89,12 +91,13 @@ La fuente operativa vigente es [12_ESTADO_ACTUAL_Y_BACKLOG.md](12_ESTADO_ACTUAL_
 ## Orden siguiente
 
 1. fusionar PR `#20` sólo con todos los workflows verdes sobre un único SHA;
-2. completar GATE-2 y recorridos humanos;
-3. definir políticas de backup, artefactos y secretos;
-4. proveer monitoreo externo y responsables;
-5. obtener staging;
-6. repetir gates en staging;
-7. evaluar producción sólo con autorización independiente.
+2. ejecutar y completar GATE-2 y recorridos humanos;
+3. corregir únicamente defectos demostrados y repetir los recorridos;
+4. definir políticas de backup, artefactos y secretos;
+5. proveer monitoreo externo y responsables;
+6. obtener staging;
+7. repetir gates en staging;
+8. evaluar producción sólo con autorización independiente.
 
 ## Decisión
 
