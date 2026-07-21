@@ -5,162 +5,147 @@
 > Repositorio: `JerePrograma/Gestudio`  
 > Estado externo: **NO-GO para demo comercial, staging y producción**
 
-Este archivo registra la cronología compacta posterior al cierre de backup/restore. La evidencia detallada permanece en los documentos 17 y 18 y en los artefactos de GitHub Actions.
+Este archivo registra la cronología posterior a backup/restore. La evidencia detallada permanece en los documentos 17 y 18 y en GitHub Actions.
 
-## 1. Rollback forward-compatible
-
-### Estado inicial
+## 1. Rollback forward-compatible integrado
 
 - PR: `#19`;
-- candidato final: `bb82ff1ddc7a6b319383185e76d5e598ecc1d744`;
-- base: `main`;
-- hilos de revisión pendientes: 0;
-- reviews pendientes: 0.
+- candidato: `bb82ff1ddc7a6b319383185e76d5e598ecc1d744`;
+- hilos/reviews pendientes: 0;
+- GATE-1B, CI, backup/restore y rollback: success;
+- merge protegido en `main`: `2eb9a8442c9a0c329c7ddaea42d3ea5c5827f35c`.
 
-### Workflows finales
-
-- `GATE-1B validation`: success;
-- `CI Gestudio`: success;
-- `Backup restore verification`: success;
-- `Application rollback verification`: success.
-
-### Integración
-
-- PR marcado ready;
-- merge method: merge commit;
-- protección `expected_head_sha` aplicada;
-- merge en `main`: `2eb9a8442c9a0c329c7ddaea42d3ea5c5827f35c`.
-
-### Decisión
-
-Rollback backend queda integrado y cerrado técnicamente. Registry, firma, promoción y retención de imágenes permanecen abiertos.
+Decisión: rollback backend cerrado técnicamente. Registry, firma, promoción y retención siguen abiertos.
 
 ## 2. Inicio de observabilidad mínima
 
-### Rama y PR
-
-- rama: `agent/ops-observability-minimum`;
-- base inicial: `2eb9a8442c9a0c329c7ddaea42d3ea5c5827f35c`;
-- PR: `#20`;
-- modalidad: draft hasta todos los gates verdes.
-
-### Diseño
-
+- rama `agent/ops-observability-minimum`;
+- base `2eb9a8442c9a0c329c7ddaea42d3ea5c5827f35c`;
+- PR `#20` draft;
 - health público mínimo;
-- Prometheus fail-closed con secreto independiente;
-- request ID seguro;
-- logs sin datos sensibles;
-- readiness real en Docker;
-- prueba PostgreSQL y drill descartable.
+- Prometheus fail-closed;
+- request ID;
+- logs sanitizados;
+- readiness Docker;
+- tests PostgreSQL y drill descartable.
 
-## 3. Fallos observados
+## 3. Fallos OBS-001 a OBS-005
 
-### OBS-001 — contrato HTTP del token
+### OBS-001 — 403/401
 
-Primer drill:
-
-- stack healthy;
-- liveness/readiness PASS;
-- fallo por esperar `403` cuando Spring Security devolvió `401`.
-
-Resolución:
-
-- contrato correcto fijado en `401 Unauthorized` para credencial ausente o inválida;
-- implementación, tests, script y runbook alineados.
+- stack y health PASS;
+- verificador esperaba 403 y runtime devolvió 401;
+- 401 fijado como contrato correcto para credencial ausente/incorrecta.
 
 ### OBS-002 — matcher dependiente de MVC
 
-Síntoma:
-
-- contexts con `web-application-type=none` no cargaban;
-- `MvcRequestMatcher` exigía `mvcHandlerMappingIntrospector`.
-
-Resolución:
-
-- matchers Actuator reemplazados por `AntPathRequestMatcher` explícitos.
+- contexts no web fallaban por `MvcRequestMatcher`;
+- reemplazo por `AntPathRequestMatcher`.
 
 ### OBS-003 — métricas deshabilitadas en test
 
-Síntoma:
-
-- Prometheus devolvía 404 en integración, aunque el runtime Docker era correcto.
-
-Resolución:
-
-- `@AutoConfigureObservability(metrics = true, tracing = false)` en la prueba específica.
+- runtime Prometheus correcto, prueba devolvía 404;
+- `@AutoConfigureObservability(metrics = true, tracing = false)` en integración.
 
 ### OBS-004 — bean ausente en slice MVC
 
-Síntoma:
+- `@WebMvcTest` no escaneaba manager;
+- bean explícito en `SecurityConfigurations`.
 
-- `@WebMvcTest` importaba seguridad pero no escaneaba el manager del token.
+### OBS-005 — secreto ausente en CI productivo
 
-Resolución:
+- backend/frontend/Compose local PASS;
+- Compose productivo fallaba por nueva variable requerida;
+- token sintético CI-only añadido sin relajar producción.
 
-- manager sin component scanning;
-- bean declarado explícitamente en `SecurityConfigurations`.
+## 4. Evidencia verde inicial de observabilidad
 
-### OBS-005 — nuevo secreto ausente en CI productivo
+Drill `4538aa6d9d4dccf3503f5ce7ee29608cd319a3bb`:
 
-Síntoma:
-
-- backend, frontend y Compose local PASS;
-- Compose productivo fallaba por variable requerida ausente.
-
-Resolución:
-
-- valor sintético CI-only añadido al workflow;
-- requisito productivo no fue relajado.
-
-## 4. Evidencia verde de observabilidad
-
-Drill sobre `4538aa6d9d4dccf3503f5ce7ee29608cd319a3bb`:
-
-- Docker disponible;
-- stack healthy por readiness;
+- Docker y stack healthy;
 - health mínimo;
-- Prometheus cerrado y autenticado correctamente;
+- Prometheus cerrado/abierto correctamente;
 - métricas JVM/proceso;
-- correlación propagada/generada/saneada;
-- logs sin secretos conocidos;
-- cleanup completo;
+- correlación y sanitización;
+- secretos ausentes de logs;
+- cleanup;
 - 8 PASS;
 - 0 fallos;
-- duración `00:01:34.3933724`;
+- `00:01:34.3933724`;
 - digest `sha256:9d3af5535bed637bb52e61be3cf2e1bce1c17b0877340f1bae57c4f90e496ba0`.
 
-Las correcciones posteriores de contexts, slices y CI requieren revalidación final sobre el último SHA del PR antes del merge.
+## 5. Primera validación documental final
 
-## 5. Documentación publicada en la rama
+HEAD `415fe9040f072440f997719bcf2b030cb47e453a`:
 
-- README actualizado;
-- estado y backlog unificado;
-- checklist de release;
-- decisiones y bloqueos;
-- tablero maestro;
+- GATE-1B completo: success;
+- CI: success;
+- backup/restore: success;
+- observabilidad: success;
+- rollback: failure.
+
+El fallo se mantuvo bloqueante y PR `#20` no fue fusionado.
+
+## 6. OBS-006 — rollback anterior a Actuator
+
+Evidencia:
+
+- artefacto histórico inició Spring, PostgreSQL y Flyway V7;
+- el Compose nuevo exigía `/actuator/health/readiness`;
+- ese código histórico era anterior a Actuator;
+- contenedor marcado unhealthy;
+- recuperación automática a imagen actual: success;
+- cleanup: success;
+- datos/Flyway no fueron la causa;
+- digest del artefacto de fallo: `sha256:cefdc52779c5ab3d0108f7a1b27fcc9f75e1d10d8a69936191a16ea007e7277e`.
+
+Resolución:
+
+- metadata `/app/build-metadata/health-contract`;
+- `actuator-readiness-v1` para imágenes actuales;
+- `legacy-api-401-v1` para imágenes pre-Actuator;
+- Dockerfile deriva el contrato desde `pom.xml`;
+- healthcheck autocontenido lee la metadata;
+- Compose selecciona contrato por `BACKEND_HEALTHCHECK_MODE`;
+- rollback lee ambos contratos y aplica el del target;
+- imagen sin metadata health recibe fallback legacy con advertencia;
+- contrato desconocido se rechaza;
+- recuperación automática conserva el contrato de la imagen anterior.
+
+La sonda legacy exige HTTP 401 de `/api/alumnos`; no se degradó a una simple apertura TCP.
+
+## 7. Documentación publicada en la rama
+
+- README;
+- estado/backlog;
+- checklist;
+- decisiones/bloqueos;
+- índice;
 - handoff;
 - runbook local;
-- runbook de observabilidad;
-- cierre técnico de observabilidad;
-- recorridos humanos por rol;
+- backup/restore;
+- rollback ampliado;
+- observabilidad;
+- cierres 17/18;
+- recorridos humanos;
 - esta bitácora.
 
-## 6. Próximo punto de control
+## 8. Punto de control final
 
 Antes de fusionar PR `#20`:
 
-1. obtener HEAD final;
-2. comprobar `GATE-1B validation`;
-3. comprobar `CI Gestudio`;
-4. comprobar backup/restore;
-5. comprobar rollback;
-6. comprobar observabilidad;
-7. revisar hilos y reviews;
+1. obtener un nuevo HEAD único;
+2. revalidar GATE-1B;
+3. revalidar CI/imágenes;
+4. revalidar backup/restore;
+5. revalidar rollback actual → legacy → actual;
+6. revalidar observabilidad;
+7. revisar hilos/reviews;
 8. marcar ready;
 9. fusionar con `expected_head_sha`;
-10. confirmar nuevo HEAD de `main`.
+10. confirmar `main`.
 
 Después del merge:
 
-- GATE-2 y recorridos humanos pasan a ser el siguiente trabajo interno;
-- monitoreo externo, políticas y staging continúan bloqueados por insumos no provistos.
+- GATE-2 y recorridos humanos son el siguiente trabajo interno;
+- monitoreo externo, políticas, staging y producción siguen bloqueados.
