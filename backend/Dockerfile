@@ -43,13 +43,13 @@ COPY --from=build --chown=gestudio:gestudio /workspace/build-metadata /app/build
 
 ENV GESTUDIO_HOME=/app \
     APP_RECEIPTS_PATH=/app/data/receipts \
-    SERVER_PORT=8080 \
-    BACKEND_HEALTHCHECK_MODE=actuator-readiness-v1
+    SERVER_PORT=8080
 
 USER gestudio
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-  CMD case "$BACKEND_HEALTHCHECK_MODE" in \
+  CMD contract="$(cat /app/build-metadata/health-contract 2>/dev/null || printf 'legacy-api-401-v1')"; \
+      case "$contract" in \
         actuator-readiness-v1) wget -qO- "http://127.0.0.1:${SERVER_PORT}/actuator/health/readiness" | grep -q '"status":"UP"' ;; \
         legacy-api-401-v1) wget -S -O /dev/null "http://127.0.0.1:${SERVER_PORT}/api/alumnos" 2>&1 | grep -Eq 'HTTP/[0-9.]+ 401' ;; \
         *) exit 1 ;; \
