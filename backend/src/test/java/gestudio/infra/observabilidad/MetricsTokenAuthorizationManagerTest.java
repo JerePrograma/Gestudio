@@ -9,12 +9,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 class MetricsTokenAuthorizationManagerTest {
 
     @Test
-    void aceptaSolamenteElTokenConfigurado() {
+    void aceptaSolamenteElTokenConfiguradoExacto() {
         MetricsTokenAuthorizationManager manager =
                 new MetricsTokenAuthorizationManager("metrics-secret");
 
         assertThat(decision(manager, "metrics-secret")).isTrue();
         assertThat(decision(manager, "wrong-secret")).isFalse();
+        assertThat(decision(manager, " metrics-secret")).isFalse();
+        assertThat(decision(manager, "metrics-secret ")).isFalse();
         assertThat(decision(manager, null)).isFalse();
     }
 
