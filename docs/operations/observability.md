@@ -60,7 +60,7 @@ Reglas:
 - suministrarlo solamente al backend y al scraper;
 - rotarlo mediante el mecanismo de secretos del ambiente destino.
 
-Un token ausente, vacío, incorrecto o excesivamente largo devuelve `403`.
+Un token ausente, vacío, incorrecto o excesivamente largo devuelve `401 Unauthorized`.
 
 ## Consultas rápidas
 
@@ -224,7 +224,7 @@ Acciones:
 5. no forzar el servicio a healthy mediante un healthcheck de puerto;
 6. restaurar la dependencia o retirar temporalmente la instancia.
 
-### Prometheus 403
+### Prometheus 401
 
 Comprobar:
 
