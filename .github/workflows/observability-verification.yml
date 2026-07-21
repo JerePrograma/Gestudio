@@ -1,0 +1,82 @@
+name: Observability verification
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - "backend/pom.xml"
+      - "backend/Dockerfile"
+      - "backend/src/main/java/gestudio/infra/observabilidad/**"
+      - "backend/src/main/java/gestudio/infra/seguridad/SecurityConfigurations.java"
+      - "backend/src/main/resources/application.yml"
+      - "backend/src/test/java/gestudio/infra/observabilidad/**"
+      - "scripts/ops/verify-observability.ps1"
+      - "docker-compose.yml"
+      - "docker-compose.prod.yml"
+      - ".env.example"
+      - ".env.local.example"
+      - "docs/operations/observability.md"
+      - ".github/workflows/observability-verification.yml"
+  push:
+    branches: [main]
+    paths:
+      - "backend/pom.xml"
+      - "backend/Dockerfile"
+      - "backend/src/main/java/gestudio/infra/observabilidad/**"
+      - "backend/src/main/java/gestudio/infra/seguridad/SecurityConfigurations.java"
+      - "backend/src/main/resources/application.yml"
+      - "backend/src/test/java/gestudio/infra/observabilidad/**"
+      - "scripts/ops/verify-observability.ps1"
+      - "docker-compose.yml"
+      - "docker-compose.prod.yml"
+      - ".env.example"
+      - ".env.local.example"
+      - "docs/operations/observability.md"
+      - ".github/workflows/observability-verification.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: observability-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Health metrics correlation and logs
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Capture environment
+        shell: bash
+        run: |
+          {
+            echo "UTC=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+            echo "SHA=$GITHUB_SHA"
+            git status --short --branch
+            git --version
+            docker --version
+            docker compose version
+            pwsh --version
+          } | tee observability.log
+
+      - name: Execute disposable observability drill
+        shell: pwsh
+        run: |
+          & pwsh -NoProfile -File ./scripts/ops/verify-observability.ps1 2>&1 | Tee-Object -FilePath observability-run.log
+          Get-Content observability-run.log | Add-Content observability.log
+          exit $LASTEXITCODE
+
+      - name: Publish observability evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: observability-evidence
+          path: |
+            observability.log
+            observability-run.log
+          if-no-files-found: error

@@ -12,12 +12,13 @@
 | Liquidación financiera | GATE-1B cerrado técnicamente |
 | Flyway | V1-V7 integradas e inmutables |
 | Demo automatizada | PASS |
-| Demo humana | pendiente |
+| Demo humana | pendiente con guion reproducible |
 | Integración Jere Platform | source integrada; end-to-end bloqueado externamente |
 | Backup técnico | PASS |
 | Restore aislado | PASS |
-| Rollback backend | PASS técnico |
-| Observabilidad | siguiente gate operativo |
+| Rollback backend | PASS e integrado en `main` |
+| Observabilidad source-owned | PASS técnico |
+| Monitoreo/alertas externas | bloqueado por ambiente y responsables |
 | GATE-2 UX | abierto |
 | Staging | NO-GO |
 | Producción | NO-GO |
@@ -43,27 +44,34 @@ La fuente operativa vigente es [12_ESTADO_ACTUAL_Y_BACKLOG.md](12_ESTADO_ACTUAL_
 15. [Cierre GATE-1B](15_CIERRE_GATE_1B_2026-07-20.md)
 16. [Cierre V7, backup y restore](16_CIERRE_BACKUP_RESTORE_Y_V7_2026-07-20.md)
 17. [Cierre rollback forward-compatible](17_CIERRE_ROLLBACK_FORWARD_COMPATIBLE_2026-07-20.md)
+18. [Cierre observabilidad mínima](18_CIERRE_OBSERVABILIDAD_MINIMA_2026-07-20.md)
+19. [Bitácora de cierre operativo](19_BITACORA_CIERRE_OPERATIVO_2026-07-20.md)
 
-## Runbooks
+## Runbooks y pruebas humanas
 
 - [Puesta en marcha y flujo de uso](../../operations/local-runbook.md)
 - [Backup y restore](../../operations/backup-restore.md)
 - [Rollback de aplicación](../../operations/rollback.md)
+- [Observabilidad y diagnóstico](../../operations/observability.md)
 - [Desarrollo local](../../development/local-development.md)
 - [Demo persistente](../../testing/demo-local.md)
 - [Dataset demo](../../testing/demo-seed.md)
+- [Recorridos humanos por rol](../../testing/human-role-walkthrough.md)
 - [Integración Jere Platform](../../integrations/jere-platform-student-export-v1.md)
 
 ## Evidencia vigente
 
-- backend: 162/162 PASS;
+- backend previo a observabilidad: 162/162 PASS;
+- backend con observabilidad: 171 pruebas ejecutadas y regresiones de contexts/slices corregidas;
 - frontend: 142/142 PASS;
-- lint/build/imágenes: PASS;
-- Scope All, smoke V1-V7 y seed doble: PASS;
+- lint/build/imágenes: PASS en gates integrados;
+- Scope All: PASS después de correcciones;
+- smoke V1-V7 y seed doble: PASS en gates integrados y obligatorios sobre HEAD final;
 - backup/restore: PASS;
 - rollback actual → anterior compatible → actual: PASS;
+- observabilidad: 8 pasos PASS, 0 fallos, cleanup completo;
 - datos y Flyway V7 preservados;
-- recursos residuales: ninguno.
+- recursos residuales: ninguno en drills verdes.
 
 ## Reglas operativas
 
@@ -72,6 +80,8 @@ La fuente operativa vigente es [12_ESTADO_ACTUAL_Y_BACKLOG.md](12_ESTADO_ACTUAL_
 - No usar tags mutables como única referencia operativa.
 - `PROFESOR` permanece inactivo.
 - 401, 403 y 409 mantienen semánticas distintas.
+- Health es público y mínimo; Prometheus exige token externo exacto.
+- No registrar query strings, cuerpos, cookies ni secretos.
 - STOMP permanece retirado.
 - campos financieros legacy fuera de operación.
 - emisor V7 apagado por defecto.
@@ -80,13 +90,14 @@ La fuente operativa vigente es [12_ESTADO_ACTUAL_Y_BACKLOG.md](12_ESTADO_ACTUAL_
 
 ## Orden siguiente
 
-1. integrar cierre de rollback;
-2. cerrar observabilidad mínima;
-3. completar GATE-2 y recorridos humanos;
+1. fusionar PR `#20` sólo con todos los workflows verdes sobre un único SHA;
+2. ejecutar y completar GATE-2 y recorridos humanos;
+3. corregir únicamente defectos demostrados y repetir los recorridos;
 4. definir políticas de backup, artefactos y secretos;
-5. obtener staging;
-6. repetir gates en staging;
-7. evaluar producción sólo con autorización independiente.
+5. proveer monitoreo externo y responsables;
+6. obtener staging;
+7. repetir gates en staging;
+8. evaluar producción sólo con autorización independiente.
 
 ## Decisión
 

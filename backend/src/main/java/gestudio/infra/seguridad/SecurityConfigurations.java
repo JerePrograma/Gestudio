@@ -2,8 +2,11 @@ package gestudio.infra.seguridad;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import gestudio.infra.errores.ApiErrorResponse;
+import gestudio.infra.observabilidad.MetricsTokenAuthorizationManager;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authorization.AuthorizationManager;
@@ -22,6 +25,7 @@ import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.intercept.RequestAuthorizationContext;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 
 import java.io.IOException;
 import java.time.Clock;
@@ -42,9 +46,45 @@ public class SecurityConfigurations {
     }
 
     @Bean
+    public MetricsTokenAuthorizationManager metricsTokenAuthorizationManager(
+            @Value("${app.observability.metrics-token:}") String configuredToken) {
+        return new MetricsTokenAuthorizationManager(configuredToken);
+    }
+
+    @Bean
+    @Order(1)
+    public SecurityFilterChain observabilitySecurityFilterChain(
+            HttpSecurity http,
+            MetricsTokenAuthorizationManager metricsTokenAuthorizationManager) throws Exception {
+        return http
+                .securityMatcher(new AntPathRequestMatcher("/actuator/**"))
+                .csrf(AbstractHttpConfigurer::disable)
+                .cors(AbstractHttpConfigurer::disable)
+                .formLogin(AbstractHttpConfigurer::disable)
+                .httpBasic(AbstractHttpConfigurer::disable)
+                .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .exceptionHandling(errors -> errors
+                        .authenticationEntryPoint((request, response, exception) ->
+                                response.sendError(HttpStatus.UNAUTHORIZED.value()))
+                        .accessDeniedHandler((request, response, exception) ->
+                                response.sendError(HttpStatus.UNAUTHORIZED.value())))
+                .authorizeHttpRequests(req -> req
+                        .requestMatchers(
+                                new AntPathRequestMatcher("/actuator/health", HttpMethod.GET.name()),
+                                new AntPathRequestMatcher("/actuator/health/**", HttpMethod.GET.name()))
+                        .permitAll()
+                        .requestMatchers(new AntPathRequestMatcher(
+                                "/actuator/prometheus", HttpMethod.GET.name()))
+                        .access(metricsTokenAuthorizationManager)
+                        .anyRequest().denyAll())
+                .build();
+    }
+
+    @Bean
+    @Order(2)
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
-                                                   SecurityFilter securityFilter,
-                                                   AuthenticationEntryPoint authenticationEntryPoint) throws Exception {
+                                                    SecurityFilter securityFilter,
+                                                    AuthenticationEntryPoint authenticationEntryPoint) throws Exception {
         return http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(Customizer.withDefaults())
