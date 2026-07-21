@@ -50,7 +50,7 @@ class ObservabilityPostgreSqlTest extends PostgreSqlIntegrationTest {
                         .header(MetricsTokenAuthorizationManager.HEADER_NAME, "test-metrics-token"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("jvm_memory_used_bytes")))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("http_server_requests_seconds_count")));
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("process_uptime_seconds")));
     }
 
     @Test
