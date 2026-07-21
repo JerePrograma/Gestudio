@@ -24,6 +24,7 @@ import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.intercept.RequestAuthorizationContext;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 
 import java.io.IOException;
 import java.time.Clock;
@@ -49,7 +50,7 @@ public class SecurityConfigurations {
             HttpSecurity http,
             MetricsTokenAuthorizationManager metricsTokenAuthorizationManager) throws Exception {
         return http
-                .securityMatcher("/actuator/**")
+                .securityMatcher(new AntPathRequestMatcher("/actuator/**"))
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
@@ -61,8 +62,12 @@ public class SecurityConfigurations {
                         .accessDeniedHandler((request, response, exception) ->
                                 response.sendError(HttpStatus.UNAUTHORIZED.value())))
                 .authorizeHttpRequests(req -> req
-                        .requestMatchers(HttpMethod.GET, "/actuator/health", "/actuator/health/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/actuator/prometheus")
+                        .requestMatchers(
+                                new AntPathRequestMatcher("/actuator/health", HttpMethod.GET.name()),
+                                new AntPathRequestMatcher("/actuator/health/**", HttpMethod.GET.name()))
+                        .permitAll()
+                        .requestMatchers(new AntPathRequestMatcher(
+                                "/actuator/prometheus", HttpMethod.GET.name()))
                         .access(metricsTokenAuthorizationManager)
                         .anyRequest().denyAll())
                 .build();
