@@ -10,7 +10,7 @@
 
 Cerrar un mínimo operativo verificable para determinar si Gestudio está vivo, listo para tráfico, produciendo métricas y generando logs correlacionables sin publicar secretos ni datos personales.
 
-El alcance no pretendió crear una plataforma completa de monitoreo. Se limitó a capacidades source-owned, reproducibles en infraestructura descartable y aptas para conectarse después a un ambiente real.
+El alcance se limita a capacidades source-owned, reproducibles en infraestructura descartable. No constituye una plataforma completa de monitoreo ni un SLA.
 
 ## 2. Alcance implementado
 
@@ -21,34 +21,29 @@ El alcance no pretendió crear una plataforma completa de monitoreo. Se limitó 
 
 ### Health
 
-Endpoints expuestos:
+Endpoints:
 
 - `GET /actuator/health/liveness`;
 - `GET /actuator/health/readiness`.
 
 Contrato:
 
-- acceso público para healthchecks de infraestructura;
-- respuesta agregada únicamente;
+- acceso público para infraestructura;
+- estado agregado únicamente;
 - sin detalles de componentes;
-- readiness vinculada a estado de aplicación, PostgreSQL y disco;
-- health de correo deshabilitado para evitar que una integración opcional retire tráfico del backend.
+- readiness vinculada a aplicación, PostgreSQL y disco;
+- health de correo deshabilitado para no retirar tráfico por una integración opcional.
 
 ### Métricas
 
-Endpoint:
-
-- `GET /actuator/prometheus`.
-
-Protección:
-
+- endpoint `GET /actuator/prometheus`;
 - cabecera `X-Gestudio-Metrics-Token`;
 - secreto independiente `APP_OBSERVABILITY_METRICS_TOKEN`;
 - comparación en tiempo constante;
-- token vacío mantiene el endpoint cerrado;
-- token ausente, incorrecto, con espacios añadidos o mayor a 512 caracteres es rechazado;
+- token vacío mantiene fail-closed;
+- ausencia, error, espacios agregados o más de 512 caracteres: rechazo;
 - `401 Unauthorized` para credencial ausente o inválida;
-- todos los demás endpoints Actuator denegados o no expuestos.
+- demás endpoints Actuator denegados o no expuestos.
 
 Métricas verificadas:
 
@@ -58,24 +53,24 @@ Métricas verificadas:
 
 ### Correlación HTTP
 
-- cabecera aceptada y devuelta: `X-Request-ID`;
-- formato restringido a 1..128 caracteres seguros;
-- UUID generado cuando falta o es inválido;
-- MDC `requestId` durante toda la solicitud;
-- limpieza del MDC en `finally`.
+- cabecera `X-Request-ID` aceptada y devuelta;
+- 1..128 caracteres seguros;
+- UUID cuando falta o es inválido;
+- MDC `requestId` durante la solicitud;
+- limpieza en `finally`.
 
 ### Logs
 
-Para `/api/**` se registra:
+Para `/api/**`:
 
 - método;
 - ruta sin query string;
-- estado HTTP;
+- estado;
 - duración;
-- resultado normal o excepción;
-- request ID en el patrón global.
+- outcome;
+- request ID global.
 
-Se excluyen deliberadamente:
+Exclusiones:
 
 - query strings;
 - cuerpos;
@@ -83,17 +78,21 @@ Se excluyen deliberadamente:
 - Authorization;
 - refresh tokens;
 - token de métricas;
-- secretos JWT, PostgreSQL o integraciones;
-- datos personales de formularios.
+- secretos JWT/PostgreSQL/integraciones;
+- datos personales.
 
-Saltos de línea y tabulaciones son neutralizados.
+Saltos de línea y tabulaciones se neutralizan.
 
-### Docker y Compose
+### Docker, Compose y rollback
 
-- Dockerfile backend usa readiness real en su `HEALTHCHECK`;
-- Compose local pasa el token opcional y usa readiness;
-- Compose productivo exige `APP_OBSERVABILITY_METRICS_TOKEN`;
-- CI productivo usa sólo un valor sintético no reutilizable.
+- imágenes actuales usan readiness real;
+- Dockerfile genera `/app/build-metadata/health-contract`;
+- `actuator-readiness-v1` para imágenes con Actuator;
+- `legacy-api-401-v1` para imágenes anteriores a Actuator;
+- Compose selecciona sonda según `BACKEND_HEALTHCHECK_MODE`;
+- el script de rollback deriva y aplica el contrato por imagen;
+- Compose productivo exige token de métricas;
+- CI usa valores sintéticos.
 
 ### Automatización
 
@@ -102,147 +101,138 @@ Saltos de línea y tabulaciones son neutralizados.
 - artefacto `observability-evidence`;
 - `docs/operations/observability.md`.
 
-## 3. Pruebas agregadas
+## 3. Pruebas
 
 ### Unitarias
 
 `MetricsTokenAuthorizationManagerTest`:
 
-- acepta únicamente token exacto;
-- rechaza token incorrecto;
-- rechaza espacios agregados;
-- rechaza ausencia;
-- token configurado vacío mantiene fail-closed;
-- rechaza longitud excesiva.
+- token exacto;
+- token incorrecto;
+- espacios agregados;
+- ausencia;
+- configuración vacía;
+- longitud excesiva.
 
 `RequestCorrelationFilterTest`:
 
-- propaga ID seguro;
-- genera UUID cuando falta;
-- reemplaza espacios y saltos de línea;
-- limpia MDC después de responder.
+- propagación;
+- generación UUID;
+- reemplazo de valores inseguros;
+- limpieza MDC.
 
 ### Integración PostgreSQL/HTTP
 
 `ObservabilityPostgreSqlTest`:
 
-- liveness `UP` sin detalles;
-- readiness `UP` sin detalles;
-- Prometheus `401` sin token;
-- Prometheus `401` con token incorrecto;
-- Prometheus `200` con token exacto;
-- métricas JVM/proceso presentes;
-- request ID propagado, generado y saneado incluso en respuesta `401` de negocio.
+- liveness/readiness `UP` sin detalles;
+- Prometheus 401 sin token o incorrecto;
+- Prometheus 200 con token exacto;
+- métricas JVM/proceso;
+- request ID propagado/generado/saneado aun con respuesta 401.
 
-La prueba habilita observabilidad externa explícitamente mediante `@AutoConfigureObservability`; Spring Boot la deshabilita por defecto en tests.
+La prueba usa `@AutoConfigureObservability(metrics = true, tracing = false)` porque Spring Boot deshabilita observabilidad externa por defecto en tests.
 
 ## 4. Drill descartable
 
-El verificador crea:
-
-- nombre Compose único;
-- puertos aleatorios;
-- credenciales sintéticas aleatorias;
-- token de métricas aleatorio;
-- imagen backend temporal;
-- PostgreSQL y volúmenes descartables.
+Crea proyecto, puertos, secretos, token, imagen, PostgreSQL y volúmenes aislados.
 
 Casos:
 
 1. Docker disponible;
-2. stack healthy por readiness real;
-3. liveness y readiness públicos y mínimos;
+2. stack healthy por readiness;
+3. health público mínimo;
 4. Prometheus cerrado sin credencial exacta;
-5. Prometheus accesible con credencial exacta;
-6. métricas JVM/proceso presentes;
+5. Prometheus abierto con credencial exacta;
+6. métricas JVM/proceso;
 7. request ID propagado;
-8. request ID ausente generado;
+8. request ID generado;
 9. request ID inseguro reemplazado;
 10. evento HTTP correlacionado;
 11. secretos sintéticos ausentes de logs;
-12. cleanup sin contenedores, volúmenes, redes ni imagen residual.
+12. cleanup completo.
 
 Evidencia verde sobre `4538aa6d9d4dccf3503f5ce7ee29608cd319a3bb`:
 
-- duración: `00:01:34.3933724`;
-- pasos PASS: `8`;
-- fallos: `0`;
-- artefacto digest: `sha256:9d3af5535bed637bb52e61be3cf2e1bce1c17b0877340f1bae57c4f90e496ba0`.
-
-El HEAD final incluye además las correcciones de regresión y CI descritas abajo; debe revalidarse antes del merge.
+- duración `00:01:34.3933724`;
+- 8 PASS;
+- 0 fallos;
+- digest `sha256:9d3af5535bed637bb52e61be3cf2e1bce1c17b0877340f1bae57c4f90e496ba0`.
 
 ## 5. Fallos encontrados y correcciones
 
-### FALLO-OBS-001 — contrato 403/401
+### OBS-001 — 403/401
 
-Primer drill:
+El primer drill esperaba 403 y runtime devolvió 401 para credencial ausente.
 
-- Docker, build y stack: PASS;
-- readiness/liveness: PASS;
-- fallo: el verificador esperaba `403`, Spring Security devolvió `401`.
+Corrección: 401 fijado como contrato correcto sin abrir Prometheus.
 
-Decisión:
+### OBS-002 — matcher dependiente de MVC
 
-- `401` es el contrato correcto para credencial ausente o inválida;
-- código, tests, drill y runbook se alinearon;
-- no se abrió Prometheus ni se relajó seguridad.
+Contexts `web-application-type=none` fallaron porque patrones String crearon `MvcRequestMatcher`.
 
-### FALLO-OBS-002 — `MvcRequestMatcher` en contextos sin MVC
+Corrección: `AntPathRequestMatcher` explícito.
 
-Las suites con `spring.main.web-application-type=none` fallaron porque el chain Actuator creado con patrones String requería `mvcHandlerMappingIntrospector`.
+### OBS-003 — Prometheus 404 en test
 
-Corrección:
+Runtime publicaba métricas, pero tests deshabilitaban observabilidad externa.
 
-- `AntPathRequestMatcher` explícito para `/actuator/**`;
-- los contextos no web vuelven a cargar sin incorporar MVC artificialmente.
+Corrección: `@AutoConfigureObservability` en la prueba específica.
 
-### FALLO-OBS-003 — Prometheus 404 en test
+### OBS-004 — bean ausente en slice MVC
 
-El runtime real publicaba Prometheus, pero Spring Boot deshabilita observabilidad externa por defecto durante tests.
+`@WebMvcTest` importaba seguridad pero no escaneaba el manager.
 
-Corrección:
+Corrección: bean explícito en `SecurityConfigurations`.
 
-- `@AutoConfigureObservability(metrics = true, tracing = false)` sólo en la prueba de integración.
+### OBS-005 — secreto ausente en CI productivo
 
-### FALLO-OBS-004 — bean ausente en `@WebMvcTest`
+Compose productivo exigía el token y CI no lo suministraba.
 
-Un slice de seguridad importaba `SecurityConfigurations`, pero no escaneaba `MetricsTokenAuthorizationManager` como componente.
+Corrección: token sintético CI-only; producción conserva requisito externo.
 
-Corrección:
+### OBS-006 — rollback anterior a Actuator
 
-- el manager dejó de depender de component scanning;
-- `SecurityConfigurations` declara explícitamente el bean desde la propiedad externa.
+En `415fe9040f072440f997719bcf2b030cb47e453a`:
 
-### FALLO-OBS-005 — Compose productivo en CI
+- Backend, Frontend, Scope All, smoke, seed, CI, backup/restore y observabilidad: PASS;
+- rollback: FAIL.
 
-`docker-compose.prod.yml` exige el nuevo secreto, pero el workflow de CI todavía no lo suministraba.
+La imagen histórica inició con PostgreSQL y Flyway V7, pero no tenía `/actuator/health/readiness`. El Compose nuevo la marcó unhealthy y recuperó correctamente la imagen actual.
 
 Corrección:
 
-- CI agrega `APP_OBSERVABILITY_METRICS_TOKEN` sintético sólo para validar configuración;
-- producción continúa exigiendo un secreto externo real.
+- metadata `health-contract` por imagen;
+- readiness para artefactos actuales;
+- sonda HTTP 401 para artefactos legacy;
+- selección explícita durante rollback;
+- rechazo de contratos desconocidos;
+- imagen actual recupera readiness al volver;
+- no se aceptó una sonda meramente TCP.
+
+Artefacto de fallo preservado:
+
+- digest `sha256:cefdc52779c5ab3d0108f7a1b27fcc9f75e1d10d8a69936191a16ea007e7277e`.
 
 ## 6. Archivos principales
 
 - `backend/pom.xml`;
 - `backend/src/main/resources/application.yml`;
-- `backend/src/main/java/gestudio/infra/observabilidad/MetricsTokenAuthorizationManager.java`;
-- `backend/src/main/java/gestudio/infra/observabilidad/RequestCorrelationFilter.java`;
+- `backend/src/main/java/gestudio/infra/observabilidad/*`;
 - `backend/src/main/java/gestudio/infra/seguridad/SecurityConfigurations.java`;
 - `backend/src/test/java/gestudio/infra/observabilidad/*`;
 - `backend/Dockerfile`;
 - `docker-compose.yml`;
 - `docker-compose.prod.yml`;
-- `.env.example`;
-- `.env.local.example`;
+- `.env.example` y `.env.local.example`;
+- `scripts/ops/rollback-backend.ps1`;
 - `scripts/ops/verify-observability.ps1`;
-- `.github/workflows/observability-verification.yml`;
-- `.github/workflows/github.-actions-demo.yml`;
-- `docs/operations/observability.md`.
+- workflows CI, rollback y observabilidad;
+- runbooks de rollback y observabilidad.
 
 ## 7. Decisión de gate
 
-Se puede declarar **observabilidad mínima cerrada técnicamente** cuando el HEAD final obtenga simultáneamente:
+Observabilidad mínima sólo queda cerrada cuando un único HEAD obtiene:
 
 - Backend PASS;
 - Frontend PASS;
@@ -251,24 +241,21 @@ Se puede declarar **observabilidad mínima cerrada técnicamente** cuando el HEA
 - seed doble PASS;
 - CI imágenes PASS;
 - backup/restore PASS;
-- rollback PASS;
+- rollback PASS, incluyendo legacy health;
 - observability verification PASS.
 
 Esto no equivale a observabilidad productiva.
 
 ## 8. Límites abiertos
 
-Para staging siguen faltando:
-
-- ambiente provisto;
-- Prometheus o servicio equivalente;
-- almacenamiento de métricas;
-- dashboard;
-- alertas entregadas a responsables;
-- retención centralizada de logs;
-- TLS y segmentación de red;
-- secret manager y rotación demostrada;
-- medición de carga para ajustar umbrales;
-- responsables, on-call y escalamiento.
+- ambiente real;
+- Prometheus/servicio equivalente;
+- almacenamiento y dashboards;
+- alertas y responsables;
+- retención de logs;
+- TLS/segmentación;
+- secret manager y rotación;
+- carga real y ajuste de umbrales;
+- on-call/escalamiento.
 
 Producción continúa en `NO-GO` y requiere autorización independiente.
