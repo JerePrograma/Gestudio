@@ -3,6 +3,7 @@ package gestudio.infra.seguridad;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import gestudio.infra.errores.ApiErrorResponse;
 import gestudio.infra.observabilidad.MetricsTokenAuthorizationManager;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
@@ -42,6 +43,12 @@ public class SecurityConfigurations {
     public SecurityConfigurations(ObjectMapper objectMapper, Clock clock) {
         this.objectMapper = objectMapper;
         this.clock = clock;
+    }
+
+    @Bean
+    public MetricsTokenAuthorizationManager metricsTokenAuthorizationManager(
+            @Value("${app.observability.metrics-token:}") String configuredToken) {
+        return new MetricsTokenAuthorizationManager(configuredToken);
     }
 
     @Bean
