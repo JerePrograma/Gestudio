@@ -1,155 +1,227 @@
-# GATE-2 y UX operativa — reconciliación y ejecución
+# GATE-2 y UX operativa — ejecución del 21 de julio de 2026
 
-> Fecha: 21 de julio de 2026  
 > Zona horaria: `America/Argentina/Buenos_Aires`  
-> Rama de trabajo: `agent/gate-2-ux-operativa`  
-> Base exacta: `db89c3e11056e95417cc093034c821bc3dfdd015`  
-> Estado al iniciar: **GATE-2 pendiente; demo comercial, staging y producción NO-GO**
+> Base inicial: `db89c3e11056e95417cc093034c821bc3dfdd015`  
+> SHA candidato validado: `52175e49b03a2fc7b4e1c729a0f8a4a7f1c30113`  
+> PR funcional: `#21`  
+> Merge funcional: `7d8872a59acb923fae664f806b01e459f372dc1c`  
+> Resultado: **correcciones técnicas integradas; GATE-2 humano continúa pendiente**
 
-## 1. Objetivo
+## 1. Alcance ejecutado
 
-Reconciliar el estado real de GitHub, revisar recorridos humanos y UX operativa, corregir únicamente defectos reproducibles y mantener una separación estricta entre validación técnica automatizada y aprobación humana de la demo.
+- reconciliación de `main`, PR, issues, commits y documentación;
+- revisión estática de recorridos y superficies UX prioritarias;
+- corrección mínima de dos defectos reproducibles;
+- pruebas PostgreSQL y frontend;
+- ejecución de backend, frontend, Scope All, Compose, imágenes, smoke y seed doble;
+- documentación de causa raíz, recuperación, riesgos y backlog;
+- integración mediante PR con protección contra movimiento de HEAD.
+
+No se desplegó staging ni producción. No se activó el emisor Jere Platform. No se modificaron migraciones V1-V7, fórmulas financieras, infraestructura, recuperación ni observabilidad.
 
 ## 2. Reconciliación inicial
 
-### Git y GitHub
-
-- repositorio verificado: `JerePrograma/Gestudio`;
-- rama por defecto y operativa: `main`;
-- HEAD verificado de `main`: `db89c3e11056e95417cc093034c821bc3dfdd015`;
-- PR abiertos: ninguno;
-- issues abiertos en Gestudio: ninguno;
+- repositorio: `JerePrograma/Gestudio`;
+- rama operativa: `main`;
+- HEAD inicial: `db89c3e11056e95417cc093034c821bc3dfdd015`;
+- PR abiertos al iniciar: ninguno;
+- issues abiertos en Gestudio al iniciar: ninguno;
 - PR `#20`: fusionado mediante `7dc07d649a468934f3c099a92e5d32747cf64347`;
-- último SHA funcional integral documentado: `ab830475dbd7c1d48deca7d50c1696c309679a88`;
-- commits posteriores a ese SHA: observabilidad fusionada y consolidación documental hasta `db89c3e...`.
+- receptor multipágina Jere Platform: integrado mediante PR `#60`;
+- `jere-platform#59`: cerrado;
+- `jere-platform#51`: abierto;
+- transporte desplegado Gestudio → Jere Platform: no demostrado.
 
-### Contradicciones documentales confirmadas
+Contradicciones corregidas:
 
-1. `docs/project-status-and-handoff.md` todavía presenta observabilidad como pendiente en PR `#20` y ordena fusionarlo como siguiente paso.
-2. Ese mismo archivo afirma que `jere-platform#59` sigue bloqueando el receptor, aunque el receptor multipágina fue integrado mediante `jere-platform#60` y el issue `#59` fue cerrado.
-3. `docs/codex/gestudio-release-hardening/12_ESTADO_ACTUAL_Y_BACKLOG.md` conserva el receptor multipágina como bloqueo externo y mantiene `EXT-JP-059` abierto.
+- observabilidad ya no figura como PR pendiente;
+- `jere-platform#59` ya no figura como bloqueo abierto;
+- emisor/receptor en código no se presentan como transporte operativo.
 
-Git y GitHub prevalecen; esas referencias fueron corregidas sin afirmar transporte desplegado.
-
-## 3. Estado técnico inicial
-
-La evidencia documental vigente declara:
-
-- backend: 171 pruebas en el último gate integrado;
-- frontend: 142 pruebas;
-- lint y build: PASS;
-- Scope All: PASS;
-- smoke V1-V7: PASS en gates integrados;
-- seed doble: PASS;
-- backup/restore: 9 PASS;
-- rollback: 8 PASS;
-- observabilidad: 8 PASS.
-
-Esta ejecución no considera esos conteos una revalidación del HEAD actual hasta obtener nuevos workflows verdes sobre el SHA de la rama y, después, sobre el merge de `main`.
-
-## 4. Hallazgos reproducibles antes de modificar funcionalidad
+## 3. Defectos reproducidos
 
 ### UX-20260721-001 — ID técnico visible en Pagos
 
-- rol afectado: `CAJA`, `SUPERADMIN` y cualquier rol con lectura de pagos;
 - archivo: `frontend/src/funcionalidades/pagos/PagosPagina.tsx`;
-- reproducción estática: la tabla renderiza una columna `ID` con `pago.id` y etiqueta acciones como `Acciones del pago {id}`;
-- esperado: referencias humanas; el ID interno sólo debe usarse para llamadas y diagnóstico;
-- observado: el identificador técnico es la primera columna comercial;
-- severidad: P2;
-- corrección: se retiró la columna visible y la acción se identifica por fecha y monto;
-- regresión: la prueba frontend verifica que no existan cabecera/celda de ID y que el botón tenga nombre accesible humano.
+- observado: columna `ID`, valor `pago.id` y etiqueta de acciones basada en ese ID;
+- esperado: fecha, monto, estado y referencia humana;
+- roles afectados: principalmente `CAJA` y `SUPERADMIN`;
+- severidad: P2.
 
 ### UX-20260721-002 — búsqueda de alumnos incompleta
 
-- roles afectados: `SECRETARIA`, `CAJA`, `ADMINISTRADOR`, `DIRECCION`, `SUPERADMIN`;
 - archivo: `backend/src/main/java/gestudio/repositorios/AlumnoRepositorio.java`;
-- reproducción estática: `buscarPorNombreCompleto` sólo evalúa `LOWER(CONCAT(nombre, ' ', apellido))`;
-- esperado: nombre, apellido, `nombre apellido`, `apellido nombre`, documento y coincidencias parciales razonables;
-- observado: documento y orden invertido no están contemplados;
-- severidad: P1 para recorrido humano, porque impide localizar alumnos con criterios expresamente requeridos;
-- corrección: consulta JPQL ampliada sin cambiar contrato HTTP ni paginación;
-- regresión: prueba PostgreSQL para nombre, apellido, ambos órdenes, documento, fragmentos y exclusión de inactivos.
+- observado: sólo coincidía `nombre apellido`;
+- esperado: nombre, apellido, ambos órdenes, documento y parciales;
+- roles afectados: los cinco roles operativos;
+- severidad: P1 para recorrido humano.
 
-## 5. Limitaciones de esta ejecución
+## 4. Correcciones
 
-El entorno de agente no dispone de Docker, PowerShell ni conectividad Git directa. Por ello:
+### Pagos
 
-- no puede levantar una demo interactiva local ni realizar una inspección visual humana con navegador;
-- sí puede modificar el repositorio mediante GitHub, abrir PR, usar workflows versionados como evidencia técnica y mantener GATE-2 humano en pendiente;
-- no se declarará PASS de demo humana, demo comercial, staging ni producción por análisis estático o suites automatizadas.
+- se retiró el ID técnico de la tabla visible;
+- el botón de acciones se nombra con fecha y monto;
+- el ID permanece en memoria y llamadas API para trazabilidad;
+- se actualizó la ayuda de búsqueda por alumno.
 
-## 6. Cambios publicados
+### Alumnos
 
-Rama: `agent/gate-2-ux-operativa`.
+La consulta JPQL ahora busca, únicamente entre alumnos activos, por:
 
-| Commit | Alcance |
-|---|---|
-| `7d26640a4f52cd9f66fd4a1ffb6f8193f8173865` | reconciliación inicial antes de funcionalidad |
-| `337ca4ca1f9f972e5f9abc11e1dc0711f4f9d918` | búsqueda humana de alumnos |
-| `b5228ec82d42dbaccbffc20713f9af8f076c0ccf` | regresión PostgreSQL inicial |
-| `b5d76213613f01711ff65d5e0706ea0f21ece6d5` | referencias humanas en Pagos |
-| `36ff313b5e085259d2984b570f1587501816ad7b` | regresión frontend de Pagos |
-| `a880b511017b78086fc84448880a670ecc5f667a` | handoff reconciliado |
-| `7cb6c97d2cb8163539e600e5e93fdf4c088fd221` | estado/backlog unificado |
-| `f6773bd2774544e7457b139872c9fd7bd05f9386` | corrección del setup transaccional de prueba |
+- nombre;
+- apellido;
+- nombre y apellido;
+- apellido y nombre;
+- documento;
+- coincidencias parciales case-insensitive.
 
-PR draft: `#21`, `fix(gate-2): mejora búsqueda humana y referencias de pagos`.
+No se cambió el endpoint, la paginación ni el modelo de datos.
 
-## 7. Primer ciclo de CI y causa raíz
+## 5. Pruebas agregadas
 
-SHA evaluado: `7cb6c97d2cb8163539e600e5e93fdf4c088fd221`.
+### PostgreSQL
 
-- `CI Gestudio` run `29833979602`: FAIL en `Verify backend`;
+`CanonicalPaginationPostgreSqlTest` cubre:
+
+- nombre;
+- apellido;
+- ambos órdenes;
+- documento completo;
+- documento parcial;
+- fragmento de nombre/apellido;
+- exclusión de alumno inactivo;
+- preservación de paginación y seguridad existentes.
+
+### Frontend
+
+`PagosPagina.test.tsx` verifica:
+
+- búsqueda y selección sin ingresar ID interno;
+- ausencia de cabecera `ID`;
+- ausencia de celda con el ID del pago;
+- monto ARS visible;
+- acción con nombre accesible basado en fecha y monto.
+
+## 6. Primer ciclo CI fallido
+
+SHA: `7cb6c97d2cb8163539e600e5e93fdf4c088fd221`.
+
+- `CI Gestudio` run `29833979602`: FAIL en backend;
 - `GATE-1B validation` run `29833979921`:
-  - `Environment evidence`: PASS;
-  - `Scope Frontend`: PASS;
-  - `Scope Backend`: FAIL;
-  - `Scope All`: FAIL como consecuencia del backend;
-  - smoke y demo seed: omitidos por dependencia fallida.
+  - frontend: PASS;
+  - backend: FAIL;
+  - Scope All: FAIL derivado;
+  - smoke y seed: omitidos.
 
-Resultado backend: **172 pruebas ejecutadas, 171 PASS y 1 ERROR**.
+Resultado backend: 172 ejecutadas, 171 PASS y 1 ERROR.
 
 ### Causa raíz
 
-La prueba nueva llamaba nuevamente a `TRUNCATE ... RESTART IDENTITY` dentro del mismo contexto `@Transactional` después de que el `@BeforeEach` había persistido y mantenía administrados 205 alumnos. PostgreSQL reinició el identificador en `1`, pero Hibernate todavía asociaba otro objeto con `Alumno#1`, produciendo:
+La prueba nueva ejecutaba un segundo `TRUNCATE ... RESTART IDENTITY` dentro del mismo contexto `@Transactional` después del seed de `@BeforeEach`. Hibernate todavía administraba `Alumno#1`; PostgreSQL reutilizó el identificador `1` y produjo `NonUniqueObjectException`.
 
-`NonUniqueObjectException: A different object with the same identifier value was already associated with the session`.
+No falló la consulta productiva. Falló el aislamiento de la prueba.
 
-No fue un fallo de la consulta productiva ni una regresión de búsqueda. Fue aislamiento defectuoso de la prueba.
+### Corrección de CI
 
-### Corrección
+Commit `f6773bd2774544e7457b139872c9fd7bd05f9386`:
 
-Se eliminó el segundo `TRUNCATE` del método de prueba. Los alumnos sintéticos específicos se agregan después del seed general con nuevos IDs, conservando el contexto y permitiendo demostrar que el alumno inactivo queda excluido.
+- se eliminó el segundo truncate;
+- los casos específicos se agregan después del seed general;
+- se conserva la prueba de exclusión de inactivos.
 
-## 8. Estado de recorridos humanos
+## 7. Evidencia final verde
 
-| Rol | Estado | Evidencia disponible |
+SHA exacto: `52175e49b03a2fc7b4e1c729a0f8a4a7f1c30113`.
+
+### `GATE-1B validation` — run `29834533348`
+
+| Job | Resultado |
+|---|---|
+| Environment evidence | PASS |
+| Scope Backend | **172/172 PASS** |
+| Scope Frontend | **142/142 PASS** |
+| lint | PASS |
+| build frontend | PASS |
+| Scope All | PASS |
+| Smoke local | PASS |
+| Demo seed doble | PASS |
+
+### `CI Gestudio` — run `29834533617`
+
+| Job | Resultado |
+|---|---|
+| Validate backend/frontend | PASS |
+| Compose local | PASS |
+| Compose productivo | PASS |
+| Backend image | PASS |
+| Frontend image | PASS |
+| Smoke aislado | PASS |
+
+Hilos de review pendientes: ninguno.
+
+## 8. Git e integración
+
+Rama funcional: `agent/gate-2-ux-operativa`.
+
+Commits principales:
+
+- `7d26640a...`: reconciliación inicial;
+- `337ca4ca...`: búsqueda humana;
+- `b5228ec8...`: prueba PostgreSQL;
+- `b5d76213...`: Pagos sin ID visible;
+- `36ff313b...`: prueba frontend;
+- `a880b511...`: handoff reconciliado;
+- `7cb6c97d...`: estado unificado;
+- `f6773bd2...`: corrección del test;
+- `52175e49...`: bitácora de fallos y causa raíz.
+
+PR `#21`:
+
+- abierto como draft;
+- mantenido draft durante checks pendientes/rojos;
+- marcado ready sólo con ambos workflows verdes;
+- fusionado con `expected_head_sha=52175e49...`;
+- merge: `7d8872a59acb923fae664f806b01e459f372dc1c`.
+
+## 9. Estado de recorridos humanos
+
+| Rol | Estado | Motivo |
 |---|---|---|
-| SUPERADMIN | PENDIENTE | sin recorrido visual completo |
-| DIRECCION | PENDIENTE | sin verificación visual de menú y URL directa |
+| SUPERADMIN | PENDIENTE | sin navegador y evidencia completa |
+| DIRECCION | PENDIENTE | sin verificación visual de menú/URL directa |
 | ADMINISTRADOR | PENDIENTE | sin recorrido funcional completo |
-| SECRETARIA | PENDIENTE | búsqueda corregida técnicamente; flujo alumno-inscripción-asistencia pendiente |
-| CAJA | PENDIENTE | Pagos corregido técnicamente; cobro-recibo-caja-stock pendiente |
+| SECRETARIA | PENDIENTE | búsqueda corregida; flujo humano pendiente |
+| CAJA | PENDIENTE | Pagos corregido; circuito financiero/stock pendiente |
 
-Ningún rol se marca PASS por respuesta de API o suite automatizada.
+No se marca PASS por API, análisis estático o suites.
 
-## 9. Recuperación y riesgo residual
+## 10. Recuperación
 
-- no se modificaron migraciones V1-V7;
-- no se modificaron fórmulas financieras;
-- no se modificaron infraestructura, backup, rollback u observabilidad;
-- rollback de código: revertir el PR `#21`;
-- datos: sin cambios de esquema ni migración;
-- riesgo residual principal: la amplitud y rendimiento de la búsqueda deben permanecer verdes en PostgreSQL real y luego validarse humanamente con datos sintéticos;
-- el ID interno se conserva en API y operaciones, pero deja de ser referencia comercial visible en Pagos.
+- no hay migraciones ni cambios de datos;
+- revert funcional: revertir merge `7d8872a59...`;
+- backup/restore no es necesario para esta entrega;
+- siguen vigentes los runbooks canónicos;
+- V1-V7 permanecen intactas.
 
-## 10. Criterio pendiente para integración
+## 11. Riesgos y pendientes
 
-1. obtener backend, frontend y Scope All verdes sobre el mismo SHA final;
-2. ejecutar smoke y seed cuando las dependencias de workflow lo habiliten;
-3. verificar hilos y reviews;
-4. mantener PR draft mientras exista cualquier check rojo o pendiente;
-5. fusionar con `expected_head_sha` sólo después de evidencia verde;
-6. verificar el nuevo HEAD de `main`;
-7. mantener GATE-2 humano y demo comercial en NO-GO hasta recorridos visuales completos.
+- IDs técnicos pueden persistir en módulos no recorridos visualmente;
+- accesibilidad, teclado, contraste y modales no están cerrados;
+- responsive 360/390/768/escritorio no tiene evidencia completa;
+- búsqueda ampliada puede requerir índices con volúmenes mayores;
+- staging no existe;
+- producción no está autorizada;
+- transporte Jere Platform no está desplegado.
+
+## 12. Veredicto
+
+| Superficie | Veredicto |
+|---|---|
+| Desarrollo local | GO |
+| Validación técnica | GO |
+| Demo automatizada | GO |
+| Demo humana | NO-GO / PENDIENTE |
+| Demo comercial | NO-GO |
+| Staging | NO-GO / NO PROVISTO |
+| Producción | NO-GO / NO AUTORIZADA |
