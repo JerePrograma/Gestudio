@@ -99,7 +99,6 @@ class CanonicalPaginationPostgreSqlTest extends PostgreSqlIntegrationTest {
             "PERM_ALUMNOS_ADMIN"
     })
     void buscaAlumnosPorNombreApellidoAmbosOrdenesDocumentoYParciales() throws Exception {
-        jdbc.execute("TRUNCATE TABLE alumnos RESTART IDENTITY CASCADE");
         alumnos.saveAndFlush(alumno("Ana María", "Pérez", "30123456", true));
         alumnos.saveAndFlush(alumno("Ana", "Pérez", "30999999", false));
 
