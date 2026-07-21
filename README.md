@@ -14,6 +14,7 @@ Integrado y probado:
 - Flyway V1-V7;
 - demo interna automatizada;
 - emisor firmado mínimo de estudiantes, deshabilitado por defecto;
+- receptor multipágina compatible integrado en Jere Platform;
 - backup PostgreSQL/recibos con manifiesto SHA-256;
 - restore protegido en base alternativa;
 - rollback backend forward-compatible con backup previo y retorno al artefacto actual;
@@ -21,6 +22,8 @@ Integrado y probado:
 
 Continúan abiertos:
 
+- transporte y smoke desplegado Gestudio → Jere Platform;
+- coordinador Jere Platform `#51`, incluidos Scalaris y requisitos productivos;
 - servidor externo de métricas, dashboards, alertas, retención de logs y responsables;
 - GATE-2 y recorridos humanos;
 - políticas de backups, artefactos y secretos;
@@ -32,6 +35,7 @@ Continúan abiertos:
 
 Fuentes vigentes:
 
+- [Adenda final de integración](docs/codex/gestudio-release-hardening/20_INTEGRACION_FINAL_OBSERVABILIDAD_2026-07-20.md)
 - [Estado y backlog](docs/codex/gestudio-release-hardening/12_ESTADO_ACTUAL_Y_BACKLOG.md)
 - [Checklist](docs/codex/gestudio-release-hardening/11_CHECKLIST_RELEASE.md)
 - [Bitácora](docs/codex/gestudio-release-hardening/13_BITACORA_CONTINUIDAD.md)
@@ -189,7 +193,7 @@ Mensualidades y matrículas resuelven tarifas históricas y condiciones efectiva
 
 V7 incorpora un emisor administrativo `GESTUDIO_STUDENT` con ID, nombre visible y activo. Está apagado por defecto, requiere tenant y secreto independiente y no realiza push automático.
 
-La reconciliación multipágina end-to-end continúa bloqueada por `JerePrograma/jere-platform#59`.
+Jere Platform PR `#60` incorporó el receptor multipágina y cerró el bloqueo técnico `#59`. El issue coordinador `#51` permanece abierto porque abarca además Scalaris y la operación productiva. La conexión desplegada Gestudio → Jere Platform todavía no fue ejecutada ni autorizada.
 
 ## Documentación
 
