@@ -26,6 +26,7 @@ $backendImage = "gestudio-backend:observability-$suffix"
 $customRequestId = "obs-$suffix"
 $startedAt = Get-Date
 $stackAttempted = $false
+$hadPrimaryFailure = $false
 $passes = 0
 $failures = 0
 
@@ -238,9 +239,9 @@ try {
         $metricsWrong = Invoke-HttpGet -Uri "$baseUri/actuator/prometheus" -Headers @{
             'X-Gestudio-Metrics-Token' = 'wrong-token'
         }
-        Assert-Equal -Actual $metricsMissing.StatusCode -Expected 403 -Message 'Prometheus quedó accesible sin token'
-        Assert-Equal -Actual $metricsWrong.StatusCode -Expected 403 -Message 'Prometheus aceptó un token incorrecto'
-        Pass 'Prometheus fail-closed sin token exacto'
+        Assert-Equal -Actual $metricsMissing.StatusCode -Expected 401 -Message 'Prometheus quedó accesible sin token'
+        Assert-Equal -Actual $metricsWrong.StatusCode -Expected 401 -Message 'Prometheus aceptó un token incorrecto'
+        Pass 'Prometheus fail-closed con credencial ausente o inválida'
 
         $metrics = Invoke-HttpGet -Uri "$baseUri/actuator/prometheus" -Headers @{
             'X-Gestudio-Metrics-Token' = $metricsToken
@@ -281,6 +282,7 @@ try {
     }
 }
 catch {
+    $hadPrimaryFailure = $true
     $failures++
     Write-Host "[FAIL] $($_.Exception.Message)" -ForegroundColor Red
     Show-Diagnostics
@@ -296,7 +298,7 @@ finally {
         catch {
             $failures++
             Write-Host "[FAIL] $($_.Exception.Message)" -ForegroundColor Red
-            if ($null -eq $Error[0]) { throw }
+            if (-not $hadPrimaryFailure) { throw }
         }
     }
     if (-not $KeepStack -and (Test-Path -LiteralPath $workRoot)) {
