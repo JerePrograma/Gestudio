@@ -51,6 +51,14 @@ export function resolveBackendOrigin(value) {
   return url.origin;
 }
 
+export function resolveProxyToken(value) {
+  const token = value?.trim();
+  if (!token || new TextEncoder().encode(token).length < 32) {
+    throw new Error("GESTUDIO_PROXY_TOKEN debe tener al menos 32 bytes UTF-8");
+  }
+  return token;
+}
+
 export function resolveUpstreamUrl(requestUrl, backendOrigin) {
   const incomingUrl = new URL(requestUrl);
   if (!API_PATH_PATTERN.test(incomingUrl.pathname)) {
@@ -63,13 +71,14 @@ export function resolveUpstreamUrl(requestUrl, backendOrigin) {
   );
 }
 
-export function buildUpstreamRequest(request, backendOrigin) {
+export function buildUpstreamRequest(request, backendOrigin, proxyToken) {
   const upstreamUrl = resolveUpstreamUrl(request.url, backendOrigin);
   const headers = new Headers(request.headers);
   for (const header of FORWARDED_HEADERS) {
     headers.delete(header);
   }
   headers.set("X-Gestudio-Pages-Proxy", "1");
+  headers.set("X-Gestudio-Proxy-Token", proxyToken);
 
   const init = {
     method: request.method,
@@ -86,21 +95,30 @@ export function buildUpstreamRequest(request, backendOrigin) {
 
 export async function proxyPagesApi(context, fetchImplementation = fetch) {
   let backendOrigin;
+  let proxyToken;
   try {
     backendOrigin = resolveBackendOrigin(context.env.GESTUDIO_BACKEND_ORIGIN);
+    proxyToken = resolveProxyToken(context.env.GESTUDIO_PROXY_TOKEN);
   } catch {
-    return jsonError(503, "BACKEND_ORIGIN_NOT_CONFIGURED");
+    return jsonError(503, "PROXY_NOT_CONFIGURED");
   }
 
   let upstreamRequest;
   try {
-    upstreamRequest = buildUpstreamRequest(context.request, backendOrigin);
+    upstreamRequest = buildUpstreamRequest(
+      context.request,
+      backendOrigin,
+      proxyToken,
+    );
   } catch {
     return jsonError(400, "INVALID_PROXY_REQUEST");
   }
 
   try {
-    return await fetchImplementation(upstreamRequest);
+    const upstreamResponse = await fetchImplementation(upstreamRequest);
+    const response = new Response(upstreamResponse.body, upstreamResponse);
+    response.headers.set("Cache-Control", "no-store");
+    return response;
   } catch {
     return jsonError(502, "BACKEND_UNAVAILABLE");
   }
