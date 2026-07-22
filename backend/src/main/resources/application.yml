@@ -7,10 +7,6 @@ spring:
     open-in-view: false
     hibernate:
       ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:validate}
-    properties:
-      hibernate:
-        jdbc:
-          time_zone: ${APP_TIME_ZONE:America/Argentina/Buenos_Aires}
   flyway:
     enabled: ${SPRING_FLYWAY_ENABLED:true}
     baseline-on-migrate: ${SPRING_FLYWAY_BASELINE_ON_MIGRATE:false}

@@ -21,7 +21,7 @@ mismo commit produciría una auto-referencia imposible.
 - Seed demo idempotente de 914 filas, cinco usuarios, cinco logins y matriz RBAC.
 - Producción fail-closed para JWT, cookie refresh, CORS y métricas.
 - `open-in-view=false`, límites de login, DTO/estado de alumno y carga de
-  disciplinas sin horarios duplicados.
+  disciplinas sin horarios duplicados ni desplazamiento por la zona del runner.
 - Frontend con fecha civil, logout accesible, modal de notificaciones con estados
   de carga/error, CSP, headers Nginx y bundle sin sourcemaps.
 - Imágenes backend/frontend no-root y metadata de build.

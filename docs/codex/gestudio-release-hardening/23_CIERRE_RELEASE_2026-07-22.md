@@ -18,7 +18,8 @@ registra el SHA final y los enlaces de Actions del propio commit.
 - Producción fail-closed, cookie `Secure`, CORS explícito, métrica protegida,
   request ID y eliminación de logs sensibles.
 - Java 21/Spring Boot 3.5.16, OSIV desactivado, límites de login, consultas
-  PostgreSQL y correcciones de estado/lazy loading.
+  PostgreSQL, horarios civiles invariantes a la zona del host y correcciones de
+  estado/lazy loading.
 - Frontend reproducible, fechas civiles, logout, notificaciones accesibles,
   Nginx no-root, headers y rutas SPA.
 - Backup/restore v2 con manifiesto, `backupSetId`, SHA-256 y recibos confinados.
