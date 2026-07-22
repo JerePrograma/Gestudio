@@ -86,7 +86,8 @@ class RemoteDemoProfileTest {
         assertThat(source.getProperty("spring.jpa.hibernate.ddl-auto")).isEqualTo("validate");
         assertThat(source.getProperty("spring.flyway.enabled")).isEqualTo(true);
         assertThat(source.getProperty("app.scheduling-enabled")).isEqualTo(false);
-        assertThat(source.getProperty("app.security.refresh-cookie.secure")).isEqualTo(true);
+        assertThat(source.getProperty("app.security.refresh-cookie.secure"))
+                .isEqualTo("${APP_SECURITY_REFRESH_COOKIE_SECURE:true}");
         assertThat(source.getProperty("app.observability.metrics-token"))
                 .isEqualTo("${APP_OBSERVABILITY_METRICS_TOKEN}");
         assertThat(source.getProperty("spring.mail.host")).isNull();
