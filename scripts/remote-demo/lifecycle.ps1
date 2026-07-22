@@ -1,4 +1,6 @@
-﻿function Test-Readiness {
+﻿Add-Type -AssemblyName System.Net.Http
+
+function Test-Readiness {
     $port = [int](Get-EnvironmentValue "BACKEND_PORT")
     $handler = [Net.Http.HttpClientHandler]::new()
     $client = [Net.Http.HttpClient]::new($handler, $true)
