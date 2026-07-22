@@ -73,24 +73,13 @@ export function resolveUpstreamUrl(requestUrl, backendOrigin) {
 
 export function buildUpstreamRequest(request, backendOrigin, proxyToken) {
   const upstreamUrl = resolveUpstreamUrl(request.url, backendOrigin);
-  const headers = new Headers(request.headers);
+  const upstreamRequest = new Request(upstreamUrl, request);
   for (const header of FORWARDED_HEADERS) {
-    headers.delete(header);
+    upstreamRequest.headers.delete(header);
   }
-  headers.set("X-Gestudio-Pages-Proxy", "1");
-  headers.set("X-Gestudio-Proxy-Token", proxyToken);
-
-  const init = {
-    method: request.method,
-    headers,
-    redirect: "manual",
-  };
-  if (request.method !== "GET" && request.method !== "HEAD") {
-    init.body = request.body;
-    init.duplex = "half";
-  }
-
-  return new Request(upstreamUrl, init);
+  upstreamRequest.headers.set("X-Gestudio-Pages-Proxy", "1");
+  upstreamRequest.headers.set("X-Gestudio-Proxy-Token", proxyToken);
+  return upstreamRequest;
 }
 
 export async function proxyPagesApi(context, fetchImplementation = fetch) {
