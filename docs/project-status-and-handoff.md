@@ -6,10 +6,12 @@ Zona de negocio: `America/Argentina/Buenos_Aires`
 
 Rama de publicación: `main`
 
-Este documento describe el árbol de release. El SHA final, su enlace y las
-ejecuciones de GitHub Actions se registran fuera del propio commit, en el informe
-de cierre que acompaña la publicación. Incluir el SHA de un commit dentro de ese
-mismo commit produciría una auto-referencia imposible.
+SHA de código validado: `c1f88c7a2e3118bbbd7f770135815056dc6fcebb`.
+
+Este documento describe el árbol de release. El SHA documental final, su enlace
+y las ejecuciones de GitHub Actions se registran fuera del propio commit, en el
+informe de cierre que acompaña la publicación. Incluir el SHA de un commit dentro
+de ese mismo commit produciría una auto-referencia imposible.
 
 ## Alcance cerrado
 
@@ -36,23 +38,23 @@ mismo commit produciría una auto-referencia imposible.
 
 | Gate | Resultado real | Duración |
 |---|---:|---:|
-| Backend `clean test` | 203 pruebas; 0 fallos; 0 errores; 2 skips de symlink en Windows | 187,7 s |
-| Backend `clean verify` | 203 pruebas; 0 fallos; 0 errores; 2 skips de symlink en Windows | 186,8 s |
+| Backend `clean test` | 203 pruebas; 0 fallos; 0 errores; 2 skips de symlink en Windows | 122,9 s |
+| Backend `clean verify` | 203 pruebas; 0 fallos; 0 errores; 2 skips de symlink en Windows | 114,1 s |
 | Frontend `npm ci` | 421 paquetes desde lockfile; exit 0 | 43,9 s |
 | Auditoría npm total/productiva | 0 vulnerabilidades / 0 vulnerabilidades | — |
 | Frontend lint | exit 0 | — |
 | Frontend tests | 149 Vitest + 2 contratos Nginx; 0 fallos | 29,3 s |
 | Frontend build | TypeScript/Vite; 2.340 módulos; 0 sourcemaps | 17,8 s |
 | Compose local/productivo | ambas configuraciones válidas | — |
-| Docker `build --no-cache` | backend y frontend construidos; UID 100/101 | 496,2 s |
+| Docker `build --no-cache` | backend y frontend construidos; UID 100/101 | 983 s |
 | Smoke canónico | 20/20 | 112,7 s |
 | Observabilidad | 8/8 | 39,8 s |
 | Backup/restore PowerShell 7 | 12/12 | 163 s aprox. |
 | Backup/restore Windows PowerShell 5.1 | 12/12 | 168 s aprox. |
 | Rollback PowerShell 7 | 8/8 | 264 s aprox. |
 | Rollback Windows PowerShell 5.1 | 8/8 | 173 s aprox. |
-| Demo desde volúmenes vacíos | 914 filas; 5 logins; RBAC; doble seed idéntico | exit 0 |
-| Navegador headed | 5 roles; escritorio/móvil; 1/1 prueba | 24,1 s |
+| Demo desde volúmenes vacíos | 914 filas; 5 logins; RBAC; doble seed idéntico | 329,1 s |
+| Navegador headed | 5 roles; escritorio/móvil; 1/1 prueba | 16,0 s; 89,3 s con recreación |
 
 Los dos skips locales requieren privilegios de creación de symlinks que este
 host Windows no concede. Linux/GitHub Actions ejecuta esos casos y el gate local

@@ -7,8 +7,9 @@ rollback de aplicación. La publicación productiva sigue siendo una decisión d
 operaciones sobre un ambiente con TLS, secretos, almacenamiento, monitoreo,
 correo y recuperación configurados.
 
-La identidad remota no se escribe aquí: el informe externo de publicación
-registra el SHA final y los enlaces de Actions del propio commit.
+SHA de código validado: `c1f88c7a2e3118bbbd7f770135815056dc6fcebb`.
+El informe externo de publicación registra por separado el SHA documental final
+y los enlaces de Actions de ese propio commit.
 
 ## Correcciones consolidadas
 

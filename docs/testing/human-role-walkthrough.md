@@ -47,8 +47,9 @@ el input ni perder foco. Disciplinas y horarios se visualizaron sin duplicados.
 
 ## Consola y red
 
-La ejecución headed terminó 1/1 en 24,1 s. No hubo errores inesperados de
-consola ni red. Antes de cada login apareció un `POST /api/login/refresh` con
+La ejecución headed final terminó 1/1 en 16,0 s (89,3 s incluyendo la recreación
+de la demo). No hubo errores inesperados de consola ni red. Antes de cada login
+apareció un `POST /api/login/refresh` con
 `401`; son cinco respuestas esperadas por el contrato de sesión anónima y no se
 clasifican como regresión.
 
