@@ -184,6 +184,7 @@ class CanonicalArchitectureContractTest {
     @Test
     void scriptsPowerShellSonUtf8BomLfYEstrictos() throws IOException {
         Path scriptsRoot = root.resolve("scripts");
+        Path remoteModulesRoot = scriptsRoot.resolve("remote-demo");
         try (Stream<Path> paths = Files.walk(scriptsRoot)) {
             for (Path path : paths.filter(Files::isRegularFile)
                     .filter(file -> file.toString().endsWith(".ps1"))
@@ -197,7 +198,9 @@ class CanonicalArchitectureContractTest {
                         .as("EOL LF en %s", root.relativize(path))
                         .doesNotContain("\r");
 
-                if (!path.getFileName().toString().equals("use-local-java.ps1")) {
+                boolean inheritsStrictModeFromRemoteLauncher = path.startsWith(remoteModulesRoot);
+                if (!path.getFileName().toString().equals("use-local-java.ps1")
+                        && !inheritsStrictModeFromRemoteLauncher) {
                     assertThat(script)
                             .as("modo estricto en %s", root.relativize(path))
                             .contains("Set-StrictMode -Version Latest", "$ErrorActionPreference = ")
@@ -208,6 +211,33 @@ class CanonicalArchitectureContractTest {
                             .as("carga explícita de System.Net.Http para PowerShell 5.1 en %s", root.relativize(path))
                             .contains("Add-Type -AssemblyName System.Net.Http");
                 }
+            }
+        }
+    }
+
+    @Test
+    void modulosPowerShellRemotosSeCarganDesdeLauncherEstricto() throws IOException {
+        Path modulesRoot = root.resolve("scripts/remote-demo");
+        String launcher = Files.readString(root.resolve("scripts/demo-remote.ps1"));
+        int errorPolicyIndex = launcher.indexOf("$ErrorActionPreference = \"Stop\"");
+        int strictModeIndex = launcher.indexOf("Set-StrictMode -Version Latest");
+        int moduleLoaderIndex = launcher.indexOf("foreach ($module in @(");
+
+        assertThat(errorPolicyIndex).isGreaterThanOrEqualTo(0);
+        assertThat(strictModeIndex).isGreaterThanOrEqualTo(0);
+        assertThat(moduleLoaderIndex)
+                .as("el launcher debe activar modo estricto antes de cargar módulos")
+                .isGreaterThan(errorPolicyIndex)
+                .isGreaterThan(strictModeIndex);
+
+        try (Stream<Path> modules = Files.list(modulesRoot)) {
+            for (Path module : modules.filter(Files::isRegularFile)
+                    .filter(file -> file.toString().endsWith(".ps1"))
+                    .toList()) {
+                String expectedReference = "\"remote-demo/" + module.getFileName() + "\"";
+                assertThat(launcher)
+                        .as("módulo remoto cargado desde launcher: %s", module.getFileName())
+                        .contains(expectedReference);
             }
         }
     }
