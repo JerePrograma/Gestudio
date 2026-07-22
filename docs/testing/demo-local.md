@@ -1,8 +1,12 @@
 # Demo local persistente
 
-Requisitos: Docker Desktop con Compose v2 y JDK 21 configurado en `JAVA_HOME`.
+Requisitos: Docker Desktop/Engine con Compose v2 y JDK 21 disponible. El
+proyecto Compose reservado es `gestudio-demo-local`; los puertos son PostgreSQL
+`15432`, backend `18080` y frontend `18081`.
 
-Desde la raíz del repositorio:
+## Inicio
+
+Desde la raíz:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass `
@@ -10,18 +14,45 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass `
   -Action Start
 ```
 
-`Start` construye las imágenes, levanta el proyecto Compose aislado
-`gestudio-demo-local`, aplica Flyway V1-V7 sobre PostgreSQL vacío cuando
-corresponde, solicita las cinco contraseñas como `SecureString`, aplica dos
-veces el seed manual y valida frontend, CORS, cookie, login, RBAC e integridad.
-La demo continúa ejecutándose al terminar el script.
+`Start`:
+
+1. deriva el manifiesto contiguo de migraciones desde
+   `backend/src/main/resources/db/migration`; hoy resulta V1-V7;
+2. construye backend y frontend con revisión Git, hash de Compose y metadata
+   Flyway;
+3. fuerza la recreación de backend y frontend aunque los contenedores previos
+   estén healthy;
+4. conserva PostgreSQL y sus volúmenes;
+5. aplica el seed dos veces con la misma ancla y las mismas credenciales;
+6. valida snapshot idéntico, RBAC, frontend, CORS, cookie, login, cumpleaños y
+   denegaciones HTTP;
+7. exige que `Status` confirme un stack vigente antes de terminar en cero.
+
+No se reutiliza silenciosamente un contenedor sano creado desde una imagen
+anterior. No se borran volúmenes durante `Start`.
+
+## Fecha del dataset y cumpleaños
+
+El seed separa dos conceptos:
+
+- `demo_anchor_date`: ancla estable de períodos, importes y hechos históricos;
+- `demo_business_date`: día civil de la ejecución en
+  `America/Argentina/Buenos_Aires`.
+
+La reejecución conserva el ancla histórica, pero alinea el cumpleaños designado
+con el día comercial actual. El endpoint de cumpleaños incluye sólo personas
+activas cuyo día corresponde exactamente a hoy. No adelanta cumpleaños
+próximos. Un nacimiento del 29 de febrero se observa el 28 de febrero en años
+no bisiestos y el 29 en años bisiestos.
 
 ## Acceso
 
 - Frontend: `http://localhost:18081`
 - Backend: `http://localhost:18080`
-- API usada por el frontend: `http://localhost:18080/api`
+- API: `http://localhost:18080/api`
 - PostgreSQL: `localhost:15432`, base `gestudio_demo_local`
+- Liveness: `http://localhost:18080/actuator/health/liveness`
+- Readiness: `http://localhost:18080/actuator/health/readiness`
 
 Usuarios:
 
@@ -31,13 +62,11 @@ Usuarios:
 - `demo-secretaria`
 - `demo-caja`
 
-Las contraseñas se piden en cada `Start` o `Reset`. Pueden ser cortas y
-repetidas; sólo se rechazan valores vacíos, compuestos únicamente por espacios
-o mayores que el límite técnico de 72 bytes UTF-8 de BCrypt. No se escriben en
-archivos ni logs. El único hash persistente es el que necesita la tabla
-`usuarios`.
+Las contraseñas se solicitan como `SecureString`, se definen sólo localmente y
+no se escriben en Git, logs ni archivos temporales. No reutilizar credenciales
+reales.
 
-## Operación
+## Estado, stop y reset
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\demo-local.ps1 -Action Status
@@ -45,29 +74,40 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\demo-local.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\demo-local.ps1 -Action Reset
 ```
 
-- `Status` muestra URLs, base, estado/health, versión Flyway y disponibilidad.
-- `Stop` elimina contenedores y red, pero conserva los volúmenes y los datos.
-- `Reset` elimina también los volúmenes y recrea la demo desde cero; vuelve a
-  solicitar las contraseñas.
+`Status` diferencia y muestra:
 
-Los puertos son fijos. Si `15432`, `18080` o `18081` están ocupados por otro
-proceso o contenedor, el inicio falla e identifica al ocupante; nunca cambia de
-puerto silenciosamente.
+- imagen inexistente;
+- contenedor inexistente;
+- contenedor basado en otra image ID;
+- revisión Git o hash Compose incompatible;
+- metadata Flyway incompatible;
+- servicio no healthy;
+- historial Flyway incompleto o con scripts inesperados;
+- frontend no disponible;
+- seed incompleto o cumpleaños diario desalineado.
 
-## Cookies locales
+La demo sólo está disponible cuando todas las condiciones son válidas. En caso
+contrario imprime `Demo disponible: NO` y termina con exit code `1`. La versión
+Flyway mostrada se deriva del manifiesto y de `flyway_schema_history`; no hay una
+comparación fija con V7 que deba editarse cuando aparezca V8.
+
+`Stop` ejecuta el descenso del proyecto y conserva datos. `Reset` usa el nombre
+Compose fijo `gestudio-demo-local` y elimina únicamente contenedores, red y
+volúmenes de ese proyecto; no afecta otros proyectos Docker.
+
+## Cookies y seguridad local
 
 Las cookies de `localhost` no se aíslan por puerto. La demo usa la cookie
 host-only `gestudio_demo_refresh`, con `Secure=false`, `SameSite=Strict` y
-`Path=/api/login`, para no colisionar con `gestudio_refresh` de los entornos en
-`5173`/`8080`. No define `Domain`.
+`Path=/api/login`, para no colisionar con `gestudio_refresh`. No define
+`Domain`. El Compose productivo exige cookie `Secure=true`.
 
-`scripts/validate-demo-seed.ps1` continúa siendo el gate integral descartable;
-`demo-local.ps1` es el lanzador persistente para uso humano.
+Health es público y mínimo. `/actuator/prometheus` permanece protegido por un
+token independiente: falta, error o cabeceras duplicadas producen `401`.
 
-## Seed sobre PostgreSQL local nativo
+## Seed nativo
 
-Para poblar una base local vacía que ya tenga Flyway V1-V7, sin depender de
-Docker ni de `psql` en `PATH`:
+Para una base local vacía con la cadena Flyway completa:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass `
@@ -75,9 +115,14 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass `
   -Action SeedNative
 ```
 
-La acción localiza `psql.exe` en la instalación de PostgreSQL, solicita la
-contraseña de la base y las cinco contraseñas demo, genera BCrypt y aplica el
-mismo `gestudio_demo_seed_full.sql`. Falla antes de escribir si encuentra datos
-ajenos a los catálogos productivos de V1-V7. Los parámetros opcionales son
-`-DatabaseHost`, `-DatabasePort`, `-DatabaseName`, `-DatabaseUser` y
-`-PsqlPath`.
+La acción localiza `psql.exe`, solicita la clave de base y las cinco claves
+demo, genera BCrypt y aplica el mismo SQL. Falla antes de escribir si encuentra
+datos ajenos al namespace permitido. Admite `-DatabaseHost`, `-DatabasePort`,
+`-DatabaseName`, `-DatabaseUser` y `-PsqlPath`.
+
+## Evidencia del ciclo 2026-07-22
+
+`Reset` recreó la demo desde volúmenes vacíos y aprobó 914 filas, cinco hashes,
+cinco logins, CORS, cookie, RBAC y dos aplicaciones idénticas del seed. El
+recorrido headed de navegador aprobó los cinco roles en escritorio y móvil. El
+detalle está en `human-role-walkthrough.md` y en el cierre técnico 23.

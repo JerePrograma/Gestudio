@@ -208,7 +208,7 @@ Esto no autoriza transporte ni despliegue. Gestudio mantiene el emisor apagado p
 | Emisor y receptor multipágina en código | PASS |
 | Transporte desplegado Gestudio → Jere Platform | NO EJECUTADO |
 | Demo automatizada | PASS |
-| Demo humana | PENDIENTE |
+| Demo humana | PASS posterior: cinco roles validados el 2026-07-22 |
 | Demo comercial | NO-GO |
 | Staging | NO-GO |
 | Producción | NO-GO |

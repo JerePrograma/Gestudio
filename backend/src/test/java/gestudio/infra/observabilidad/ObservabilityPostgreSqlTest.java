@@ -6,8 +6,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.actuate.observability.AutoConfigureObservability;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.core.env.Environment;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.matchesPattern;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -25,6 +27,9 @@ class ObservabilityPostgreSqlTest extends PostgreSqlIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private Environment environment;
 
     @Test
     void livenessYReadinessSonPublicosYNoExponenDetalles() throws Exception {
@@ -49,10 +54,21 @@ class ObservabilityPostgreSqlTest extends PostgreSqlIntegrationTest {
                 .andExpect(status().isUnauthorized());
 
         mockMvc.perform(get("/actuator/prometheus")
+                        .header(MetricsTokenAuthorizationManager.HEADER_NAME,
+                                "test-metrics-token", "test-metrics-token"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/actuator/prometheus")
                         .header(MetricsTokenAuthorizationManager.HEADER_NAME, "test-metrics-token"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("jvm_memory_used_bytes")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("process_uptime_seconds")));
+    }
+
+    @Test
+    void jpaUsaDeteccionDeDialectoYSinOpenSessionInView() {
+        assertThat(environment.getProperty("spring.jpa.database-platform")).isNull();
+        assertThat(environment.getProperty("spring.jpa.open-in-view")).isEqualTo("false");
     }
 
     @Test

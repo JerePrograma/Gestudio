@@ -11,30 +11,19 @@ public class SuperadminBootstrapRunner implements ApplicationRunner {
     private static final Logger log = LoggerFactory.getLogger(SuperadminBootstrapRunner.class);
 
     private final SuperadminBootstrapProperties properties;
-    private final AdminBootstrapProperties legacyProperties;
     private final SuperadminBootstrapService service;
 
     public SuperadminBootstrapRunner(SuperadminBootstrapProperties properties,
-                                     AdminBootstrapProperties legacyProperties,
                                      SuperadminBootstrapService service) {
         this.properties = properties;
-        this.legacyProperties = legacyProperties;
         this.service = service;
     }
 
     @Override
     public void run(ApplicationArguments args) {
-        if (properties.enabled() && legacyProperties.enabled()) {
-            throw new IllegalStateException("No habilite simultáneamente ambos bootstraps");
-        }
-        if (!properties.enabled() && !legacyProperties.enabled()) return;
+        if (!properties.enabled()) return;
 
-        String username = properties.enabled() ? properties.username() : legacyProperties.username();
-        String password = properties.enabled() ? properties.password() : legacyProperties.password();
-        if (legacyProperties.enabled()) {
-            log.warn("APP_BOOTSTRAP_ADMIN_* está deprecado; use APP_BOOTSTRAP_SUPERADMIN_*");
-        }
-        Long usuarioId = service.bootstrap(username, password).getId();
+        Long usuarioId = service.bootstrap(properties.username(), properties.password()).getId();
         log.warn("SUPERADMIN inicial creado con id={}. Deshabilite el bootstrap antes de reiniciar.", usuarioId);
     }
 }

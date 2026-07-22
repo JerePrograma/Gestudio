@@ -5,6 +5,7 @@ import { cn } from "../lib/utils";
 import { useAuth } from "../hooks/context/useAuth";
 import { filterNavigationItems, navigationItems } from "../config/navigation";
 import NavGroup from "./NavGroup";
+import BotonCerrarSesion from "./comunes/BotonCerrarSesion";
 
 export default function Sidebar() {
   const { isExpanded, toggleSidebar, mobileSidebarOpen, setMobileSidebarOpen } =
@@ -62,6 +63,10 @@ export default function Sidebar() {
             <NavGroup key={item.id} item={item} isExpanded={isExpanded} />
           ))}
         </nav>
+
+        <div className="border-t border-border p-3">
+          <BotonCerrarSesion compact={!isExpanded} />
+        </div>
       </aside>
 
       {mobileSidebarOpen && (
@@ -95,6 +100,10 @@ export default function Sidebar() {
                 <NavGroup key={item.id} item={item} isExpanded={true} />
               ))}
             </nav>
+
+            <div className="border-t border-border p-3">
+              <BotonCerrarSesion />
+            </div>
           </aside>
         </div>
       )}

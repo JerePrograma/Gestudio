@@ -1,4 +1,4 @@
-$ErrorActionPreference = "Stop"
+﻿$ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.."))
@@ -8,7 +8,7 @@ if ([string]::IsNullOrWhiteSpace($env:JAVA_HOME)) {
 $javac = Join-Path $env:JAVA_HOME "bin\javac.exe"
 $javacVersion = if (Test-Path -LiteralPath $javac) { & $javac -version | Out-String } else { "" }
 if (-not (Test-Path -LiteralPath $javac) -or $javacVersion -notmatch '^javac 21(?:\.|$)') {
-    throw "Le Dance requiere un JDK 21 válido en JAVA_HOME."
+    throw "Gestudio requiere un JDK 21 válido en JAVA_HOME."
 }
 
 $env:SPRING_PROFILES_ACTIVE = if ([string]::IsNullOrWhiteSpace($env:SPRING_PROFILES_ACTIVE)) {

@@ -1,14 +1,20 @@
 # Architecture Decisions & Design Patterns
 
+> Historical target-state notes. They do not describe the current package
+> structure as implemented. `AGENTS.md` and the code are authoritative.
+
 **Effective Date:** February 16, 2026  
-**Scope:** All backend code in Le Dance project  
+**Scope:** Historical guidance for the Gestudio backend
 **Owner:** Development Team
 
 ---
 
 ## 1. Architecture Overview
 
-Le Dance uses **Hexagonal (Ports & Adapters) Architecture** combined with **Clean Architecture** principles.
+The historical target proposed **Hexagonal (Ports & Adapters) Architecture**
+combined with **Clean Architecture** principles. The current implementation is
+a layered Spring modular monolith and must not be mass-rewritten to match this
+target.
 
 ### Core Structure
 
@@ -383,7 +389,7 @@ com.gestudio
 
 Use consistent business terminology across code, tests, and documentation.
 
-**Example**: Le Dance Domain Language
+**Example**: Gestudio domain language
 - "Student" (Alumno)
 - "Discipline" (Disciplina)
 - "Payment" (Pago)

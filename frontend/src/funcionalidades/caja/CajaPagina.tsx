@@ -13,11 +13,13 @@ import PageHeader from "../../componentes/comunes/PageHeader";
 import SectionCard from "../../componentes/comunes/SectionCard";
 import StatCard from "../../componentes/comunes/StatCard";
 import StatusBadge from "../../componentes/comunes/StatusBadge";
+import { APP_TIME_ZONE } from "../../config/environment";
+import { currentDateInTimeZone } from "../../utils/civilDate";
 
 const PAGE_SIZE = 50;
 
 export default function CajaPagina() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = currentDateInTimeZone(APP_TIME_ZONE);
   const [desde, setDesde] = useState(today);
   const [hasta, setHasta] = useState(today);
   const [consulta, setConsulta] = useState<{ desde: string; hasta: string; page: number }>();

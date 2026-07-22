@@ -25,7 +25,7 @@ import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.intercept.RequestAuthorizationContext;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 
 import java.io.IOException;
 import java.time.Clock;
@@ -56,8 +56,9 @@ public class SecurityConfigurations {
     public SecurityFilterChain observabilitySecurityFilterChain(
             HttpSecurity http,
             MetricsTokenAuthorizationManager metricsTokenAuthorizationManager) throws Exception {
+        PathPatternRequestMatcher.Builder paths = PathPatternRequestMatcher.withDefaults();
         return http
-                .securityMatcher(new AntPathRequestMatcher("/actuator/**"))
+                .securityMatcher(paths.matcher("/actuator/**"))
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
@@ -70,11 +71,10 @@ public class SecurityConfigurations {
                                 response.sendError(HttpStatus.UNAUTHORIZED.value())))
                 .authorizeHttpRequests(req -> req
                         .requestMatchers(
-                                new AntPathRequestMatcher("/actuator/health", HttpMethod.GET.name()),
-                                new AntPathRequestMatcher("/actuator/health/**", HttpMethod.GET.name()))
+                                paths.matcher(HttpMethod.GET, "/actuator/health"),
+                                paths.matcher(HttpMethod.GET, "/actuator/health/**"))
                         .permitAll()
-                        .requestMatchers(new AntPathRequestMatcher(
-                                "/actuator/prometheus", HttpMethod.GET.name()))
+                        .requestMatchers(paths.matcher(HttpMethod.GET, "/actuator/prometheus"))
                         .access(metricsTokenAuthorizationManager)
                         .anyRequest().denyAll())
                 .build();

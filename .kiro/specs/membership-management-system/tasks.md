@@ -1,4 +1,6 @@
-# Implementation Tasks: Membership Management System (Le Dance)
+# Historical implementation tasks: Gestudio membership management system
+
+> Historical snapshot only. It is not the current release checklist.
 
 ## Implementation Status Summary
 
@@ -398,4 +400,3 @@
 - Weeks 4-5: Tasks 10-21 (Remaining modules) + feature completion
 - Weeks 5-6: Tasks 23-25 (Advanced features) + comprehensive testing (Task 27)
 - Weeks 6-7: Tasks 26-30 (Deployment, documentation, production readiness)
-

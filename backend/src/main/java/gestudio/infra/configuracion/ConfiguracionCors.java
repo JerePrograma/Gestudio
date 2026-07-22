@@ -1,5 +1,6 @@
 package gestudio.infra.configuracion;
 
+import gestudio.infra.observabilidad.RequestCorrelationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.cors.CorsConfiguration;
@@ -25,8 +26,9 @@ public class ConfiguracionCors implements WebMvcConfigurer {
         configuration.setAllowedOrigins(properties.corsAllowedOrigins());
 
         configuration.setAllowedMethods(List.of("GET", "POST", "OPTIONS", "PUT", "DELETE", "PATCH"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept"));
-        configuration.addExposedHeader("Authorization");
+        configuration.setAllowedHeaders(List.of(
+                "Authorization", "Content-Type", "Accept", RequestCorrelationFilter.HEADER_NAME));
+        configuration.setExposedHeaders(List.of("Authorization", RequestCorrelationFilter.HEADER_NAME));
         configuration.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

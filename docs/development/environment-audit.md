@@ -1,7 +1,7 @@
 # Auditoría de entorno de desarrollo
 
 Fecha: 2026-06-28  
-Repositorio: `C:\laburo\gestudio`  
+Repositorio: checkout local de Gestudio
 Rama inicial: `main`  
 Commit inicial: `b7b04461f2aec2f788976674451d310ff32cdf62` (`Merge pull request #10 from JerePrograma/feature/kiro-agents`)
 
@@ -16,7 +16,7 @@ Se auditó configuración, tooling, variables, perfiles Spring, builds, Docker, 
 | PowerShell | Windows PowerShell 5.1 o 7 | 7.6.3 en el shell de auditoría | disponible |
 | Git | 2.x | 2.48.1.windows.1 | disponible |
 | JDK | 21 | `java`: 1.8.0_251; `javac`: 21.0.7 | PATH inconsistente |
-| `JAVA_HOME` | JDK 21 válido | `C:\Program Files\Eclipse Adoptium\jdk-21` | ruta inválida para Maven |
+| `JAVA_HOME` | JDK 21 válido | ruta configurada a un directorio inexistente | ruta inválida para Maven |
 | Maven | Wrapper 3.9.10 | Maven global 3.9.10, bloqueado por `JAVA_HOME` | no reproducible |
 | Node.js | 22.14.0 | 22.14.0 | disponible |
 | npm | 10.x | 10.9.2 | disponible |
@@ -27,7 +27,10 @@ Se auditó configuración, tooling, variables, perfiles Spring, builds, Docker, 
 
 Sistema: Windows 64 bits, AMD64. Puertos iniciales: 5432 ocupado por PID 7164; 8080 y 8081 libres. No existe un componente Python necesario.
 
-El `PATH` inicial tenía 40 entradas. Resoluciones relevantes: Git desde `C:\Program Files\Git`, `java` desde el shim Oracle Java 8, `javac` desde Corretto 21.0.7, Maven global desde Chocolatey 3.9.10, Node desde NVM for Windows y Docker desde Docker Desktop. Los scripts dejaron de depender del `java` incorrecto de `PATH` y validan el JDK bajo `JAVA_HOME`.
+El `PATH` inicial tenía 40 entradas. Resoluciones relevantes: Git del sistema,
+`java` desde un shim Java 8, `javac` desde Corretto 21.0.7, Maven global,
+Node desde NVM for Windows y Docker Desktop. Los scripts dejaron de depender del
+`java` incorrecto de `PATH` y validan el JDK bajo `JAVA_HOME`.
 
 Versiones finales declaradas: Java 21, Maven Wrapper 3.9.10, Spring Boot 3.4.1, Node 22.14.0, PostgreSQL 15.12 Alpine, Temurin JRE 21.0.7+6 y Nginx 1.27.4 Alpine.
 

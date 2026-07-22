@@ -13,6 +13,7 @@ import gestudio.entidades.Usuario;
 import gestudio.infra.configuracion.AppProperties;
 import gestudio.repositorios.ReciboRepositorio;
 import gestudio.servicios.pago.PagoServicio;
+import gestudio.servicios.pdfs.ReciboPathResolver;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.data.domain.PageRequest;
@@ -91,10 +92,9 @@ public class PagoControlador {
             return ResponseEntity.notFound().build();
         }
 
-        Path raiz = appProperties.receiptsPath().toAbsolutePath().normalize();
-        Path archivo = raiz.resolve(recibo.getStorageKey()).normalize();
-
-        if (!archivo.startsWith(raiz) || !Files.isRegularFile(archivo)) {
+        Path archivo = ReciboPathResolver.resolveExistingFile(
+                appProperties.receiptsPath(), recibo.getStorageKey());
+        if (archivo == null) {
             return ResponseEntity.notFound().build();
         }
 

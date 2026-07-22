@@ -1,6 +1,10 @@
 # Megaprompt para Codex — Gestudio: documentación, hardening y ejecución por etapas
 
-Copiar desde “INICIO DEL PROMPT” hasta “FIN DEL PROMPT” y pegarlo en Codex abierto en `C:\laburo\Gestudio`.
+> Archivo histórico del proceso por etapas anterior a la release actual. Para
+> reutilizarlo, reemplazar los valores de base por el `HEAD` vigente y abrir
+> Codex en la raíz del checkout de Gestudio.
+
+Copiar desde “INICIO DEL PROMPT” hasta “FIN DEL PROMPT” y pegarlo en Codex abierto en la raíz del checkout.
 
 ---
 
@@ -23,7 +27,7 @@ Dentro de una etapa tenés autonomía para inspeccionar, implementar, probar y c
 
 - Proyecto: `Gestudio`
 - Repositorio: `JerePrograma/Gestudio`
-- Ruta local: `C:\laburo\Gestudio`
+- Ruta local: raíz del checkout actual
 - Branch esperada: `main`
 - Commit base auditado: `b833f6741cf614c508666e8a121701e8db2fcf9a`
 - Mensaje del commit: `Unifica UX frontend ocultando IDs tecnicos`
@@ -31,7 +35,7 @@ Dentro de una etapa tenés autonomía para inspeccionar, implementar, probar y c
 
 Stack:
 
-- Backend: Java 21, Spring Boot 3.4.x, PostgreSQL, Flyway, JPA/Hibernate, Maven y Testcontainers.
+- Backend: Java 21, Spring Boot 3.5.x, PostgreSQL, Flyway, JPA/Hibernate, Maven y Testcontainers.
 - Frontend: React, TypeScript, Vite y TanStack Query.
 - Sistema operativo local: Windows con PowerShell.
 - Producto: administración de academias de danza e instituciones presenciales.
@@ -55,7 +59,7 @@ Objetivo comercial:
 Ejecutá y registrá:
 
 ```powershell
-Set-Location C:\laburo\Gestudio
+Set-Location '<raíz-del-checkout-de-Gestudio>'
 git status --short --branch
 git branch --show-current
 git rev-parse HEAD

@@ -93,9 +93,9 @@ public class ReciboStorageService {
             }
             String nombre = "recibo_" + trabajo.pago().getId() + ".pdf";
             Path raiz = properties.receiptsPath().toAbsolutePath().normalize();
-            Path almacenado = trabajo.storageKey() == null ? null : raiz.resolve(trabajo.storageKey()).normalize();
+            Path almacenado = ReciboPathResolver.resolveExistingFile(raiz, trabajo.storageKey());
             byte[] bytes;
-            if (almacenado != null && almacenado.startsWith(raiz) && Files.isRegularFile(almacenado)) {
+            if (almacenado != null) {
                 bytes = Files.readAllBytes(almacenado);
                 nombre = trabajo.storageKey();
             } else {

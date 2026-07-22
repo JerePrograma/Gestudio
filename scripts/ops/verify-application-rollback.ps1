@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string] $ComposeFile,
     [string] $HistoricalCommit = 'ef4f9c31dab9a3dfce43f913177089f80ae0205a',
@@ -24,8 +24,16 @@ $backupRoot = Join-Path $workRoot 'backups'
 $incompatibleContext = Join-Path $workRoot 'incompatible-image'
 $database = 'gestudio_rollback_verify'
 $postgresUser = 'gestudio_verify'
-$postgresPassword = [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(24)).ToLowerInvariant()
-$jwtSecret = [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(64)).ToLowerInvariant()
+$rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+try {
+    $postgresPasswordBytes = New-Object byte[] 24
+    $jwtSecretBytes = New-Object byte[] 64
+    $rng.GetBytes($postgresPasswordBytes)
+    $rng.GetBytes($jwtSecretBytes)
+}
+finally { $rng.Dispose() }
+$postgresPassword = ([BitConverter]::ToString($postgresPasswordBytes) -replace '-', '').ToLowerInvariant()
+$jwtSecret = ([BitConverter]::ToString($jwtSecretBytes) -replace '-', '').ToLowerInvariant()
 $currentHead = $null
 $currentImage = "gestudio-backend:rollback-current-$suffix"
 $rollbackImage = "gestudio-backend:rollback-compatible-$suffix"
@@ -35,6 +43,7 @@ $stackAttempted = $false
 $worktreeAdded = $false
 $passes = 0
 $failures = 0
+$previousProcessEnvironment = @{}
 
 function Invoke-Native {
     param(
@@ -84,6 +93,34 @@ function Get-FreePort {
     finally { $listener.Stop() }
 }
 
+function Get-LocalMigrationManifest {
+    param([string] $SourceRoot = $script:repoRoot)
+
+    $migrationRoot = Join-Path $SourceRoot 'backend/src/main/resources/db/migration'
+    $entries = @(Get-ChildItem -LiteralPath $migrationRoot -Filter 'V*__*.sql' -File | ForEach-Object {
+        if ($_.Name -notmatch '^V(?<version>[0-9]+)__.+\.sql$') {
+            throw "Nombre de migración Flyway inválido: $($_.Name)"
+        }
+        [pscustomobject]@{ Version = [int]$matches.version; Script = $_.Name }
+    } | Sort-Object Version)
+
+    if ($entries.Count -lt 2) { throw 'La verificación de rollback requiere al menos dos migraciones Flyway.' }
+    if (@($entries.Version | Select-Object -Unique).Count -ne $entries.Count) {
+        throw 'Hay versiones Flyway locales duplicadas.'
+    }
+    for ($index = 0; $index -lt $entries.Count; $index++) {
+        if ($entries[$index].Version -ne ($index + 1)) {
+            throw 'La cadena Flyway local no es contigua desde V1.'
+        }
+    }
+
+    return [pscustomobject]@{
+        Count = $entries.Count
+        LatestVersion = $entries[-1].Version
+        Scripts = @($entries.Script)
+    }
+}
+
 function Wait-ServiceHealthy {
     param([Parameter(Mandatory)][string] $Service)
 
@@ -111,10 +148,11 @@ function Invoke-Sql {
 
     $dbContainer = Invoke-Compose -Arguments @('ps', '-q', 'db') -Capture
     if ([string]::IsNullOrWhiteSpace($dbContainer)) { throw 'No se encontró PostgreSQL.' }
+    $sqlBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Sql))
     return Invoke-Native -FilePath 'docker' -Arguments @(
         'exec', $dbContainer, 'sh', '-ec',
-        'PGPASSWORD="$POSTGRES_PASSWORD" psql --no-psqlrc --tuples-only --no-align --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" --command="$1"',
-        'sh', $Sql
+        'printf "%s" "$1" | base64 -d | PGPASSWORD="$POSTGRES_PASSWORD" psql --no-psqlrc --tuples-only --no-align --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" --file=-',
+        'sh', $sqlBase64
     ) -Capture
 }
 
@@ -199,6 +237,8 @@ if (-not (Test-Path -LiteralPath $ComposeFile -PathType Leaf)) { throw "No exist
 if (-not (Test-Path -LiteralPath $rollbackScript -PathType Leaf)) { throw "Falta rollback-backend.ps1: $rollbackScript" }
 
 try {
+    $migrationManifest = Get-LocalMigrationManifest
+    $incompatibleFlyway = $migrationManifest.LatestVersion - 1
     New-Item -ItemType Directory -Path $workRoot -Force | Out-Null
     New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
     New-Item -ItemType Directory -Path $incompatibleContext -Force | Out-Null
@@ -221,12 +261,18 @@ try {
         SPRING_FLYWAY_BASELINE_ON_MIGRATE = 'false'
         APP_SCHEDULING_ENABLED = 'false'
         APP_BOOTSTRAP_SUPERADMIN_ENABLED = 'false'
-        APP_BOOTSTRAP_ADMIN_ENABLED = 'false'
+        APP_LOCAL_ADMIN_PASSWORD_RESET_ENABLED = 'false'
+        APP_LOCAL_ADMIN_PASSWORD_RESET_USERNAME = ''
+        APP_LOCAL_ADMIN_PASSWORD_RESET_PASSWORD = ''
         JWT_SECRET = $jwtSecret
         JWT_ISSUER = 'gestudio-rollback-verify'
         APP_TIME_ZONE = 'America/Argentina/Buenos_Aires'
         APP_CORS_ALLOWED_ORIGINS = 'http://127.0.0.1:18080'
         APP_JERE_PLATFORM_STUDENT_EXPORT_ENABLED = 'false'
+    }
+    foreach ($entry in $environment.GetEnumerator()) {
+        $previousProcessEnvironment[$entry.Key] = [Environment]::GetEnvironmentVariable($entry.Key, 'Process')
+        [Environment]::SetEnvironmentVariable($entry.Key, [string]$entry.Value, 'Process')
     }
     $environment.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" } |
         Set-Content -LiteralPath $envFile -Encoding ASCII
@@ -241,14 +287,19 @@ try {
     $worktreeAdded = $true
     Copy-Item -LiteralPath (Join-Path $repoRoot 'backend/Dockerfile') `
         -Destination (Join-Path $rollbackWorktree 'backend/Dockerfile') -Force
-    Copy-Item -LiteralPath (Join-Path $repoRoot 'backend/src/main/resources/db/migration/V7__jere_platform_student_source_exports.sql') `
-        -Destination (Join-Path $rollbackWorktree 'backend/src/main/resources/db/migration/V7__jere_platform_student_source_exports.sql') -Force
+    foreach ($migration in $migrationManifest.Scripts) {
+        Copy-Item -LiteralPath (Join-Path $repoRoot "backend/src/main/resources/db/migration/$migration") `
+            -Destination (Join-Path $rollbackWorktree "backend/src/main/resources/db/migration/$migration") -Force
+    }
+    $rollbackManifest = Get-LocalMigrationManifest -SourceRoot $rollbackWorktree
+    Assert-Equal -Actual ($rollbackManifest.Scripts -join '|') -Expected ($migrationManifest.Scripts -join '|') `
+        -Message 'El artefacto histórico no contiene la cadena Flyway productiva exacta'
 
-    $incompatibleDockerfile = @'
+    $incompatibleDockerfile = @"
 FROM alpine:3.20
-RUN mkdir -p /app/build-metadata && printf '6\n' > /app/build-metadata/flyway-latest
+RUN mkdir -p /app/build-metadata && printf '$incompatibleFlyway\n' > /app/build-metadata/flyway-latest
 ENTRYPOINT ["sh"]
-'@
+"@
     Set-Content -LiteralPath (Join-Path $incompatibleContext 'Dockerfile') -Value $incompatibleDockerfile -Encoding UTF8
 
     Invoke-Native -FilePath 'docker' -Arguments @(
@@ -256,14 +307,14 @@ ENTRYPOINT ["sh"]
         (Join-Path $repoRoot 'backend')
     ) | Out-Null
     Invoke-Native -FilePath 'docker' -Arguments @(
-        'build', '--build-arg', "VCS_REF=$HistoricalCommit-compatible-v7", '-t', $rollbackImage,
+        'build', '--build-arg', "VCS_REF=$HistoricalCommit-compatible-v$($migrationManifest.LatestVersion)", '-t', $rollbackImage,
         (Join-Path $rollbackWorktree 'backend')
     ) | Out-Null
     Invoke-Native -FilePath 'docker' -Arguments @('build', '-t', $incompatibleImage, $incompatibleContext) | Out-Null
 
-    Assert-Equal -Actual (Get-ImageFlywayLatest -Image $currentImage) -Expected 7 -Message 'Metadata Flyway de imagen actual inválida'
-    Assert-Equal -Actual (Get-ImageFlywayLatest -Image $rollbackImage) -Expected 7 -Message 'Metadata Flyway de rollback compatible inválida'
-    Assert-Equal -Actual (Get-ImageFlywayLatest -Image $incompatibleImage) -Expected 6 -Message 'Fixture incompatible inválida'
+    Assert-Equal -Actual (Get-ImageFlywayLatest -Image $currentImage) -Expected $migrationManifest.LatestVersion -Message 'Metadata Flyway de imagen actual inválida'
+    Assert-Equal -Actual (Get-ImageFlywayLatest -Image $rollbackImage) -Expected $migrationManifest.LatestVersion -Message 'Metadata Flyway de rollback compatible inválida'
+    Assert-Equal -Actual (Get-ImageFlywayLatest -Image $incompatibleImage) -Expected $incompatibleFlyway -Message 'Fixture incompatible inválida'
     Pass 'Artefactos actual, rollback e incompatible construidos'
 
     Push-Location $repoRoot
@@ -273,8 +324,8 @@ ENTRYPOINT ["sh"]
         Wait-ServiceHealthy -Service 'db' | Out-Null
         Wait-ServiceHealthy -Service 'backend' | Out-Null
         Assert-Equal -Actual (Get-BackendImage) -Expected $currentImage -Message 'La imagen actual no quedó activa'
-        Assert-Equal -Actual (Invoke-Sql -Sql "SELECT count(*)::text || '|' || max(version::int)::text FROM flyway_schema_history WHERE success").Trim() -Expected '7|7' -Message 'Flyway inicial inválida'
-        Pass 'Versión actual healthy con V1-V7'
+        Assert-Equal -Actual (Invoke-Sql -Sql "SELECT count(*)::text || '|' || max(version::int)::text FROM flyway_schema_history WHERE success").Trim() -Expected "$($migrationManifest.Count)|$($migrationManifest.LatestVersion)" -Message 'Flyway inicial inválida'
+        Pass "Versión actual healthy con V1-V$($migrationManifest.LatestVersion)"
 
         $studentResult = Invoke-Sql -Sql "INSERT INTO alumnos(nombre, apellido, fecha_incorporacion, activo) VALUES ('Rollback', '$marker', DATE '2026-07-20', true) RETURNING id"
         $studentId = (($studentResult -split "`r?`n") | Select-Object -First 1).Trim()
@@ -291,7 +342,7 @@ ENTRYPOINT ["sh"]
             & $rollbackScript -TargetBackendImage $incompatibleImage `
                 -ComposeFile $ComposeFile -EnvFile $envFile -ProjectName $project `
                 -ExpectedCurrentImage $currentImage -SkipBackup -ConfirmRollback
-        } -MessageContains 'Rollback incompatible' -FailureMessage 'Imagen con Flyway V6 no fue rechazada'
+        } -MessageContains 'Rollback incompatible' -FailureMessage "Imagen con Flyway V$incompatibleFlyway no fue rechazada"
         Assert-Equal -Actual (Get-BackendImage) -Expected $currentImage -Message 'Las guardas alteraron la imagen activa'
         Pass 'Guardas de confirmación y compatibilidad Flyway'
 
@@ -303,16 +354,16 @@ ENTRYPOINT ["sh"]
         Assert-True -Condition (Test-Path -LiteralPath $rollbackJson.backupDirectory -PathType Container) -Message 'El rollback no produjo backup previo.'
         Assert-Equal -Actual (Get-BackendImage) -Expected $rollbackImage -Message 'El artefacto rollback no quedó activo'
         Assert-Equal -Actual (Invoke-Sql -Sql "SELECT count(*) FROM alumnos WHERE id = $studentId AND apellido = '$marker'").Trim() -Expected 1 -Message 'El dato no sobrevivió al rollback'
-        Assert-Equal -Actual (Invoke-Sql -Sql "SELECT count(*)::text || '|' || max(version::int)::text FROM flyway_schema_history WHERE success").Trim() -Expected '7|7' -Message 'Flyway cambió durante rollback'
+        Assert-Equal -Actual (Invoke-Sql -Sql "SELECT count(*)::text || '|' || max(version::int)::text FROM flyway_schema_history WHERE success").Trim() -Expected "$($migrationManifest.Count)|$($migrationManifest.LatestVersion)" -Message 'Flyway cambió durante rollback'
         Assert-Equal -Actual (Invoke-Sql -Sql "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('jere_platform_student_export_snapshots','jere_platform_student_export_pages')").Trim() -Expected 2 -Message 'El rollback eliminó estructuras V7'
-        Pass 'Rollback compatible con datos y V7 preservados'
+        Pass "Rollback compatible con datos y V$($migrationManifest.LatestVersion) preservados"
 
         & $rollbackScript -TargetBackendImage $currentImage `
             -ComposeFile $ComposeFile -EnvFile $envFile -ProjectName $project `
             -ExpectedCurrentImage $rollbackImage -SkipBackup -ConfirmRollback | Out-Null
         Assert-Equal -Actual (Get-BackendImage) -Expected $currentImage -Message 'La versión actual no fue restaurada'
         Assert-Equal -Actual (Invoke-Sql -Sql "SELECT count(*) FROM alumnos WHERE id = $studentId AND apellido = '$marker'").Trim() -Expected 1 -Message 'El dato no sobrevivió al retorno'
-        Assert-Equal -Actual (Invoke-Sql -Sql "SELECT count(*)::text || '|' || max(version::int)::text FROM flyway_schema_history WHERE success").Trim() -Expected '7|7' -Message 'Flyway cambió al volver a actual'
+        Assert-Equal -Actual (Invoke-Sql -Sql "SELECT count(*)::text || '|' || max(version::int)::text FROM flyway_schema_history WHERE success").Trim() -Expected "$($migrationManifest.Count)|$($migrationManifest.LatestVersion)" -Message 'Flyway cambió al volver a actual'
         Pass 'Retorno al artefacto actual verificado'
     }
     finally {
@@ -346,6 +397,9 @@ finally {
         if (Test-Path -LiteralPath $workRoot) {
             Remove-Item -LiteralPath $workRoot -Recurse -Force -ErrorAction SilentlyContinue
         }
+    }
+    foreach ($entry in $previousProcessEnvironment.GetEnumerator()) {
+        [Environment]::SetEnvironmentVariable($entry.Key, $entry.Value, 'Process')
     }
 }
 

@@ -72,7 +72,7 @@ También se confirmaron dos fallos ocultos por el entorno:
 
 ## Archivos modificados por área
 
-- Configuración/CI: `.github/workflows/github.-actions-demo.yml`, `docker-compose.yml`, `docker-compose.prod.yml`, `backend/Dockerfile`, `backend/src/main/resources/application.yml`, `README.md`, documentación de desarrollo y scripts PowerShell.
+- Configuración/CI: `.github/workflows/ci.yml`, `docker-compose.yml`, `docker-compose.prod.yml`, `backend/Dockerfile`, `backend/src/main/resources/application.yml`, `README.md`, documentación de desarrollo y scripts PowerShell.
 - Backend: `ActiveProfileGuard`, pruebas de perfiles/JWT/CORS y `FilePathResolver` con su test.
 - Frontend: manifiesto y lockfile, configuración Vitest, tests, Axios/environment, contextos, tipos y archivos alcanzados por la corrección completa de lint/TypeScript.
 - Eliminado deliberadamente: `ecosystem.config.js`.

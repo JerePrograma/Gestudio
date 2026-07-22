@@ -72,7 +72,7 @@ public class DisciplinaServicio {
         disciplina.setHorarios(new ArrayList<>());
         disciplinas.save(disciplina);
         if (request.horarios() != null) {
-            disciplina.getHorarios().addAll(horarios.guardarHorarios(disciplina.getId(), request.horarios()));
+            horarios.guardarHorarios(disciplina.getId(), request.horarios());
         }
         return mapper.toResponse(disciplina);
     }
@@ -109,6 +109,7 @@ public class DisciplinaServicio {
         return disciplinas.findByActivoTrue().stream().map(mapper::toResponse).toList();
     }
 
+    @Transactional(readOnly = true)
     public List<DisciplinaResponse> listarDisciplinasSimplificadas() {
         return listarDisciplinas();
     }

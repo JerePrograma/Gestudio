@@ -36,16 +36,22 @@ jobs:
           GESTUDIO_HOME: ${{ github.workspace }}
         run: bash ./mvnw -B -ntp clean verify
 
-      - name: Set up Node 22.14.0
+      - name: Set up Node 22
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
-          node-version: 22.14.0
+          node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
+
+      - name: Audit all frontend dependencies
+        working-directory: frontend
+        run: |
+          npm audit
+          npm audit --omit=dev
 
       - name: Validate frontend
         working-directory: frontend
@@ -69,8 +75,8 @@ jobs:
           FRONTEND_IMAGE: example.invalid/gestudio-frontend:${{ github.sha }}
           JWT_SECRET: ci-only-jwt-secret-with-at-least-32-characters
           JWT_ISSUER: gestudio-ci
-          JWT_ACCESS_TOKEN_HOURS: "2"
-          JWT_REFRESH_TOKEN_HOURS: "168"
+          JWT_ACCESS_TOKEN_TTL: PT15M
+          JWT_REFRESH_TOKEN_TTL: P7D
           SPRING_MAIL_HOST: smtp.example.invalid
           SPRING_MAIL_PORT: "587"
           SPRING_MAIL_USERNAME: ci
@@ -89,22 +95,51 @@ jobs:
   build-images:
     needs: validate
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - name: Checkout verified SHA
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
       - name: Build backend image gate
-        run: docker build --pull -t gestudio-backend:${{ github.sha }} ./backend
+        run: |
+          compose_sha="$(sha256sum docker-compose.yml | cut -d' ' -f1)"
+          docker build --pull \
+            --build-arg VCS_REF="$GITHUB_SHA" \
+            --build-arg COMPOSE_SHA="$compose_sha" \
+            --build-arg SOURCE_SHA="$(git rev-parse HEAD:backend)" \
+            -t gestudio-backend:${{ github.sha }} \
+            ./backend
 
       - name: Build frontend image gate
         run: |
+          compose_sha="$(sha256sum docker-compose.yml | cut -d' ' -f1)"
           docker build --pull \
             --build-arg VITE_API_BASE_URL=https://example.invalid/api \
             --build-arg VITE_APP_TIME_ZONE=America/Argentina/Buenos_Aires \
+            --build-arg VCS_REF="$GITHUB_SHA" \
+            --build-arg COMPOSE_SHA="$compose_sha" \
+            --build-arg SOURCE_SHA="$(git rev-parse HEAD:frontend)" \
             -t gestudio-frontend:${{ github.sha }} \
             ./frontend
+
+      - name: Validate image metadata and frontend endpoint
+        run: |
+          set -euo pipefail
+          compose_sha="$(sha256sum docker-compose.yml | cut -d' ' -f1)"
+          expected_flyway="$(find backend/src/main/resources/db/migration -maxdepth 1 -type f -name 'V*__*.sql' -printf '%f\n' | sed -E 's/^V([0-9]+)__.*/\1/' | sort -n | tail -n 1)"
+          test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' gestudio-backend:${{ github.sha }})" = "$GITHUB_SHA"
+          test "$(docker image inspect --format '{{ index .Config.Labels "org.gestudio.compose.sha256" }}' gestudio-backend:${{ github.sha }})" = "$compose_sha"
+          test "$(docker image inspect --format '{{ index .Config.Labels "org.gestudio.source.sha256" }}' gestudio-backend:${{ github.sha }})" = "$(git rev-parse HEAD:backend)"
+          test "$(docker run --rm --network none --entrypoint cat gestudio-backend:${{ github.sha }} /app/build-metadata/flyway-latest)" = "$expected_flyway"
+          test "$(docker run --rm --network none --entrypoint cat gestudio-backend:${{ github.sha }} /app/build-metadata/health-contract)" = "actuator-readiness-v1"
+          test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' gestudio-frontend:${{ github.sha }})" = "$GITHUB_SHA"
+          test "$(docker image inspect --format '{{ index .Config.Labels "org.gestudio.compose.sha256" }}' gestudio-frontend:${{ github.sha }})" = "$compose_sha"
+          test "$(docker image inspect --format '{{ index .Config.Labels "org.gestudio.source.sha256" }}' gestudio-frontend:${{ github.sha }})" = "$(git rev-parse HEAD:frontend)"
+          frontend_id="$(docker create gestudio-frontend:${{ github.sha }})"
+          trap 'docker rm -f "$frontend_id" >/dev/null 2>&1 || true' EXIT
+          docker cp "$frontend_id:/usr/share/nginx/html" /tmp/gestudio-frontend-html
+          ! grep -R -F -l 'http://localhost:8080' /tmp/gestudio-frontend-html
 
   smoke:
     needs: validate

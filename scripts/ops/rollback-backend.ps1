@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory)][string] $TargetBackendImage,
     [string] $ComposeFile,
@@ -124,9 +124,12 @@ function Get-ImageHealthContract {
 function Get-DatabaseFlywayLatest {
     param([Parameter(Mandatory)][string] $DbContainer)
 
+    $sql = 'SELECT coalesce(max(version::int),0) FROM flyway_schema_history WHERE success'
+    $sqlBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($sql))
     $value = Invoke-Native -FilePath 'docker' -Arguments @(
         'exec', $DbContainer, 'sh', '-ec',
-        'PGPASSWORD="$POSTGRES_PASSWORD" psql --no-psqlrc --tuples-only --no-align --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" --command="SELECT coalesce(max(version::int),0) FROM flyway_schema_history WHERE success"'
+        'printf "%s" "$1" | base64 -d | PGPASSWORD="$POSTGRES_PASSWORD" psql --no-psqlrc --tuples-only --no-align --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" --file=-',
+        'sh', $sqlBase64
     ) -Capture
     if ($value -notmatch '^[0-9]+$') {
         throw "No se pudo determinar la versión Flyway de la base: $value"

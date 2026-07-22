@@ -50,7 +50,8 @@ Estado: gate de Fase 2 completo. No se ejecutó commit, push, deploy, bootstrap 
 
 ### Bootstrap de administrador
 
-- Runner deshabilitado por defecto y condicionado por `APP_BOOTSTRAP_ADMIN_ENABLED=true`.
+- El runner legacy de administrador estaba deshabilitado por defecto; el contrato
+  actual lo reemplaza por el bootstrap de SUPERADMIN de un solo uso.
 - Exige username externo y contraseña externa de 12 a 72 bytes UTF-8.
 - Sólo crea si no existe ningún usuario y el rol `ADMINISTRADOR` está activo.
 - Codifica la clave con BCrypt y no la registra.
@@ -78,7 +79,10 @@ Estado: gate de Fase 2 completo. No se ejecutó commit, push, deploy, bootstrap 
 ## Archivos principales
 
 - Seguridad: `SecurityConfigurations`, `SecurityFilter`, `TokenService`, `VerifiedToken`, `TokenType`, `InvalidTokenException`, `AutenticacionService`.
-- Bootstrap: `AdminBootstrapProperties`, `AdminBootstrapRunner`, `application.yml`, `docker-compose.yml`.
+- Bootstrap actual: `SuperadminBootstrapRunner`,
+  `LocalAdminPasswordResetProperties`, `LocalAdminPasswordResetRunner`,
+  `application.yml` y `docker-compose.yml`. Las clases legacy de bootstrap
+  administrativo fueron retiradas.
 - API/servicios: `AutenticacionControlador`, `UsuarioControlador`, `UsuarioServicio`, `TratadorDeErrores`.
 - Frontend: `routes.ts`, `Login.tsx`, `authContext.tsx` y test de login.
 - Documentación: inventario de endpoints, variables y flujo local.
@@ -100,7 +104,7 @@ Ninguna. V1-V060 permanecen sin cambios.
 
 - `SecurityHttpIntegrationTest`: 11 pruebas MockMvc con la cadena real.
 - `TokenServiceTest`: 5 pruebas, incluida concurrencia de verificación y `jti` único.
-- `AdminBootstrapRunnerTest`: 3 pruebas.
+- `SuperadminBootstrapRunnerTest`: 3 pruebas.
 - `UsuarioServicioTest`: 1 prueba de baja lógica.
 
 Cobertura explícita del gate:
@@ -121,7 +125,7 @@ Cobertura explícita del gate:
 | Comando | Resultado |
 | --- | --- |
 | `backend\.\mvnw.cmd -B -ntp clean verify` | PASS; 44 tests, 0 fallos, 0 errores, 0 omitidos; JAR generado. |
-| suite dirigida `TokenServiceTest,SecurityHttpIntegrationTest,AdminBootstrapRunnerTest,UsuarioServicioTest` | PASS; 20 tests. |
+| suite dirigida `TokenServiceTest,SecurityHttpIntegrationTest,SuperadminBootstrapRunnerTest,UsuarioServicioTest` | PASS; 20 tests en ese corte. |
 | `frontend\npm run lint` | PASS; 0 errores, 0 warnings. |
 | `frontend\npm test -- --run` | PASS; 3 archivos, 8 tests. |
 | `frontend\npm run build` | PASS; 2295 módulos. |

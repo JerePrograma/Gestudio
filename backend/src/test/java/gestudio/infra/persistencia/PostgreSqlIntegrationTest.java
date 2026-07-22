@@ -12,7 +12,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 public abstract class PostgreSqlIntegrationTest {
 
     protected static final PostgreSQLContainer<?> POSTGRESQL =
-            new PostgreSQLContainer<>("postgres:15.12-alpine3.21")
+            new PostgreSQLContainer<>("postgres:15.18-alpine3.24")
                     .withDatabaseName("gestudio_phase4a")
                     .withUsername("phase4a")
                     .withPassword("phase4a");

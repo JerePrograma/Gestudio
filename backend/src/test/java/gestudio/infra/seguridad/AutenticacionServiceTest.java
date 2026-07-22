@@ -107,8 +107,7 @@ class AutenticacionServiceTest {
     }
 
     private ProviderManager authenticationManager() {
-        DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
-        provider.setUserDetailsService(new UsuarioDetailsService(usuarios));
+        DaoAuthenticationProvider provider = new DaoAuthenticationProvider(new UsuarioDetailsService(usuarios));
         provider.setPasswordEncoder(passwordEncoder);
         return new ProviderManager(provider);
     }

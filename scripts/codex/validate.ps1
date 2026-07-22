@@ -1,4 +1,4 @@
-param(
+﻿param(
     [ValidateSet("All", "Backend", "Frontend")]
     [string] $Scope = "All"
 )
@@ -78,6 +78,18 @@ if ($Scope -in "All", "Backend") {
 }
 
 if ($Scope -in "All", "Frontend") {
+    Invoke-Step "frontend audit completo" {
+        Push-Location (Join-Path $repoRoot "frontend")
+        try { & npm audit }
+        finally { Pop-Location }
+    }
+
+    Invoke-Step "frontend audit producción" {
+        Push-Location (Join-Path $repoRoot "frontend")
+        try { & npm audit --omit=dev }
+        finally { Pop-Location }
+    }
+
     Invoke-Step "frontend lint" {
         Push-Location (Join-Path $repoRoot "frontend")
         try { & npm run lint }

@@ -3,8 +3,9 @@ package gestudio.repositorios;
 import gestudio.entidades.Alumno;
 import gestudio.entidades.Disciplina;
 import gestudio.entidades.Profesor;
-import org.springframework.data.jpa.repository.JpaRepository;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.EntityGraph;
+import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -18,6 +19,7 @@ public interface DisciplinaRepositorio extends JpaRepository<Disciplina, Long> {
 
     boolean existsByNombre(String nombre);
 
+    @EntityGraph(attributePaths = {"salon", "profesor", "horarios"})
     List<Disciplina> findByActivoTrue();
 
     @Query("SELECT I.alumno FROM Inscripcion I WHERE I.disciplina.id = :disciplinaId AND I.alumno.activo = true")

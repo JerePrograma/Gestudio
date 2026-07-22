@@ -38,6 +38,7 @@ import PageHeader from "../../componentes/comunes/PageHeader";
 import SectionCard from "../../componentes/comunes/SectionCard";
 import { PERMISSIONS } from "../../config/permissions";
 import { useAuth } from "../../hooks/context/useAuth";
+import { formatLocalDate } from "../../utils/civilDate";
 
 interface Disciplina {
   id: number;
@@ -68,6 +69,7 @@ const AsistenciaDiariaFormAdaptado: React.FC = () => {
   const searchWrapperRef = useRef<HTMLDivElement>(null);
   const [isValidClassDay, setIsValidClassDay] = useState<boolean>(false);
   const [, setDiasClase] = useState<string[]>([]);
+  const selectedDateValue = useMemo(() => formatLocalDate(selectedDate), [selectedDate]);
 
   // Cargar lista de disciplinas
   const fetchDisciplinas = useCallback(async () => {
@@ -235,11 +237,10 @@ const AsistenciaDiariaFormAdaptado: React.FC = () => {
   // Generamos la lista de registros diarios a partir de los alumnos únicos
   const dailyRecords = useMemo(() => {
     if (!monthlyDetail) return [];
-    const selectedIso = selectedDate.toISOString().split("T")[0];
     return uniqueAlumnos.map((alumno) => {
       // Buscamos el registro de asistencia para la fecha seleccionada
       const asistenciaDiaria = alumno.asistenciasDiarias.find(
-        (ad) => ad.fecha === selectedIso
+        (ad) => ad.fecha === selectedDateValue
       );
       // Usamos directamente la información mapeada en "alumno"
       const alumnoNombre = alumno.alumno?.nombre || "";
@@ -251,14 +252,14 @@ const AsistenciaDiariaFormAdaptado: React.FC = () => {
         asistenciaDiaria,
       };
     });
-  }, [monthlyDetail, selectedDate, uniqueAlumnos]);
+  }, [monthlyDetail, selectedDateValue, uniqueAlumnos]);
 
   const toggleAsistencia = async (
     alumnoId: number,
     currentRecord: AsistenciaDiariaResponse | undefined
   ) => {
     if (!canRegister || !selectedDate || !monthlyDetail) return;
-    const fechaFormateada = selectedDate.toISOString().split("T")[0];
+    const fechaFormateada = selectedDateValue;
     if (!currentRecord) {
       const alumnoRegistro = uniqueAlumnos.find((a) => a.id === alumnoId);
       if (!alumnoRegistro) {
@@ -432,7 +433,7 @@ const AsistenciaDiariaFormAdaptado: React.FC = () => {
       {monthlyDetail && dailyRecords.length > 0 && (
         <SectionCard title="Lista de asistencia" description={`${dailyRecords.length} alumnos · ${formatHeaderDate(selectedDate)}`} className="p-0 [&_.section-card-header]:m-0 [&_.section-card-header]:p-5">
           <div className="data-table-scroll">
-            <Table key={selectedDate.toISOString()} className="data-table">
+            <Table key={selectedDateValue} className="data-table">
               <TableHeader>
                 <TableRow>
                   <TableHead>Alumno</TableHead>

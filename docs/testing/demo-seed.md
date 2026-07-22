@@ -6,13 +6,14 @@
 |---|---|
 | Repositorio | `JerePrograma/Gestudio` |
 | Rama auditada | `main` |
-| HEAD auditado | `6443dbd735befbc0f9d05e78c03ef975bdd5156d` |
-| Fecha de auditoría | 2026-07-15 |
+| SHA inicial del ciclo | `2279035d3e827f01482bdf0a7359a4a2c7b24c31` |
+| Identidad publicada | se registra en el informe externo del release para evitar auto-referencia |
+| Fecha de auditoría | 2026-07-22 |
 | Seed manual | `scripts/gestudio_demo_seed_full.sql` |
 | Validador integral | `scripts/validate-demo-seed.ps1` |
-| Última versión Flyway auditada | `7` |
+| Manifiesto Flyway actual | V1-V7, derivado dinámicamente de archivos locales contiguos |
 | Migración productiva más reciente auditada | `V7__jere_platform_student_source_exports.sql` |
-| Estado | Seed reconstruido y validación automatizada disponible |
+| Estado | validado: 914 filas, dos corridas idénticas, cinco logins y RBAC |
 
 Este documento describe el mecanismo soportado para construir y validar un dataset comercial ficticio de Gestudio sobre una base PostgreSQL descartable.
 
@@ -110,7 +111,7 @@ El flujo automatizado no necesita Maven, PostgreSQL ni `psql` instalados globalm
 Antes de ejecutar:
 
 ```powershell
-Set-Location C:\laburo\Gestudio
+Set-Location '<raíz-del-checkout-de-Gestudio>'
 
 git status --short --branch
 git branch --show-current
@@ -119,16 +120,16 @@ git diff --exit-code
 git diff --cached --exit-code
 ```
 
-La guía fue preparada contra:
+El ciclo actual comenzó en:
 
 ```text
-6443dbd735befbc0f9d05e78c03ef975bdd5156d
+2279035d3e827f01482bdf0a7359a4a2c7b24c31
 ```
 
 Si el HEAD es posterior, debe verificarse que:
 
 - `scripts/gestudio_demo_seed_full.sql` siga siendo compatible;
-- la última migración productiva continúe incluyendo V7;
+- el manifiesto local siga siendo único y contiguo (actualmente V1-V7);
 - no exista una migración Flyway de demostración;
 - las entidades y endpoints utilizados por el validador no hayan cambiado.
 
@@ -180,19 +181,20 @@ El script:
 6. crea PostgreSQL con credenciales aleatorias;
 7. inicia el backend real;
 8. deja que Flyway aplique las migraciones;
-9. exige V7 exitosa, V6 presente y ninguna migración demo;
+9. exige exactamente el manifiesto local contiguo, V6 presente y ninguna migración demo;
 10. ejecuta Hibernate con `ddl-auto=validate`;
 11. genera cinco passwords aleatorias en memoria;
 12. genera cinco hashes BCrypt con el codificador real del backend;
 13. aplica el seed;
 14. valida conteos, RBAC e integridad financiera;
 15. arranca el backend sobre el dataset;
-16. prueba login, perfiles, endpoints y denegaciones;
+16. prueba login, perfiles, cumpleaños del día, endpoints y denegaciones;
 17. detiene el backend;
 18. aplica el seed por segunda vez;
 19. compara conteos, IDs, hashes y saldos;
 20. reinicia el backend y repite el login;
-21. elimina temporales, contenedores, red y volúmenes.
+21. elimina temporales, contenedores, red y volúmenes;
+22. imprime resumen, duración por etapa y duración total aun ante un fallo.
 
 ### Reutilizar un JAR existente
 
@@ -204,7 +206,8 @@ powershell -NoProfile -ExecutionPolicy Bypass `
   -SkipBackendBuild
 ```
 
-El script falla si se usa `-SkipBackendBuild` y no encuentra un JAR utilizable.
+El script falla si se usa `-SkipBackendBuild` y no encuentra un JAR utilizable o
+si el JAR es anterior a `pom.xml` o a cualquier fuente del backend.
 
 ### Mostrar solicitudes HTTP
 
@@ -215,6 +218,19 @@ powershell -NoProfile -ExecutionPolicy Bypass `
 ```
 
 Este modo muestra método, ruta y código HTTP. Los secretos continúan redactados.
+
+### Timeout global
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File .\scripts\validate-demo-seed.ps1 `
+  -TimeoutMinutes 60
+```
+
+El valor admitido es de 5 a 180 minutos. El script muestra progreso y duración
+por etapa, conserva sólo logs temporales redactados mientras ejecuta y siempre
+imprime `Resumen de validación`. Un fallo o timeout se propaga con exit code no
+cero.
 
 ### Combinación
 
@@ -338,6 +354,9 @@ La aplicación directa del SQL es secundaria. El método soportado para validar 
 
 ```text
 demo_anchor_date
+demo_business_date
+demo_expected_flyway_count
+demo_expected_flyway_latest
 demo_superadmin_password_hash
 demo_direccion_password_hash
 demo_administrador_password_hash
@@ -345,11 +364,16 @@ demo_secretaria_password_hash
 demo_caja_password_hash
 ```
 
-`demo_anchor_date` debe tener formato:
+`demo_anchor_date` y `demo_business_date` deben tener formato:
 
 ```text
 YYYY-MM-DD
 ```
+
+`demo_expected_flyway_count` y `demo_expected_flyway_latest` deben derivarse
+del manifiesto contiguo de migraciones locales y coincidir exactamente con
+`flyway_schema_history`. La ejecución soportada hace esa derivación; no mantener
+una copia manual del número en scripts o documentación operativa.
 
 Ejemplo de estructura del comando, usando valores ya generados de forma segura:
 
@@ -357,6 +381,9 @@ Ejemplo de estructura del comando, usando valores ya generados de forma segura:
 psql "host=127.0.0.1 port=<puerto> dbname=<base-demo> user=<usuario-demo>" `
   -v ON_ERROR_STOP=1 `
   -v "demo_anchor_date=<YYYY-MM-DD>" `
+  -v "demo_business_date=<YYYY-MM-DD>" `
+  -v "demo_expected_flyway_count=<cantidad-manifiesto-local>" `
+  -v "demo_expected_flyway_latest=<ultima-version-local>" `
   -v "demo_superadmin_password_hash=<bcrypt>" `
   -v "demo_direccion_password_hash=<bcrypt>" `
   -v "demo_administrador_password_hash=<bcrypt>" `
@@ -400,34 +427,43 @@ Una validación fallida aborta la ejecución y evita un commit parcial.
 
 ---
 
-## 8. Fecha ancla y períodos relativos
+## 8. Fecha ancla, día comercial y períodos relativos
 
-La fecha ancla se calcula en:
+Todas las fechas civiles se calculan en `America/Argentina/Buenos_Aires`. El
+dataset distingue:
 
-```text
-America/Argentina/Buenos_Aires
-```
+- `demo_anchor_date`: se conserva al reejecutar y gobierna períodos, vencimientos
+  y operaciones históricas;
+- `demo_business_date`: corresponde al día de ejecución y gobierna el alumno de
+  cumpleaños esperado por la validación HTTP.
 
-A partir de ella se construyen:
+A partir del ancla estable se construyen:
 
 - período actual;
 - período anterior;
 - segundo período anterior;
 - vencimientos;
 - fechas de asistencia;
-- edades y cumpleaños ficticios;
+- edades de los demás alumnos;
 - fechas de pagos, ventas, egresos y reversos.
 
-Esto evita que el dataset quede obsoleto por tener fechas fijas antiguas.
+El alumno designado para cumpleaños se deriva del día comercial. El servicio
+sólo incluye personas activas y coincidencias exactas del día civil; un 29 de
+febrero se observa el 28 de febrero en años no bisiestos. Los próximos
+cumpleaños fuera de hoy no forman parte de este endpoint.
 
 ### Regla de reejecución
 
 Para una reejecución determinista deben reutilizarse:
 
 - la misma `demo_anchor_date`;
+- la misma `demo_business_date` dentro de la doble aplicación de una corrida;
 - los mismos cinco hashes BCrypt.
 
-El seed rechaza una fecha ancla diferente cuando ya existe el namespace demo. No desplaza datos históricos ni acumula períodos silenciosamente.
+El seed rechaza una fecha ancla diferente cuando ya existe el namespace demo.
+Una nueva corrida conserva esa ancla y puede actualizar únicamente el dato
+designado para reflejar el nuevo día comercial, sin desplazar hechos históricos
+ni acumular períodos silenciosamente.
 
 Usar hashes distintos actualiza credenciales y deja de ser una comparación byte a byte del mismo dataset. El validador conserva los hashes entre la primera y segunda aplicación.
 
@@ -701,9 +737,10 @@ Además de las validaciones SQL, `validate-demo-seed.ps1` comprueba:
 - backend iniciado con Flyway y Hibernate validate;
 - `flyway_schema_history` correcto;
 - checksums presentes;
-- cadena productiva V1-V7 presente, incluida V6 RBAC;
+- manifiesto productivo local contiguo y exacto (V1-V7 en este corte), incluida V6 RBAC;
 - ninguna migración demo;
 - login de los cinco usuarios;
+- respuesta HTTP de cumpleaños con el alumno activo esperado para el día comercial;
 - 32 permisos en el perfil técnico;
 - roles asignables correctos;
 - endpoints representativos;
@@ -715,7 +752,9 @@ Además de las validaciones SQL, `validate-demo-seed.ps1` comprueba:
 - RBAC estable;
 - login posterior a la reejecución;
 - ausencia de secretos en temporales;
-- limpieza de infraestructura.
+- limpieza de infraestructura;
+- timeout global, progreso y duración de etapas;
+- resumen final tanto en éxito como en fallo.
 
 El proceso devuelve un exit code distinto de cero ante cualquier fallo.
 
@@ -915,11 +954,13 @@ La validación se considera exitosa cuando:
 - el script termina con exit code 0;
 - todas las etapas relevantes aparecen como `PASS`;
 - Flyway aplicó todas las migraciones productivas;
+- la cadena aplicada coincide exactamente con el manifiesto local contiguo;
 - V6 está presente y exitosa;
 - no existe migración Flyway demo;
 - Hibernate inicia con `ddl-auto=validate`;
 - los cinco usuarios pueden iniciar sesión;
 - los perfiles reflejan los roles esperados;
+- el endpoint de cumpleaños responde `200` e incluye el alumno demo del día;
 - las pruebas positivas y negativas de RBAC coinciden con V6;
 - los conteos del dataset son exactos;
 - no existen inconsistencias financieras;
@@ -946,3 +987,17 @@ El informe de auditoría y evidencia final se mantiene separado de esta guía op
 ## Actualización operativa 2026-07-20
 
 El gate actual exige Flyway V1-V7. V6 continúa siendo la autoridad del catálogo RBAC y V7 agrega únicamente snapshots firmados de integración, deshabilitados por defecto. El seed no inserta datos en las tablas V7 y verifica que existan antes de operar.
+
+## Actualización operativa 2026-07-21
+
+El número final ya no se duplica en el validador o en `Status`: ambos derivan el
+manifiesto de los archivos locales y exigen una secuencia única y contigua. La
+cadena actual sigue siendo V1-V7. El validador usa deliberadamente un ancla
+histórica distinta del día comercial para evitar que vuelva a acoplarse el
+cumpleaños a una fecha persistida anterior.
+
+## Actualización operativa 2026-07-22
+
+La ejecución desde volúmenes vacíos aprobó 914 filas, cinco hashes y logins,
+RBAC HTTP, CORS/cookie, cumpleaños del día y una segunda corrida con snapshot
+idéntico. El recorrido real de navegador de los cinco roles también quedó verde.

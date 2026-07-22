@@ -1,6 +1,6 @@
 # Arquitectura actual
 
-Le Dance es un monolito modular en dos aplicaciones versionadas juntas.
+Gestudio es un monolito modular en dos aplicaciones versionadas juntas.
 
 ## Backend
 

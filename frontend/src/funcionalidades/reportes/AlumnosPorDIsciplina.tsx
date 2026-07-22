@@ -126,8 +126,7 @@ const AlumnosPorDisciplina: React.FC = () => {
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
       toast.success("PDF exportado correctamente");
-    } catch (error) {
-      console.error("Error al exportar alumnos a PDF", error);
+    } catch {
       toast.error("Error al exportar alumnos a PDF");
     }
   };

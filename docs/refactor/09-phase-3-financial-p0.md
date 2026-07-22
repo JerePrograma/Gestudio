@@ -12,7 +12,10 @@ Estado: implementación y gates funcionales completos. No se ejecutó commit, pu
 - Rama: `main`, alineada con `origin/main`.
 - SHA inicial y SHA final de trabajo: `bbe598f903c3915270adf622996650a6dc860189`; no se crearon commits.
 - Árbol inicial limpio; `git diff` y `git diff --cached` vacíos.
-- El primer `status.ps1`, `setup.ps1`, `validate.ps1` y `backend\.\mvnw.cmd clean verify` no llegaron a las pruebas porque `JAVA_HOME` apuntaba a `C:\Program Files\Eclipse Adoptium\jdk-21`, ruta inexistente. Se usó el JDK 21 ya instalado en `C:\Program Files\Java\corretto-21.0.7`, sin instalar ni cambiar herramientas.
+- El primer `status.ps1`, `setup.ps1`, `validate.ps1` y
+  `backend\.\mvnw.cmd clean verify` no llegaron a las pruebas porque `JAVA_HOME`
+  apuntaba a una ruta inexistente. Se usó el JDK 21 ya instalado, sin instalar
+  ni cambiar herramientas.
 - Docker Engine estaba inicialmente no disponible; quedó disponible antes de los gates finales. No se iniciaron servicios Compose.
 - Frontend inicial: `npm ci` PASS; lint PASS; 3 archivos/8 tests PASS; build PASS con 2295 módulos.
 - Backend inicial con el JDK válido: 48 tests, 4 fallos, 0 errores, 0 omitidos.

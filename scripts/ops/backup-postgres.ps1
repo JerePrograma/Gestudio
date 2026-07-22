@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string] $ComposeFile,
     [string] $EnvFile,
@@ -119,6 +119,7 @@ if (-not $SkipReceipts -and $backendWasRunning -and -not $StopBackend) {
 
 $timestamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
 $packageName = "gestudio-backup-$timestamp-$([Guid]::NewGuid().ToString('N').Substring(0, 8))"
+$backupSetId = [Guid]::NewGuid().ToString('N')
 $root = [IO.Path]::GetFullPath($OutputDirectory)
 $packageDirectory = Join-Path $root $packageName
 $dumpName = 'database.dump'
@@ -149,10 +150,11 @@ try {
     }
 
     $sql = 'SELECT count(*)::text || ''|'' || coalesce(max(version::int)::text,'''') FROM flyway_schema_history WHERE success'
+    $sqlBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($sql))
     $flyway = Invoke-Native -FilePath 'docker' -Arguments @(
         'exec', $dbContainer, 'sh', '-ec',
-        'PGPASSWORD="$POSTGRES_PASSWORD" psql --no-psqlrc --tuples-only --no-align --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" --command="$1"',
-        'sh', $sql
+        'printf "%s" "$1" | base64 -d | PGPASSWORD="$POSTGRES_PASSWORD" psql --no-psqlrc --tuples-only --no-align --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" --file=-',
+        'sh', $sqlBase64
     ) -Capture
     $flywayParts = $flyway.Trim().Split('|')
     if ($flywayParts.Count -ne 2) {
@@ -164,7 +166,20 @@ try {
         Invoke-Compose -Arguments @(
             'run', '--rm', '--no-deps', '--user', '0:0', '--volume', $mount,
             '--entrypoint', 'sh', $BackendService,
-            '-ec', 'mkdir -p /app/data/receipts && tar -C /app/data -czf /backup/receipts.tar.gz receipts'
+            '-ec', @'
+set -eu
+marker=/app/data/receipts/.gestudio-backup-set-id
+cleanup() { rm -f "$marker"; }
+trap cleanup EXIT HUP INT TERM
+mkdir -p /app/data/receipts
+[ ! -e "$marker" ] && [ ! -L "$marker" ] || {
+  echo 'Existe un marcador interno de backup inesperado en receipts.' >&2
+  exit 42
+}
+printf '%s' "$1" > "$marker"
+tar -C /app/data -czf /backup/receipts.tar.gz receipts
+'@,
+            'sh', $backupSetId
         ) | Out-Null
         if (-not (Test-Path -LiteralPath $receiptsPath -PathType Leaf) -or (Get-Item $receiptsPath).Length -eq 0) {
             throw 'No se generó un archivo válido de recibos.'
@@ -188,7 +203,8 @@ try {
     }
 
     $manifest = [ordered]@{
-        formatVersion = 1
+        formatVersion = 2
+        backupSetId = $backupSetId
         createdAtUtc = (Get-Date).ToUniversalTime().ToString('o')
         projectName = $ProjectName
         sourceDatabase = $database

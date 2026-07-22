@@ -149,7 +149,8 @@ No se debilitan esas pruebas durante Etapa 1. Su corrección pertenece a `E2-010
 - `CORREGIDO Y VALIDADO LOCALMENTE`: STOMP/WebSocket y Observaciones no tienen superficie activa; notificaciones de primera release quedan en REST/email.
 - `DEFERRED SEGURO`: ownership Profesor no está probado; V6 lo mantiene inactivo, sin permisos y fuera de la UI.
 - `VALIDADO LOCALMENTE`: backend 129/129, frontend 140/140, lint, build, Compose y smoke canónico 20/20.
-- `PENDIENTE REMOTO`: falta crear el PR reemplazante, obtener los cuatro checks verdes y confirmar su merge a `main`.
+- `ESTADO DEL CORTE`: en esa fecha aún no existía el PR reemplazante; los ciclos
+  posteriores integraron el trabajo y el cierre vigente está en el informe 23.
 - `BLOQUEO DE RELEASE`: GATE-1B financiero, UX operativa, staging, backup/restore y rollback todavía no fueron ejecutados.
 
 Próximo paso único: congelar el diff en commits temáticos, publicar el PR reemplazante y esperar checks remotos. No iniciar Etapa 1B desde esta rama ni antes del merge confirmado a `main`.

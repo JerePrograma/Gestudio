@@ -23,7 +23,7 @@ Recomendación:
 
 - Git 2.x;
 - JDK 21 y `JAVA_HOME` correcto;
-- Node.js 22.14.0;
+- Node.js 22 LTS;
 - npm 10.x;
 - Docker Desktop o Docker Engine activo;
 - Docker Compose v2;
@@ -118,7 +118,27 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass `
   -Action Reset
 ```
 
-`Reset` elimina los datos de la demo.
+`Reset` elimina los datos de la demo. Invoca Compose con el nombre fijo
+`gestudio-demo-local`, por lo que sólo desciende ese proyecto y sus volúmenes;
+no usar limpiezas Docker globales.
+
+### Contrato de vigencia
+
+`Start` reconstruye imágenes y fuerza la recreación de backend y frontend sin
+borrar el volumen PostgreSQL. `Status` no acepta como disponible un contenedor
+healthy pero viejo: compara image ID, revisión Git, hash de
+`docker-compose.yml`, metadata Flyway, health, respuesta frontend e integridad
+del seed. La cadena esperada se deriva de las migraciones locales contiguas
+(V1-V7 en este corte), no de un número duplicado en el script.
+
+Si alguna condición falla, `Status` imprime `Demo disponible: NO`, detalla el
+motivo y termina con exit code `1`. La disponibilidad afirmativa y exit `0` son
+requisitos del gate.
+
+La demo conserva un `demo_anchor_date` estable para datos históricos y usa un
+`demo_business_date` diario en `America/Argentina/Buenos_Aires` para el alumno
+de cumpleaños. Sólo se notifican personas activas y el día exacto; 29/2 se
+observa el 28/2 en un año no bisiesto.
 
 # 5. Docker Compose completo
 
@@ -134,6 +154,7 @@ Editar como mínimo:
 
 - `POSTGRES_PASSWORD`;
 - `JWT_SECRET`;
+- `JWT_ISSUER`, `JWT_ACCESS_TOKEN_TTL` y `JWT_REFRESH_TOKEN_TTL`;
 - `APP_OBSERVABILITY_METRICS_TOKEN` para consultar Prometheus;
 - bootstrap inicial si la base no tiene usuarios;
 - puertos si `5432`, `8080` o `8081` están ocupados.
@@ -155,6 +176,8 @@ $metricsToken
 ```
 
 No reutilizar el secreto JWT como token de métricas.
+En producción los TTL usan duraciones ISO-8601, por ejemplo `PT15M` y `P7D`, y
+la cookie refresh se configura con `Secure=true`.
 
 ## Primer superadministrador
 
@@ -223,6 +246,8 @@ El segundo comando es destructivo.
 Terminal 1 — PostgreSQL:
 
 ```powershell
+$backupRoot = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'GestudioBackups'
+New-Item -ItemType Directory -Force -Path $backupRoot | Out-Null
 powershell -NoProfile -ExecutionPolicy Bypass `
   -File .\scripts\dev\start-db.ps1
 ```
@@ -290,6 +315,7 @@ Contrato:
 
 - sin token o token incorrecto: `401`;
 - token exacto: `200`;
+- dos o más valores de cabecera: `401`, aunque uno sea correcto;
 - no enviarlo desde el navegador;
 - no incluirlo en URLs;
 - no reutilizar `JWT_SECRET`.
@@ -422,9 +448,9 @@ La misma idempotency key no debe duplicar pago, aplicación, recibo ni movimient
 | SECRETARIA | alumnos, inscripciones y asistencia | egresos y seguridad |
 | CAJA | cargos, pagos, recibos, caja y stock permitido | gestión académica restringida |
 
-La matriz detallada está en `docs/testing/human-role-walkthrough.md`.
-
-Los recorridos siguen pendientes. La automatización no sustituye una revisión visual y funcional humana.
+La matriz detallada y la evidencia real del 22 de julio están en
+`docs/testing/human-role-walkthrough.md`. El recorrido cubrió los cinco roles,
+escritorio/móvil, teclado, foco, datos/vacío, permisos, refresh y logout.
 
 # 10. Integración Jere Platform
 
@@ -456,6 +482,10 @@ Estado verificado:
 - el coordinador `#51` continúa abierto por Scalaris y requisitos productivos;
 - el transporte desplegado Gestudio → Jere Platform no fue ejecutado ni autorizado.
 
+El bloqueo técnico `#59` no está pendiente. La ausencia de transporte
+desplegado es una condición operativa distinta y el issue coordinador `#51`
+permanece abierto.
+
 # 11. Backup
 
 Antes de migraciones, despliegues o rollback:
@@ -465,7 +495,7 @@ powershell -NoProfile -ExecutionPolicy Bypass `
   -File .\scripts\ops\backup-postgres.ps1 `
   -EnvFile .\.env `
   -ProjectName gestudio `
-  -OutputDirectory D:\Backups\Gestudio `
+  -OutputDirectory $backupRoot `
   -StopBackend
 ```
 
@@ -476,9 +506,16 @@ Runbook: `docs/operations/backup-restore.md`.
 Restaurar primero sobre una base alternativa. No sobrescribir origen sin validación y confirmaciones explícitas.
 
 ```powershell
+$rollbackRoot = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'GestudioBackups\Rollback'
+New-Item -ItemType Directory -Force -Path $rollbackRoot | Out-Null
 powershell -NoProfile -ExecutionPolicy Bypass `
   -File .\scripts\ops\verify-backup-restore.ps1
 ```
+
+El restore se revalidó el 22 de julio en PowerShell 7 y Windows PowerShell 5.1:
+12/12 etapas en ambos shells, incluida la matriz adversarial y cleanup aislado.
+El resultado local no autoriza por sí solo una restauración productiva; esa
+operación requiere ventana, backup aprobado y responsables identificados.
 
 # 13. Rollback backend
 
@@ -491,7 +528,7 @@ powershell -NoProfile -ExecutionPolicy Bypass `
   -ExpectedCurrentImage '<imagen-actual>' `
   -EnvFile .\.env `
   -ProjectName gestudio `
-  -BackupOutputDirectory D:\Backups\Gestudio\Rollback `
+  -BackupOutputDirectory $rollbackRoot `
   -ConfirmRollback
 ```
 
@@ -518,6 +555,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\ops\verify-observa
 ```
 
 Los drills usan stacks descartables y no deben compartir datos reales.
+El validador demo muestra cada etapa y su duración, impone un timeout global
+configurable (`-TimeoutMinutes`), imprime siempre el resumen y propaga un exit
+code no cero. También comprueba por HTTP el cumpleaños del día. El uso de
+`-SkipBackendBuild` sólo es seguro cuando el JAR no es anterior a sus entradas.
 
 # 15. Diagnóstico
 
@@ -538,12 +579,15 @@ Problemas frecuentes:
 - Docker sin Engine: iniciar Docker Desktop/Engine;
 - puerto ocupado: cambiar `.env`;
 - Flyway falla: no editar una migración aplicada;
+- `Status` falla con imagen vieja: ejecutar `Start`; no borrar el volumen;
+- `Status` falla por revisión/Compose/Flyway: reconstruir desde el checkout correcto;
 - Hibernate no valida: no usar `ddl-auto=update`;
 - login inicial ausente: revisar bootstrap sólo en base sin usuarios;
 - backend falla tras bootstrap: apagar la bandera;
 - tarifa ausente: crear tarifa histórica;
 - readiness DOWN: revisar PostgreSQL, disco y Flyway;
 - Prometheus `401`: revisar cabecera y token exactos;
+- Prometheus con cabecera repetida: enviar exactamente un valor;
 - restore rechazado: usar base alternativa;
 - rollback rechazado: revisar metadata Flyway y health de la imagen.
 
@@ -562,5 +606,10 @@ Para staging faltan:
 - responsables y escalamiento;
 - recorridos humanos GATE-2;
 - smoke desplegado Gestudio → Jere Platform.
+
+También siguen abiertos rate limiting/fuerza bruta, correo real, revisión de
+IDs técnicos remanentes, accesibilidad, imágenes no-root y controles de supply
+chain/CI de seguridad. La evidencia histórica de rollback u observabilidad no
+se debe presentar como una ejecución nueva de este ciclo.
 
 Producción permanece en `NO-GO` hasta autorización independiente.

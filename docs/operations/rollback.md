@@ -96,13 +96,15 @@ Requisitos:
 - autorización operativa.
 
 ```powershell
+$rollbackRoot = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'GestudioBackups\Rollback'
+New-Item -ItemType Directory -Force -Path $rollbackRoot | Out-Null
 powershell -NoProfile -ExecutionPolicy Bypass `
   -File .\scripts\ops\rollback-backend.ps1 `
   -TargetBackendImage registry.example/gestudio-backend:rollback-20260720 `
   -ExpectedCurrentImage registry.example/gestudio-backend:current-20260720 `
   -EnvFile .\.env `
   -ProjectName gestudio `
-  -BackupOutputDirectory D:\Backups\Gestudio\Rollback `
+  -BackupOutputDirectory $rollbackRoot `
   -ConfirmRollback
 ```
 
@@ -207,6 +209,14 @@ El drill:
 13. vuelve al artefacto actual;
 14. verifica readiness, datos y Flyway;
 15. elimina stack, volúmenes, imágenes, worktree y temporales.
+
+### Evidencia local 2026-07-22
+
+- PowerShell 7.6.3: 8/8 etapas, exit 0, aproximadamente 264 s.
+- Windows PowerShell 5.1: 8/8 etapas, exit 0, aproximadamente 173 s.
+- En ambos casos se preservó el dato, se rechazó la imagen incompatible antes de
+  mutar el servicio, se volvió a la imagen actual y no quedaron recursos del
+  proyecto aislado.
 
 ## Qué no es rollback
 

@@ -19,18 +19,18 @@ import java.util.Map;
 
 @Component
 @Profile("dev")
-@ConditionalOnProperty(name = "app.bootstrap-admin.reset-existing-password", havingValue = "true")
+@ConditionalOnProperty(name = "app.local-admin-password-reset.enabled", havingValue = "true")
 public class LocalAdminPasswordResetRunner implements ApplicationRunner {
     private static final Logger log = LoggerFactory.getLogger(LocalAdminPasswordResetRunner.class);
 
-    private final AdminBootstrapProperties properties;
+    private final LocalAdminPasswordResetProperties properties;
     private final UsuarioRepositorio usuarios;
     private final PasswordEncoder passwordEncoder;
     private final PasswordPolicy passwordPolicy;
     private final AuditService audit;
     private final Clock clock;
 
-    public LocalAdminPasswordResetRunner(AdminBootstrapProperties properties,
+    public LocalAdminPasswordResetRunner(LocalAdminPasswordResetProperties properties,
                                          UsuarioRepositorio usuarios,
                                          PasswordEncoder passwordEncoder,
                                          PasswordPolicy passwordPolicy,
@@ -47,18 +47,16 @@ public class LocalAdminPasswordResetRunner implements ApplicationRunner {
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
-        if (properties.enabled()) {
-            throw new IllegalStateException("No habilite bootstrap y reset local simultáneamente");
-        }
         String username = properties.username() == null ? "" : properties.username().trim();
         if (username.length() < 3 || username.length() > 100) {
             throw new IllegalStateException(
-                    "APP_BOOTSTRAP_ADMIN_USERNAME debe tener entre 3 y 100 caracteres");
+                    "APP_LOCAL_ADMIN_PASSWORD_RESET_USERNAME debe tener entre 3 y 100 caracteres");
         }
         try {
             passwordPolicy.validar(properties.password(), RolSistema.ADMINISTRADOR);
         } catch (IllegalArgumentException exception) {
-            throw new IllegalStateException("APP_BOOTSTRAP_ADMIN_PASSWORD: " + exception.getMessage(), exception);
+            throw new IllegalStateException(
+                    "APP_LOCAL_ADMIN_PASSWORD_RESET_PASSWORD: " + exception.getMessage(), exception);
         }
 
         Usuario admin = usuarios.findByNombreUsuarioIgnoreCase(username)

@@ -3,6 +3,7 @@ package gestudio.infra.persistencia;
 import gestudio.Main;
 import gestudio.infra.seguridad.PermissionCodes;
 import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.MigrationInfo;
 import org.flywaydb.core.api.MigrationVersion;
 import org.flywaydb.core.api.output.ValidateResult;
 import org.junit.jupiter.api.Test;
@@ -89,12 +90,16 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
                     .baselineOnMigrate(false)
                     .load();
 
-            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(7);
+            MigrationInfo[] pendingMigrations = flyway.info().pending();
+            assertThat(pendingMigrations).isNotEmpty();
+            MigrationVersion expectedLatestVersion = pendingMigrations[pendingMigrations.length - 1].getVersion();
+
+            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(pendingMigrations.length);
 
             ValidateResult validation = flyway.validateWithResult();
 
             assertThat(flyway.info().current()).isNotNull();
-            assertThat(flyway.info().current().getVersion()).isEqualTo(MigrationVersion.fromVersion("7"));
+            assertThat(flyway.info().current().getVersion()).isEqualTo(expectedLatestVersion);
             assertThat(validation.validationSuccessful)
                     .withFailMessage(validation.getAllErrorMessages())
                     .isTrue();
@@ -407,8 +412,11 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
             Flyway latest = Flyway.configure()
                     .dataSource(jdbcUrl, POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
                     .load();
-            assertThat(latest.migrate().migrationsExecuted).isEqualTo(2);
-            assertThat(latest.info().current().getVersion()).isEqualTo(MigrationVersion.fromVersion("7"));
+            MigrationInfo[] pendingMigrations = latest.info().pending();
+            assertThat(pendingMigrations).isNotEmpty();
+            MigrationVersion expectedLatestVersion = pendingMigrations[pendingMigrations.length - 1].getVersion();
+            assertThat(latest.migrate().migrationsExecuted).isEqualTo(pendingMigrations.length);
+            assertThat(latest.info().current().getVersion()).isEqualTo(expectedLatestVersion);
 
             try (Connection connection = DriverManager.getConnection(
                     jdbcUrl,

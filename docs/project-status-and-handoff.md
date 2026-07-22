@@ -1,116 +1,109 @@
-# Estado del proyecto y handoff
+# Estado de release y traspaso
 
-> Fecha: 21 de julio de 2026  
-> Rama operativa: `main`  
-> Merge funcional GATE-2: `7d8872a59acb923fae664f806b01e459f372dc1c`  
-> Estado externo: **NO-GO para demo humana, demo comercial, staging y producción**
+Fecha de validación local: 2026-07-22
 
-Git y GitHub son autoridad. El backlog vigente está en `docs/codex/gestudio-release-hardening/12_ESTADO_ACTUAL_Y_BACKLOG.md` y la evidencia de esta iteración en `21_GATE_2_UX_OPERATIVA_2026-07-21.md`.
+Zona de negocio: `America/Argentina/Buenos_Aires`
 
-## Capacidades integradas
+Rama de publicación: `main`
 
-| Área | Estado |
+Este documento describe el árbol de release. El SHA final, su enlace y las
+ejecuciones de GitHub Actions se registran fuera del propio commit, en el informe
+de cierre que acompaña la publicación. Incluir el SHA de un commit dentro de ese
+mismo commit produciría una auto-referencia imposible.
+
+## Alcance cerrado
+
+- Cumpleaños del día civil de Buenos Aires, con `anchor_date` y
+  `business_date` separados, personas activas y regla de 29 de febrero.
+- Notificación única mediante inserción atómica y efecto posterior al commit.
+- Manifiesto Flyway dinámico y contiguo; la cadena actual es V1-V7 sin
+  constantes ejecutables que fijen siete migraciones.
+- Seed demo idempotente de 914 filas, cinco usuarios, cinco logins y matriz RBAC.
+- Producción fail-closed para JWT, cookie refresh, CORS y métricas.
+- `open-in-view=false`, límites de login, DTO/estado de alumno y carga de
+  disciplinas sin horarios duplicados.
+- Frontend con fecha civil, logout accesible, modal de notificaciones con estados
+  de carga/error, CSP, headers Nginx y bundle sin sourcemaps.
+- Imágenes backend/frontend no-root y metadata de build.
+- Backup/restore con formato v2, `backupSetId`, SHA-256, recibos confinados y
+  validación completa antes de modificar datos.
+- Rollback de aplicación forward-compatible, sin prometer down migrations.
+- Readiness/liveness, Prometheus protegido, `X-Request-ID` y logs sanitizados.
+- Workflows con permisos mínimos, acciones fijadas a SHA, timeouts y artefactos
+  de evidencia con retención limitada.
+
+## Evidencia local del árbol de release
+
+| Gate | Resultado real | Duración |
+|---|---:|---:|
+| Backend `clean test` | 203 pruebas; 0 fallos; 0 errores; 2 skips de symlink en Windows | 187,7 s |
+| Backend `clean verify` | 203 pruebas; 0 fallos; 0 errores; 2 skips de symlink en Windows | 186,8 s |
+| Frontend `npm ci` | 421 paquetes desde lockfile; exit 0 | 43,9 s |
+| Auditoría npm total/productiva | 0 vulnerabilidades / 0 vulnerabilidades | — |
+| Frontend lint | exit 0 | — |
+| Frontend tests | 149 Vitest + 2 contratos Nginx; 0 fallos | 29,3 s |
+| Frontend build | TypeScript/Vite; 2.340 módulos; 0 sourcemaps | 17,8 s |
+| Compose local/productivo | ambas configuraciones válidas | — |
+| Docker `build --no-cache` | backend y frontend construidos; UID 100/101 | 496,2 s |
+| Smoke canónico | 20/20 | 112,7 s |
+| Observabilidad | 8/8 | 39,8 s |
+| Backup/restore PowerShell 7 | 12/12 | 163 s aprox. |
+| Backup/restore Windows PowerShell 5.1 | 12/12 | 168 s aprox. |
+| Rollback PowerShell 7 | 8/8 | 264 s aprox. |
+| Rollback Windows PowerShell 5.1 | 8/8 | 173 s aprox. |
+| Demo desde volúmenes vacíos | 914 filas; 5 logins; RBAC; doble seed idéntico | exit 0 |
+| Navegador headed | 5 roles; escritorio/móvil; 1/1 prueba | 24,1 s |
+
+Los dos skips locales requieren privilegios de creación de symlinks que este
+host Windows no concede. Linux/GitHub Actions ejecuta esos casos y el gate local
+mantiene además traversal, rutas absolutas, hardlinks y destinos de enlace.
+
+`npm outdated` devuelve 1 porque hay versiones mayores incompatibles disponibles
+(por ejemplo React 19 y Vite 8). Es inventario informativo, no una vulnerabilidad;
+no se forzaron upgrades mayores en este release.
+
+## Navegador y RBAC
+
+El recorrido real se ejecutó contra la demo recreada desde volúmenes vacíos. Para
+cada rol comprobó login, menú, rutas permitidas/denegadas, datos y vacío, foco,
+primer Tab en el enlace de salto, refresh de sesión, viewport 1440×1000 y
+390×844, cumpleaños, notificaciones y logout desde la interfaz.
+
+| Rol | Contrato observado |
 |---|---|
-| RBAC fail-closed y 32 permisos | integrado/probado |
-| Finanzas por vigencia e idempotencia | integrado/probado |
-| Flyway V1-V7 | integrado/probado |
-| Demo automatizada | PASS sobre SHA `52175e49...` |
-| Backup/restore | PASS técnico |
-| Rollback | PASS técnico |
-| Observabilidad source-owned | PASS técnico, PR `#20` |
-| Emisor Jere Platform | integrado y apagado |
-| Receptor Jere Platform | integrado mediante PR `#60` |
-| Transporte desplegado | no demostrado |
-| Búsqueda humana de alumnos | integrada mediante PR `#21` |
-| Pagos sin ID técnico visible | integrado mediante PR `#21` |
-| Demo humana | pendiente |
-| Staging/producción | no provistos/no autorizados |
+| `SUPERADMIN` | acceso total, roles y usuarios; reporte con datos |
+| `DIRECCION` | gestión y usuarios; roles denegado |
+| `ADMINISTRADOR` | gestión y usuarios; roles denegado |
+| `SECRETARIA` | alumnos, inscripciones, asistencia, pagos, caja y reportes; seguridad/egresos denegados |
+| `CAJA` | alumnos, pagos, caja, stock y métodos en lectura; inscripciones, reportes, profesores y seguridad denegados |
 
-## Evidencia final PR #21
+Los cinco `401` visibles en la consola son el refresh anónimo esperado antes de
+cada login; no hubo errores de consola ni respuestas fallidas inesperadas.
+Capturas y trazas se conservaron fuera del repositorio y no se versionaron.
 
-SHA candidato: `52175e49b03a2fc7b4e1c729a0f8a4a7f1c30113`.
+## Límites operativos reales
 
-- backend: **172/172 PASS**;
-- frontend: **142/142 PASS**;
-- lint: PASS;
-- build frontend: PASS;
-- Scope All: PASS;
-- Compose local/productivo: PASS;
-- imágenes backend/frontend: PASS;
-- smoke GATE: PASS;
-- smoke CI aislado: PASS;
-- seed doble: PASS;
-- hilos pendientes: ninguno;
-- merge protegido: `7d8872a59acb923fae664f806b01e459f372dc1c`.
+- Flyway es forward-only. El rollback probado cambia la imagen de aplicación
+  sólo si la imagen anterior entiende el esquema actual. Recuperar la base exige
+  el procedimiento de backup/restore.
+- No se probó entrega real SMTP ni transporte a Jere Platform; ambos permanecen
+  desconectados salvo configuración explícita del ambiente.
+- El repositorio está preparado para despliegue, pero no acredita por sí solo
+  TLS, DNS, secret manager, almacenamiento persistente, retención, alertas ni
+  restauración en infraestructura productiva.
+- Spring Data aún advierte que algunas respuestas serializan `PageImpl`
+  directamente. El contrato actual se preservó para no introducir una ruptura
+  de API en este cierre; debe versionarse antes de cambiar esa forma JSON.
 
-## Correcciones GATE-2 integradas
+## Documentación operativa
 
-1. Alumnos se buscan por nombre, apellido, ambos órdenes, documento y fragmentos, sólo activos.
-2. Pagos deja de exponer el ID interno como referencia comercial y usa fecha/monto en el nombre accesible.
-3. La primera ejecución CI detectó una colisión de sesión causada por un segundo truncate en la prueba; se corrigió sin tocar lógica productiva.
-4. La documentación dejó de presentar observabilidad `#20` o `jere-platform#59` como pendientes.
-
-## Recorridos humanos
-
-| Rol | Estado |
-|---|---|
-| SUPERADMIN | PENDIENTE |
-| DIRECCION | PENDIENTE |
-| ADMINISTRADOR | PENDIENTE |
-| SECRETARIA | PENDIENTE |
-| CAJA | PENDIENTE |
-
-La ausencia de navegador operativo en esta ejecución impide cerrar accesibilidad, responsive y operación visual. Una suite verde no equivale a demo humana aprobada.
-
-## Operación local
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass `
-  -File .\scripts\codex\setup.ps1
-
-powershell -NoProfile -ExecutionPolicy Bypass `
-  -File .\scripts\codex\validate.ps1 `
-  -Scope All
-
-powershell.exe -NoProfile -ExecutionPolicy Bypass `
-  -File .\scripts\demo-local.ps1 `
-  -Action Start
-```
-
-Estado y detención:
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass `
-  -File .\scripts\demo-local.ps1 `
-  -Action Status
-
-powershell.exe -NoProfile -ExecutionPolicy Bypass `
-  -File .\scripts\demo-local.ps1 `
-  -Action Stop
-```
-
-Runbook: `docs/operations/local-runbook.md`.
-
-## Próximos pasos exactos
-
-1. levantar la demo con datos sintéticos;
-2. ejecutar `SUPERADMIN` completo;
-3. ejecutar `DIRECCION` y probar URL directas prohibidas;
-4. ejecutar `ADMINISTRADOR`;
-5. ejecutar `SECRETARIA`: alumno → inscripción → asistencia;
-6. ejecutar `CAJA`: cargo → pago → recibo → caja → stock/reversión;
-7. repetir en 360, 390, 768 y escritorio;
-8. validar foco, tabulación, labels, modales, contraste y errores;
-9. registrar evidencia con SHA exacto;
-10. mantener staging y producción en NO-GO hasta que existan ambientes y autorización.
-
-## Riesgos abiertos
-
-- GATE-2 humano no cerrado;
-- accesibilidad y móvil sin evidencia completa;
-- búsqueda amplia puede requerir optimización futura por volumen;
-- políticas de backup, imágenes y secretos incompletas;
-- monitoreo externo no provisto;
-- staging inexistente;
-- producción no autorizada;
-- transporte Jere Platform no desplegado.
+- [Desarrollo local](development/local-development.md)
+- [Variables de entorno](development/environment-variables.md)
+- [Runbook](operations/local-runbook.md)
+- [Observabilidad](operations/observability.md)
+- [Backup y restore](operations/backup-restore.md)
+- [Rollback](operations/rollback.md)
+- [Demo persistente](testing/demo-local.md)
+- [Seed demo](testing/demo-seed.md)
+- [Recorrido de roles](testing/human-role-walkthrough.md)
+- [Cierre técnico](codex/gestudio-release-hardening/23_CIERRE_RELEASE_2026-07-22.md)

@@ -53,7 +53,8 @@ Estado: **INTEGRADA Y VALIDADA**.
 - demo persistente separada de gates;
 - demo automatizada no reemplaza recorrido humano.
 
-Estado: **AUTOMATIZADA Y VALIDADA; HUMANA PENDIENTE**.
+Estado actualizado 2026-07-22: **automatizada y recorrido humano de cinco roles
+validados**; ver informe 23.
 
 ### Integración V7
 

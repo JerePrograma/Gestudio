@@ -35,7 +35,9 @@
 - Status: complete; gate GREEN.
 - Added forward-only V2 while leaving V1 byte-unchanged: `SUPERADMIN`, user auth/version columns, refresh sessions, bootstrap claim, append-only audit table and indexes.
 - Added explicit `ROLE_SUPERADMIN > ROLE_ADMINISTRADOR` hierarchy and reserved endpoint matrix.
-- Replaced the table-empty ADMINISTRADOR bootstrap with a transactional one-time SUPERADMIN claim; new variables are primary and `APP_BOOTSTRAP_ADMIN_*` remain as one-version deprecated aliases.
+- Replaced the table-empty ADMINISTRADOR bootstrap with a transactional one-time
+  SUPERADMIN claim. The temporary compatibility aliases mentioned in this
+  historical step were removed before the current release.
 - Bootstrap validates normalized username, 16-72 UTF-8 password bytes, active reserved role, case-insensitive uniqueness, concurrency and audit without secrets.
 - User mutations now receive/reload the actor, require SUPERADMIN, lock active superadmins before last-user checks, increment `auth_version` on password/role/state changes and keep logical deletion.
 - Removed arbitrary role creation and its unused request mappers.

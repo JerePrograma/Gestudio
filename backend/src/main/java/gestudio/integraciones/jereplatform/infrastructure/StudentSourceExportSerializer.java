@@ -17,7 +17,7 @@ public class StudentSourceExportSerializer {
 
     public StudentSourceExportSerializer(ObjectMapper objectMapper) {
         this.writer = objectMapper.copy()
-                .setSerializationInclusion(JsonInclude.Include.ALWAYS)
+                .setDefaultPropertyInclusion(JsonInclude.Include.ALWAYS)
                 .disable(SerializationFeature.INDENT_OUTPUT)
                 .writerFor(StudentSourceExport.class);
     }

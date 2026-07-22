@@ -48,7 +48,7 @@ Otros problemas detectados:
 
 - La paleta clara usa un rosa demasiado pálido como acción primaria y neutros
   cálidos de poco contraste. El modo oscuro cambia la marca a violeta y pierde
-  continuidad con LE DANCE.
+  continuidad con la identidad visual de Gestudio.
 - `color-scheme: light dark` en `:root` deja controles nativos oscuros aunque la
   aplicación todavía esté en tema claro según el sistema.
 - La escala tipográfica y de espaciado usa `clamp()` de forma excesiva; tablas y
@@ -240,7 +240,7 @@ overflow horizontal, empty states y consola del navegador.
 
 El refactor visual quedó aplicado sobre el worktree existente con estas piezas:
 
-- tokens claros y oscuros unificados alrededor del rosa coral de LE DANCE;
+- tokens claros y oscuros unificados alrededor del rosa coral de Gestudio;
 - escala tipográfica y de espaciado compacta para administración;
 - shell autenticado con sidebar, navegación jerárquica, topbar contextual y
   contenido sin doble offset vertical;
@@ -286,9 +286,8 @@ credenciales ni se debilitó la autenticación para inspeccionarlas.
 | `git diff --check` | PASS |
 
 El primer intento de `-Scope All` terminó antes de Maven porque `JAVA_HOME`
-apuntaba a `C:\Program Files\Eclipse Adoptium\jdk-21`, directorio sin
-`bin\javac.exe`. Se reintentó sin modificar archivos, usando para ese proceso
-`C:\Program Files\Java\corretto-21.0.7`.
+apuntaba a un directorio inexistente. Se reintentó sin modificar archivos,
+usando para ese proceso el JDK Corretto 21.0.7 ya instalado.
 
 El reintento compiló 292 fuentes backend y 30 fuentes de test, pero `mvn clean
 verify` terminó con `80 tests, 0 failures, 16 errors`: todos los errores

@@ -14,6 +14,7 @@ import gestudio.infra.configuracion.AppProperties;
 import gestudio.infra.configuracion.ConfiguracionCors;
 import gestudio.infra.errores.TratadorDeErrores;
 import gestudio.infra.errores.TratadorDeErrores.OperacionNoPermitidaException;
+import gestudio.infra.observabilidad.RequestCorrelationFilter;
 import gestudio.repositorios.ReciboRepositorio;
 import gestudio.repositorios.UsuarioRepositorio;
 import gestudio.servicios.pago.PagoServicio;
@@ -72,6 +73,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.ArgumentMatchers.nullable;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
@@ -89,6 +91,7 @@ import static gestudio.infra.seguridad.PermissionCodes.*;
         SecurityFilter.class,
         TokenService.class,
         ConfiguracionCors.class,
+        RequestCorrelationFilter.class,
         TratadorDeErrores.class,
         SecurityHttpIntegrationTest.SecurityTestConfiguration.class
 })
@@ -229,6 +232,27 @@ class SecurityHttpIntegrationTest {
                 .andExpect(jsonPath("$.status").value(401))
                 .andExpect(jsonPath("$.code").value("UNAUTHORIZED"))
                 .andExpect(jsonPath("$.message").value("Credenciales inválidas"));
+    }
+
+    @Test
+    void loginRechazaCredencialesSobredimensionadasAntesDeAutenticar() throws Exception {
+        String usernameLargo = "u".repeat(101);
+        String passwordLarga = "p".repeat(73);
+        String passwordUtf8Larga = "😀".repeat(19);
+
+        for (String body : List.of(
+                "{\"nombreUsuario\":\"" + usernameLargo + "\",\"contrasena\":\"correcta\"}",
+                "{\"nombreUsuario\":\"admin\",\"contrasena\":\"" + passwordLarga + "\"}",
+                "{\"nombreUsuario\":\"admin\",\"contrasena\":\"" + passwordUtf8Larga + "\"}"
+        )) {
+            mockMvc.perform(post("/api/login")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.status").value(400));
+        }
+
+        verifyNoInteractions(autenticacionService);
     }
 
     @Test
@@ -501,6 +525,20 @@ class SecurityHttpIntegrationTest {
     }
 
     @Test
+    void cumpleanerosDevuelveLaColeccionSerializadaAlUsuarioAutorizado() throws Exception {
+        Usuario user = usuarioConPermisos(14L, "notificaciones",
+                Set.of(PERM_APP_ACCESO, PERM_ALUMNOS_LEER));
+        when(usuarioRepositorio.findByIdConRolesYPermisos(14L)).thenReturn(Optional.of(user));
+        when(notificacionService.generarYObtenerCumpleanerosDelDia())
+                .thenReturn(List.of("Alumno: Sofía Benítez"));
+
+        mockMvc.perform(get("/api/notificaciones/cumpleaneros")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(tokenService.generarAccessToken(user))))
+                .andExpect(status().isOk())
+                .andExpect(content().json("[\"Alumno: Sofía Benítez\"]"));
+    }
+
+    @Test
     void matrizFinancieraExplicitaRechazaAnonimoYOperador() throws Exception {
         Usuario operator = usuario(2L, "operator", "OPERADOR", true);
         Usuario admin = usuario(1L, "admin", "ADMINISTRADOR", true);
@@ -723,9 +761,35 @@ class SecurityHttpIntegrationTest {
     void corsPreflightConOrigenPermitidoPasaPorLaCadenaReal() throws Exception {
         mockMvc.perform(options("/api/usuarios")
                         .header(HttpHeaders.ORIGIN, "https://app.example.test")
-                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "GET"))
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "GET")
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS,
+                                HttpHeaders.AUTHORIZATION + ", " + RequestCorrelationFilter.HEADER_NAME))
                 .andExpect(status().isOk())
-                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "https://app.example.test"));
+                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "https://app.example.test"))
+                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS, "true"))
+                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS,
+                        containsString(HttpHeaders.AUTHORIZATION)))
+                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS,
+                        containsString(RequestCorrelationFilter.HEADER_NAME)));
+    }
+
+    @Test
+    void corsRespuestaAutenticadaExponeRequestIdYPermiteCredenciales() throws Exception {
+        Usuario user = usuario(15L, "cors", "ADMINISTRADOR", true);
+        when(usuarioRepositorio.findByIdConRolesYPermisos(15L)).thenReturn(Optional.of(user));
+
+        mockMvc.perform(get("/api/usuarios/perfil")
+                        .header(HttpHeaders.ORIGIN, "https://app.example.test")
+                        .header(RequestCorrelationFilter.HEADER_NAME, "browser-request-123")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(tokenService.generarAccessToken(user))))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "https://app.example.test"))
+                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS, "true"))
+                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS,
+                        containsString(HttpHeaders.AUTHORIZATION)))
+                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS,
+                        containsString(RequestCorrelationFilter.HEADER_NAME)))
+                .andExpect(header().string(RequestCorrelationFilter.HEADER_NAME, "browser-request-123"));
     }
 
     @Test
@@ -1115,7 +1179,7 @@ class SecurityHttpIntegrationTest {
         @Bean
         SecurityProperties securityProperties() {
             return new SecurityProperties(
-                    4,
+                    10,
                     new SecurityProperties.RefreshCookie(
                             "gestudio_refresh",
                             true,

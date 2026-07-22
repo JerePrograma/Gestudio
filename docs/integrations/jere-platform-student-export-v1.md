@@ -152,7 +152,7 @@ El smoke cruzado se ejecuta desde Jere Platform:
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass `
   -File .\scripts\smoke-gestudio-source-export.ps1 `
-  -GestudioRepository C:\ruta\a\Gestudio
+  -GestudioRepository (Resolve-Path '<raíz-del-checkout-de-Gestudio>').Path
 ```
 
 Genera secreto y artefactos sintéticos sólo durante la ejecución, usa

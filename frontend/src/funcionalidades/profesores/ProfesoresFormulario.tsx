@@ -56,9 +56,7 @@ const ProfesoresFormulario: React.FC = () => {
 
     try {
       const profesor = await profesoresApi.obtenerProfesorPorId(Number(idBusqueda))
-      console.log("Profesor data received:", profesor)
       const convertedProfesor = convertToProfesorFormValues(profesor)
-      console.log("Converted profesor data:", convertedProfesor)
       setFormValues(convertedProfesor)
       setProfesorId(profesor.id)
       setMensaje("Profesor encontrado.")
@@ -84,8 +82,6 @@ const ProfesoresFormulario: React.FC = () => {
         const parsedDate = parse(cleanedValues.fechaNacimiento, "yyyy-MM-dd", new Date())
         cleanedValues.fechaNacimiento = format(parsedDate, "yyyy-MM-dd")
       }
-      console.log("Valores a guardar:", cleanedValues)
-
       try {
         if (profesorId) {
           await profesoresApi.actualizarProfesor(profesorId, cleanedValues as ProfesorModificacionRequest)
@@ -209,4 +205,3 @@ const ProfesoresFormulario: React.FC = () => {
 }
 
 export default ProfesoresFormulario
-

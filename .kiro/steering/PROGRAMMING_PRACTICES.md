@@ -1,7 +1,9 @@
 # Programming Practices & Code Quality Standards
 
+> Historical supporting guidance. `AGENTS.md` takes precedence for Gestudio.
+
 **Effective Date:** February 16, 2026  
-**Scope:** All Java backend and code changes in Le Dance project  
+**Scope:** Gestudio Java backend and code changes
 **Owner:** Development Team
 
 ---
@@ -866,4 +868,3 @@ A: Document it with `@SuppressWarnings` or inline comments explaining the trade-
 **Last Updated:** February 16, 2026  
 **Version:** 1.0  
 **Status:** Active
-

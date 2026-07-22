@@ -45,8 +45,8 @@ spring:
 jwt:
   secret: ${JWT_SECRET}
   issuer: ${JWT_ISSUER}
-  access-token-hours: ${JWT_ACCESS_TOKEN_HOURS}
-  refresh-token-hours: ${JWT_REFRESH_TOKEN_HOURS}
+  access-token-ttl: ${JWT_ACCESS_TOKEN_TTL}
+  refresh-token-ttl: ${JWT_REFRESH_TOKEN_TTL}
 
 app:
   time-zone: ${APP_TIME_ZONE}

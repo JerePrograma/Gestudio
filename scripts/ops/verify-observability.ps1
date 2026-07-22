@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string] $ComposeFile,
     [int] $TimeoutSeconds = 420,
@@ -7,6 +7,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Net.Http
 
 $repoRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 if ([string]::IsNullOrWhiteSpace($ComposeFile)) {
@@ -19,9 +20,19 @@ $workRoot = Join-Path ([IO.Path]::GetTempPath()) $project
 $envFile = Join-Path $workRoot 'verify.env'
 $database = 'gestudio_observability_verify'
 $postgresUser = 'gestudio_observability'
-$postgresPassword = [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(24)).ToLowerInvariant()
-$jwtSecret = [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(64)).ToLowerInvariant()
-$metricsToken = [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(48)).ToLowerInvariant()
+$rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+try {
+    $postgresPasswordBytes = New-Object byte[] 24
+    $jwtSecretBytes = New-Object byte[] 64
+    $metricsTokenBytes = New-Object byte[] 48
+    $rng.GetBytes($postgresPasswordBytes)
+    $rng.GetBytes($jwtSecretBytes)
+    $rng.GetBytes($metricsTokenBytes)
+}
+finally { $rng.Dispose() }
+$postgresPassword = ([BitConverter]::ToString($postgresPasswordBytes) -replace '-', '').ToLowerInvariant()
+$jwtSecret = ([BitConverter]::ToString($jwtSecretBytes) -replace '-', '').ToLowerInvariant()
+$metricsToken = ([BitConverter]::ToString($metricsTokenBytes) -replace '-', '').ToLowerInvariant()
 $backendImage = "gestudio-backend:observability-$suffix"
 $customRequestId = "obs-$suffix"
 $startedAt = Get-Date
@@ -198,7 +209,9 @@ $environment = [ordered]@{
     SPRING_FLYWAY_BASELINE_ON_MIGRATE = 'false'
     APP_SCHEDULING_ENABLED = 'false'
     APP_BOOTSTRAP_SUPERADMIN_ENABLED = 'false'
-    APP_BOOTSTRAP_ADMIN_ENABLED = 'false'
+    APP_LOCAL_ADMIN_PASSWORD_RESET_ENABLED = 'false'
+    APP_LOCAL_ADMIN_PASSWORD_RESET_USERNAME = ''
+    APP_LOCAL_ADMIN_PASSWORD_RESET_PASSWORD = ''
     APP_OBSERVABILITY_METRICS_TOKEN = $metricsToken
     JWT_SECRET = $jwtSecret
     JWT_ISSUER = 'gestudio-observability-verify'
@@ -206,8 +219,13 @@ $environment = [ordered]@{
     APP_CORS_ALLOWED_ORIGINS = "http://127.0.0.1:$backendPort"
     APP_JERE_PLATFORM_STUDENT_EXPORT_ENABLED = 'false'
 }
+$previousProcessEnvironment = @{}
 
 try {
+    foreach ($entry in $environment.GetEnumerator()) {
+        $previousProcessEnvironment[$entry.Key] = [Environment]::GetEnvironmentVariable($entry.Key, 'Process')
+        [Environment]::SetEnvironmentVariable($entry.Key, [string]$entry.Value, 'Process')
+    }
     New-Item -ItemType Directory -Path $workRoot -Force | Out-Null
     $environment.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" } |
         Set-Content -LiteralPath $envFile -Encoding ASCII
@@ -303,6 +321,9 @@ finally {
     }
     if (-not $KeepStack -and (Test-Path -LiteralPath $workRoot)) {
         Remove-Item -LiteralPath $workRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    foreach ($entry in $previousProcessEnvironment.GetEnumerator()) {
+        [Environment]::SetEnvironmentVariable($entry.Key, $entry.Value, 'Process')
     }
 
     $duration = (Get-Date) - $startedAt

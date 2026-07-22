@@ -1,7 +1,6 @@
 package gestudio.servicios.notificaciones;
 
 import gestudio.entidades.Alumno;
-import gestudio.entidades.Notificacion;
 import gestudio.repositorios.AlumnoRepositorio;
 import gestudio.repositorios.NotificacionRepositorio;
 import gestudio.repositorios.ProfesorRepositorio;
@@ -52,7 +51,7 @@ public class NotificacionService {
         boolean prod = environment.acceptsProfiles(Profiles.of("prod"));
         byte[] firma = prod ? firma() : new byte[0];
 
-        for (Alumno alumno : alumnos.findAll()) {
+        for (Alumno alumno : alumnos.findByActivoTrue()) {
             if (cumpleHoy(alumno.getFechaNacimiento(), hoy)) {
                 String mensaje = "Alumno: " + alumno.getNombre() + " " + alumno.getApellido();
                 mensajes.add(mensaje);
@@ -62,7 +61,7 @@ public class NotificacionService {
                 }
             }
         }
-        profesores.findAll().forEach(profesor -> {
+        profesores.findByActivoTrue().forEach(profesor -> {
             if (cumpleHoy(profesor.getFechaNacimiento(), hoy)) {
                 String mensaje = "Profesor: " + profesor.getNombre() + " " + profesor.getApellido();
                 mensajes.add(mensaje);
@@ -80,18 +79,7 @@ public class NotificacionService {
     }
 
     private boolean guardar(String key, String mensaje, LocalDate fecha) {
-        if (notificaciones.existsByDedupKey(key)) {
-            return false;
-        }
-        Notificacion notificacion = new Notificacion();
-        notificacion.setTipo(TIPO);
-        notificacion.setMensaje(mensaje);
-        notificacion.setFechaNegocio(fecha);
-        notificacion.setFechaCreacion(clock.instant());
-        notificacion.setDedupKey(key);
-        notificacion.setLeida(false);
-        notificaciones.save(notificacion);
-        return true;
+        return notificaciones.insertarSiAusente(TIPO, mensaje, clock.instant(), fecha, key) == 1;
     }
 
     private static boolean cumpleHoy(LocalDate nacimiento, LocalDate hoy) {

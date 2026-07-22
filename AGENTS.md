@@ -1,17 +1,17 @@
-# Le Dance project instructions
+# Gestudio project instructions
 
 These instructions supplement the host-wide Codex policy.
 
 ## Project identity
 
-Le Dance is a monolithic business application for managing students,
+Gestudio is a monolithic business application for managing students,
 enrollments, disciplines, attendance, monthly fees, payments, inventory,
 cash movements, expenses, users, notifications, receipts, and reports.
 
 Current stack:
 
 - Java 21.
-- Spring Boot 3.4.x.
+- Spring Boot 3.5.x.
 - Spring Data JPA and Hibernate.
 - PostgreSQL.
 - Flyway.
@@ -96,13 +96,17 @@ class unless an interface provides measurable value.
 
 PostgreSQL and Flyway migrations are the persisted source of truth.
 
-The project is pre-production. The only supported baseline is
-`V1__canonical_schema.sql`; the retired V1-V060 history is not a supported
-upgrade source and must not be restored to the active migration directory.
+The canonical baseline is `V1__canonical_schema.sql`; the retired V1-V060
+history is not a supported upgrade source and must not be restored to the
+active migration directory. V1 and every migration already applied by Flyway
+are immutable. Schema evolution uses the next numeric, forward-only migration.
 
-- Keep exactly one canonical V1 until a production baseline is declared.
-- Do not add V2 for refactor corrections while this pre-production reset remains
-  the explicit project contract; update V1 together with JPA and PostgreSQL tests.
+- Keep exactly one canonical V1 and preserve the checksums of all published
+  migrations.
+- Add the next contiguous migration for schema changes and validate both a
+  clean database and the supported upgrade path.
+- Derive the current migration count and latest version from the repository;
+  never hardcode V7 or another latest version in operational validators.
 - Inspect all existing migrations before choosing a version.
 - Never use `ddl-auto=update` as a replacement for Flyway.
 - Prefer `ddl-auto=validate`.
@@ -462,11 +466,12 @@ Por eso:
 
 ## No conviene iniciar Docker automáticamente
 
-El compose actual fija `container_name` y publica PostgreSQL en `5432`. Eso impide entornos paralelos verdaderamente aislados. 
+El Compose actual evita `container_name` fijos y permite configurar puertos,
+pero el host Docker sigue siendo compartido. Docker debe iniciarse mediante una
+acción consciente, con nombre de proyecto aislado y limpieza limitada a los
+recursos etiquetados de ese proyecto.
 
-El refactor debería terminar creando un compose local sin `container_name` fijos y, posiblemente, con puertos configurables por variable. Hasta entonces, Docker debe iniciarse mediante una acción consciente.
-
-# Veredicto provisional
+# Contrato operativo
 
 La configuración correcta es:
 

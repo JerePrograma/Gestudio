@@ -1,9 +1,11 @@
-FROM maven:3.9.10-eclipse-temurin-21-alpine AS build
+# syntax=docker/dockerfile:1.7
+FROM maven:3.9.16-eclipse-temurin-21-alpine AS build
 
 ARG VCS_REF=unknown
 WORKDIR /workspace
 COPY pom.xml ./
-RUN mvn -B -ntp dependency:go-offline
+RUN --mount=type=cache,target=/root/.m2,sharing=locked \
+    mvn -B -ntp dependency:go-offline
 
 COPY src ./src
 ENV GESTUDIO_HOME=/workspace
@@ -24,12 +26,17 @@ RUN set -eux; \
     printf '%s\n' "$health_contract" > /workspace/build-metadata/health-contract
 # CI executes clean verify with Docker access before this image gate. The image
 # build packages the same source without trying to launch Testcontainers inside BuildKit.
-RUN mvn -B -ntp -DskipTests clean package
+RUN --mount=type=cache,target=/root/.m2,sharing=locked \
+    mvn -B -ntp -DskipTests clean package
 
-FROM eclipse-temurin:21.0.7_6-jre-alpine
+FROM eclipse-temurin:21-jre-alpine-3.23
 
 ARG VCS_REF=unknown
+ARG COMPOSE_SHA=unknown
+ARG SOURCE_SHA=unknown
 LABEL org.opencontainers.image.revision="$VCS_REF" \
+      org.gestudio.compose.sha256="$COMPOSE_SHA" \
+      org.gestudio.source.sha256="$SOURCE_SHA" \
       org.gestudio.flyway.metadata="/app/build-metadata/flyway-latest" \
       org.gestudio.health.metadata="/app/build-metadata/health-contract"
 

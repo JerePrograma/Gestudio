@@ -54,7 +54,7 @@ public class AlumnoControlador {
 
     @PutMapping("/{id}")
     public ResponseEntity<AlumnoResponse> actualizarAlumno(@PathVariable Long id,
-                                                           @RequestBody AlumnoRegistroRequest requestDTO) {
+                                                           @Valid @RequestBody AlumnoRegistroRequest requestDTO) {
         AlumnoResponse alumno = alumnoServicio.actualizarAlumno(id, requestDTO);
         return ResponseEntity.ok(alumno);
     }

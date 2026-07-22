@@ -1,7 +1,10 @@
 # Testing Policies & Standards
 
+> Historical supporting guidance. `AGENTS.md` and `TESTING.md` are the current
+> test contract for Gestudio.
+
 **Effective Date:** February 16, 2026  
-**Scope:** All test code in Le Dance project  
+**Scope:** Gestudio test code
 **Owner:** Development Team
 
 ---

@@ -65,10 +65,8 @@ const BonificacionesFormulario: React.FC = () => {
       const bonificacion = await bonificacionesApi.obtenerBonificacionPorId(
         Number(idBusqueda)
       );
-      console.log("Bonificacion data received:", bonificacion);
       const convertedBonificacion =
         convertToBonificacionFormValues(bonificacion);
-      console.log("Converted bonificacion data:", convertedBonificacion);
       setFormValues(convertedBonificacion);
       setBonificacionId(bonificacion.id);
       setMensaje("Bonificacion encontrada.");

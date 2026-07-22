@@ -21,6 +21,8 @@ public interface AlumnoRepositorio extends JpaRepository<Alumno, Long> {
     // Nuevo método para buscar solo por ID si está activo
     Optional<Alumno> findByIdAndActivoTrue(Long id);
 
+    List<Alumno> findByActivoTrue();
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select a from Alumno a where a.id = :id and a.activo = true")
     Optional<Alumno> findActivoByIdForUpdate(@Param("id") Long id);

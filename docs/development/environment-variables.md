@@ -16,8 +16,8 @@ Los archivos versionados `.env.example` y `.env.local.example` contienen plantil
 | `SPRING_FLYWAY_BASELINE_VERSION` | todos | no | `1`; sólo se usa con baseline habilitado |
 | `JWT_SECRET` | todos | prod: sí, secreta | mínimo 32 caracteres; local no reutilizable |
 | `JWT_ISSUER` | todos | prod: sí | `gestudio-local` |
-| `JWT_ACCESS_TOKEN_HOURS` | todos | prod: sí | `2` |
-| `JWT_REFRESH_TOKEN_HOURS` | todos | prod: sí | `168` |
+| `JWT_ACCESS_TOKEN_TTL` | todos | prod: sí | duración ISO-8601; local `PT15M` |
+| `JWT_REFRESH_TOKEN_TTL` | todos | prod: sí | duración ISO-8601; local `P7D` |
 | `SPRING_MAIL_HOST` | prod | sí | sin fallback |
 | `SPRING_MAIL_PORT` | prod | sí | `587` habitual |
 | `SPRING_MAIL_USERNAME` | prod | sí | sin fallback |
@@ -31,17 +31,16 @@ Los archivos versionados `.env.example` y `.env.local.example` contienen plantil
 | `APP_RECEIPTS_PATH` | todos | prod: sí | directorio escribible y persistente |
 | `APP_CORS_ALLOWED_ORIGINS` | todos | prod: sí | lista separada por comas; HTTPS en prod |
 | `APP_SCHEDULING_ENABLED` | todos | no | `false` en dev/test, `true` en prod |
-| `APP_SECURITY_REFRESH_COOKIE_SECURE` | todos | no | `false` en `dev` para HTTP local; `true` por defecto fuera de `dev` |
+| `APP_SECURITY_REFRESH_COOKIE_SECURE` | todos | no | `false` en `dev` para HTTP local; `docker-compose.prod.yml` fuerza `true` |
 | `APP_SECURITY_REFRESH_COOKIE_SAME_SITE` | todos | no | `Strict` |
 | `APP_SECURITY_REFRESH_COOKIE_PATH` | todos | no | `/api/login` |
 | `GESTUDIO_HOME` | todos | sí para assets heredados | raíz del repositorio o `/app` en Docker |
 | `APP_BOOTSTRAP_SUPERADMIN_ENABLED` | bootstrap único | no | `false`; habilitar sólo para crear el `SUPERADMIN` inicial. |
 | `APP_BOOTSTRAP_SUPERADMIN_USERNAME` | bootstrap único | si se habilita | nombre explícito del `SUPERADMIN` inicial. |
 | `APP_BOOTSTRAP_SUPERADMIN_PASSWORD` | bootstrap único | si se habilita | secreto externo de 16 a 72 bytes UTF-8. |
-| `APP_BOOTSTRAP_ADMIN_ENABLED` | legado / reset local | no | alias deprecado del bootstrap de `SUPERADMIN`; debe ser `false` durante un reset local. |
-| `APP_BOOTSTRAP_ADMIN_USERNAME` | reset local | si se habilita | `ADMINISTRADOR` existente que se restablecerá. |
-| `APP_BOOTSTRAP_ADMIN_PASSWORD` | reset local | si se habilita | nueva clave local, de 12 a 72 bytes UTF-8. |
-| `APP_BOOTSTRAP_ADMIN_RESET_EXISTING_PASSWORD` | sólo `dev` | no | `false`; restablece una vez el BCrypt del `ADMINISTRADOR` indicado e invalida sus sesiones. |
+| `APP_LOCAL_ADMIN_PASSWORD_RESET_ENABLED` | sólo `dev` | no | `false`; restablece una vez el BCrypt de un `ADMINISTRADOR` existente. |
+| `APP_LOCAL_ADMIN_PASSWORD_RESET_USERNAME` | reset local habilitado | sí | `ADMINISTRADOR` activo que se restablecerá. |
+| `APP_LOCAL_ADMIN_PASSWORD_RESET_PASSWORD` | reset local habilitado | sí, secreta | nueva clave local, de 12 a 72 bytes UTF-8. |
 | `SERVER_PORT` | todos | no | `8080` |
 | `LOGGING_LEVEL_ROOT` | todos | no | `INFO` |
 | `APP_JERE_PLATFORM_STUDENT_EXPORT_ENABLED` | integración | no | `false`; habilita el emisor sólo con mapping y secreto válidos. |
@@ -79,7 +78,7 @@ La interfaz de Codex debe usar valores de desarrollo, nunca secretos productivos
 
 | Nombre | Valor |
 | --- | --- |
-| `JAVA_HOME` | `C:\Program Files\Java\corretto-21.0.7` |
+| `JAVA_HOME` | ruta local al JDK 21; no se versiona ni se presupone una distribución |
 | `SPRING_PROFILES_ACTIVE` | `dev` |
 | `SPRING_DATASOURCE_URL` | `jdbc:postgresql://localhost:5432/gestudio_db` |
 | `SPRING_DATASOURCE_USERNAME` | `postgres` |
@@ -88,13 +87,13 @@ La interfaz de Codex debe usar valores de desarrollo, nunca secretos productivos
 | `SPRING_FLYWAY_ENABLED` | `true` |
 | `JWT_SECRET` | `local-only-jwt-secret-change-before-sharing` |
 | `JWT_ISSUER` | `gestudio-local` |
-| `JWT_ACCESS_TOKEN_HOURS` | `2` |
-| `JWT_REFRESH_TOKEN_HOURS` | `168` |
+| `JWT_ACCESS_TOKEN_TTL` | `PT15M` |
+| `JWT_REFRESH_TOKEN_TTL` | `P7D` |
 | `APP_TIME_ZONE` | `America/Argentina/Buenos_Aires` |
-| `APP_RECEIPTS_PATH` | `C:\laburo\gestudio\pdfs` |
+| `APP_RECEIPTS_PATH` | subdirectorio local no versionado bajo la raíz del repositorio |
 | `APP_CORS_ALLOWED_ORIGINS` | `http://localhost:5173,http://localhost:8081` |
 | `APP_SCHEDULING_ENABLED` | `false` |
-| `GESTUDIO_HOME` | `C:\laburo\gestudio` |
+| `GESTUDIO_HOME` | raíz del checkout actual |
 | `VITE_API_BASE_URL` | `http://localhost:8080/api` |
 
 Para tests aislados de `FilePathResolver` existe el override de JVM
@@ -121,13 +120,13 @@ El bootstrap inicial canónico usa `APP_BOOTSTRAP_SUPERADMIN_*` y está deshabil
 por defecto. Al habilitarlo, reclama una ejecución única en
 `bootstrap_ejecuciones`, exige el rol activo `SUPERADMIN` y un username que no
 exista, y crea una cuenta activa con BCrypt. No modifica usuarios, hashes ni
-roles existentes. `APP_BOOTSTRAP_ADMIN_ENABLED` es sólo un alias deprecado para
-ese mismo bootstrap; habilitar ambos hace fallar el arranque.
+roles existentes. No existen aliases legacy para este bootstrap.
 
 Para recuperar una contraseña local existente, use el perfil `dev`, mantenga
-`APP_BOOTSTRAP_ADMIN_ENABLED=false` y habilite temporalmente
-`APP_BOOTSTRAP_ADMIN_RESET_EXISTING_PASSWORD=true` con el username y la clave en
-`APP_BOOTSTRAP_ADMIN_USERNAME` y `APP_BOOTSTRAP_ADMIN_PASSWORD`. El reset sólo
+`APP_BOOTSTRAP_SUPERADMIN_ENABLED=false` y habilite temporalmente
+`APP_LOCAL_ADMIN_PASSWORD_RESET_ENABLED=true` con el username y la clave en
+`APP_LOCAL_ADMIN_PASSWORD_RESET_USERNAME` y
+`APP_LOCAL_ADMIN_PASSWORD_RESET_PASSWORD`. El reset sólo
 acepta un `ADMINISTRADOR` activo, no reescribe un BCrypt que ya coincide e
 invalida las sesiones anteriores. Deshabilite la bandera y reinicie después de
 un arranque exitoso. El bean no existe fuera del perfil `dev`.

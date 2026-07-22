@@ -1,4 +1,9 @@
-# Technical Design: Membership Management System (Le Dance)
+# Historical technical design: Gestudio membership management system
+
+> Non-authoritative historical proposal. It includes alternatives such as
+> MySQL and Hibernate schema generation that Gestudio does not support. The
+> implemented source of truth is Java 21, PostgreSQL, Flyway, and the current
+> repository code and operations documentation.
 
 ## 1. Architectural Overview
 

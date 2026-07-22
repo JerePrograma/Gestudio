@@ -12,13 +12,21 @@ export default function NotificacionesModal({
   onClose,
 }: NotificacionesModalProps) {
   const [notificaciones, setNotificaciones] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
+      setError(null);
+      setLoading(true);
       api
         .get("/notificaciones/cumpleaneros")
         .then((res) => setNotificaciones(res.data))
-        .catch((err) => console.error("Error al cargar notificaciones", err));
+        .catch(() => {
+          setNotificaciones([]);
+          setError("No se pudieron cargar los cumpleaños. Intentá nuevamente.");
+        })
+        .finally(() => setLoading(false));
     }
   }, [isOpen]);
 
@@ -26,11 +34,16 @@ export default function NotificacionesModal({
 
   return (
     // Contenedor del modal (overlay)
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="cumpleaneros-title"
+    >
       {/* Cuerpo del modal */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 w-96">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-200">
+          <h2 id="cumpleaneros-title" className="text-xl font-semibold text-gray-800 dark:text-gray-200">
             Cumpleañeros de hoy
           </h2>
           <button
@@ -41,7 +54,15 @@ export default function NotificacionesModal({
             &times;
           </button>
         </div>
-        {notificaciones.length > 0 ? (
+        {loading ? (
+          <p role="status" className="text-sm text-gray-600 dark:text-gray-400">
+            Cargando cumpleaños…
+          </p>
+        ) : error ? (
+          <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+            {error}
+          </p>
+        ) : notificaciones.length > 0 ? (
           <ul className="space-y-2 max-h-60 overflow-y-auto">
             {notificaciones.map((notificacion, index) => (
               <li

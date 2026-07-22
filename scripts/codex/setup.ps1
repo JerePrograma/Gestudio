@@ -1,4 +1,4 @@
-$ErrorActionPreference = "Stop"
+﻿$ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.."))
@@ -28,7 +28,7 @@ foreach ($command in "git", "node", "npm", "docker") {
 }
 
 if ([string]::IsNullOrWhiteSpace($env:JAVA_HOME)) {
-    throw "JAVA_HOME no está definido. Le Dance requiere un JDK 21."
+    throw "JAVA_HOME no está definido. Gestudio requiere un JDK 21."
 }
 
 $java = Join-Path $env:JAVA_HOME "bin\java.exe"
@@ -39,7 +39,7 @@ if (-not (Test-Path -LiteralPath $java) -or -not (Test-Path -LiteralPath $javac)
 
 $javacVersion = (& $javac -version | Out-String).Trim()
 if ($LASTEXITCODE -ne 0 -or $javacVersion -notmatch '^javac 21(?:\.|$)') {
-    throw "Le Dance requiere JDK 21. Detectado: $javacVersion"
+    throw "Gestudio requiere JDK 21. Detectado: $javacVersion"
 }
 
 $wrapper = Join-Path $repoRoot "backend\mvnw.cmd"

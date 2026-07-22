@@ -1,4 +1,4 @@
-$ErrorActionPreference = "Stop"
+﻿$ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.."))
@@ -20,6 +20,22 @@ function Get-ConfiguredPort {
         return $Default
     }
     return $port
+}
+
+function Test-PortAvailable {
+    param([Parameter(Mandatory)][int] $Port)
+
+    $probe = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Any, $Port)
+    try {
+        $probe.Start()
+        return $true
+    }
+    catch [Net.Sockets.SocketException] {
+        return $false
+    }
+    finally {
+        $probe.Stop()
+    }
 }
 
 function Show-CommandVersion {
@@ -104,13 +120,11 @@ try {
     }
     foreach ($entry in $ports.GetEnumerator()) {
         $port = $entry.Value
-        $listener = Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue |
-            Select-Object -First 1
-        if ($listener) {
-            Write-Host "- $($entry.Key)=${port}: LISTENING (PID $($listener.OwningProcess))"
+        if (Test-PortAvailable -Port $port) {
+            Write-Host "- $($entry.Key)=${port}: AVAILABLE"
         }
         else {
-            Write-Host "- $($entry.Key)=${port}: AVAILABLE"
+            Write-Host "- $($entry.Key)=${port}: LISTENING"
         }
     }
 

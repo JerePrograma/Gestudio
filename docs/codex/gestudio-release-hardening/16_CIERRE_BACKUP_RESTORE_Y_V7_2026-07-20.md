@@ -126,6 +126,21 @@ Archivos incorporados:
 - cantidad y versión Flyway verificadas después del restore;
 - backend detenido cuando corresponde y reiniciado al finalizar.
 
+Actualización de seguridad del 21 de julio de 2026:
+
+- los nombres declarados por el manifiesto quedan limitados a los basenames canónicos y confinados al paquete;
+- los argumentos del archivo no se interpolan en `sh -ec`;
+- los miembros tar se validan antes de extraer y sólo se admiten archivos regulares o directorios bajo `receipts/`;
+- symlinks, hardlinks, dispositivos, FIFOs, rutas absolutas y segmentos de escape se rechazan;
+- dump y recibos se copian a temporales privados y se revalida su SHA-256 inmediatamente antes de usarlos;
+- la promoción de recibos conserva el contenido anterior dentro del volumen y lo restaura si falla el reemplazo;
+- `-RestoreReceipts` se rechaza cuando `TargetDatabase` no es la base activa del proyecto, evitando mezclar una base alternativa con el volumen original;
+- el acceso HTTP y el worker de recibos rechazan symlinks y rutas cuyo destino real escape del directorio configurado.
+
+El drill local posterior a este hardening terminó el 21 de julio con 10 etapas,
+0 fallos y cleanup completo en 8 min 20 s. Esa evidencia no reemplaza el
+workflow del SHA final ni altera los límites productivos de este cierre.
+
 ## 5. Primer drill y corrección
 
 La primera ejecución produjo:

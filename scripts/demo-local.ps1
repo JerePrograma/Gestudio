@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Mandatory)]
     [ValidateSet("Start", "Status", "Stop", "Reset", "SeedNative")]
     [string] $Action,
@@ -31,6 +31,8 @@ $frontendPort = 18081
 $backendUrl = "http://localhost:$backendPort"
 $apiBase = "$backendUrl/api"
 $frontendUrl = "http://localhost:$frontendPort"
+$backendImage = "gestudio-backend:demo-local"
+$frontendImage = "gestudio-frontend:demo-local"
 $cookieName = "gestudio_demo_refresh"
 $deadline = (Get-Date).AddMinutes(45)
 $isWindowsHost = [Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT
@@ -135,18 +137,33 @@ function Invoke-Native {
     $previousErrorAction = $ErrorActionPreference
     try {
         $ErrorActionPreference = "Continue"
-        $output = @(& $FilePath @Arguments 2>&1)
+        if ($Capture) {
+            $output = @(& $FilePath @Arguments 2>&1)
+        }
+        else {
+            $tail = [Collections.Generic.Queue[string]]::new()
+            & $FilePath @Arguments 2>&1 | ForEach-Object {
+                $line = Redact $_.ToString()
+                Write-Host $line
+                $tail.Enqueue($line)
+                if ($tail.Count -gt 100) { [void]$tail.Dequeue() }
+            }
+        }
         $code = $LASTEXITCODE
     }
     finally { $ErrorActionPreference = $previousErrorAction }
 
-    $text = ($output | ForEach-Object { $_.ToString() }) -join "`n"
+    $text = if ($Capture) {
+        ($output | ForEach-Object { $_.ToString() }) -join "`n"
+    }
+    else {
+        @($tail) -join "`n"
+    }
     if ($code -ne 0) {
-        $tail = (($text -split "`r?`n") | Select-Object -Last 100) -join "`n"
-        throw "$([IO.Path]::GetFileName($FilePath)) falló con código ${code}: $(Redact $tail)"
+        $errorTail = (($text -split "`r?`n") | Select-Object -Last 100) -join "`n"
+        throw "$([IO.Path]::GetFileName($FilePath)) falló con código ${code}: $(Redact $errorTail)"
     }
     if ($Capture) { return $text.Trim() }
-    if (-not [string]::IsNullOrWhiteSpace($text)) { Write-Host (Redact $text) }
 }
 
 function Invoke-Docker {
@@ -275,25 +292,15 @@ function Assert-PortAvailable {
         return
     }
 
-    $listeners = @()
-    if (Get-Command Get-NetTCPConnection -ErrorAction SilentlyContinue) {
-        $listeners = @(Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue)
+    $probe = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Any, $Port)
+    try {
+        $probe.Start()
     }
-    if ($listeners.Count -gt 0) {
-        $pidValue = [int]$listeners[0].OwningProcess
-        $process = Get-Process -Id $pidValue -ErrorAction SilentlyContinue
-        $processName = if ($null -eq $process) { "desconocido" } else { $process.ProcessName }
-        throw "Puerto $Port ($Purpose) ocupado por PID $pidValue ($processName)"
+    catch [Net.Sockets.SocketException] {
+        throw "Puerto $Port ($Purpose) ocupado por un proceso del host"
     }
-
-    $netstat = @(& netstat -ano -p tcp 2>$null)
-    foreach ($line in $netstat) {
-        if ($line -match "^\s*TCP\s+\S+:$Port\s+\S+\s+LISTENING\s+(\d+)\s*$") {
-            $pidValue = [int]$matches[1]
-            $process = Get-Process -Id $pidValue -ErrorAction SilentlyContinue
-            $processName = if ($null -eq $process) { "desconocido" } else { $process.ProcessName }
-            throw "Puerto $Port ($Purpose) ocupado por PID $pidValue ($processName)"
-        }
+    finally {
+        $probe.Stop()
     }
 }
 
@@ -588,6 +595,70 @@ function Get-AnchorDate {
     return Get-BusinessDate
 }
 
+function Get-LocalMigrationManifest {
+    $entries = @(Get-ChildItem -LiteralPath $script:migrationRoot -Filter "V*__*.sql" -File | ForEach-Object {
+        if ($_.Name -notmatch '^V(?<version>[0-9]+)__.+\.sql$') {
+            throw "Nombre de migración Flyway inválido: $($_.Name)"
+        }
+        [pscustomobject]@{ Version = [int]$matches.version; Script = $_.Name }
+    } | Sort-Object Version)
+    if ($entries.Count -eq 0) { throw "No hay migraciones Flyway locales" }
+    if (@($entries.Version | Select-Object -Unique).Count -ne $entries.Count) {
+        throw "Hay versiones Flyway locales duplicadas"
+    }
+    for ($index = 0; $index -lt $entries.Count; $index++) {
+        if ($entries[$index].Version -ne ($index + 1)) {
+            throw "La cadena Flyway local no es contigua desde V1"
+        }
+    }
+    if (@($entries | Where-Object { $_.Script -match '(?i)demo.*seed|seed.*demo' }).Count -ne 0) {
+        throw "Existe una migración Flyway demo"
+    }
+    return [pscustomobject]@{
+        Count = $entries.Count
+        LatestVersion = $entries[-1].Version
+        LatestScript = $entries[-1].Script
+        Scripts = @($entries.Script)
+    }
+}
+
+function Get-RepositoryRevision {
+    $revision = Invoke-Native -FilePath "git" -Arguments @("-C", $script:repoRoot, "rev-parse", "HEAD") -Capture
+    if ($revision -notmatch '^[0-9a-f]{40}$') { throw "No se pudo resolver el SHA Git del checkout" }
+    return $revision
+}
+
+function Get-SourceFingerprint {
+    param([Parameter(Mandatory)][ValidateSet('backend', 'frontend')][string] $RelativeRoot)
+
+    $tree = Invoke-Native -FilePath "git" -Arguments @("-C", $script:repoRoot, "rev-parse", "HEAD:$RelativeRoot") -Capture
+    $diff = Invoke-Native -FilePath "git" -Arguments @(
+        "-C", $script:repoRoot, "diff", "--no-ext-diff", "--no-color", "--binary", "HEAD", "--", $RelativeRoot
+    ) -Capture
+    $untracked = Invoke-Native -FilePath "git" -Arguments @(
+        "-C", $script:repoRoot, "ls-files", "--others", "--exclude-standard", "--", $RelativeRoot
+    ) -Capture
+    $untrackedMaterial = [Collections.Generic.List[string]]::new()
+    foreach ($path in @($untracked -split "`r?`n" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object)) {
+        $hash = Invoke-Native -FilePath "git" -Arguments @(
+            "-C", $script:repoRoot, "hash-object", "--no-filters", "--", $path
+        ) -Capture
+        $untrackedMaterial.Add("$path|$hash")
+    }
+
+    $material = $tree + "`n" + $diff + "`n" + ($untrackedMaterial -join "`n")
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = [Text.Encoding]::UTF8.GetBytes($material)
+        return ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace("-", "").ToLowerInvariant()
+    }
+    finally { $sha.Dispose() }
+}
+
+function Get-ComposeSha {
+    return (Get-FileHash -LiteralPath $script:composeFile -Algorithm SHA256).Hash.ToLowerInvariant()
+}
+
 function Get-RbacSnapshot {
     return Invoke-Sql -Query @"
 SELECT md5(jsonb_build_object(
@@ -624,9 +695,121 @@ SELECT pg_temp.gestudio_demo_snapshot();
 '@
 }
 
-function Invoke-DemoSeed {
-    param([Parameter(Mandatory)][datetime] $AnchorDate)
+function Test-DemoSeedContract {
+    $result = Invoke-Sql -Query @'
+WITH demo_students AS (
+    SELECT id FROM alumnos WHERE email LIKE '%@correo.local'
+), demo_professors AS (
+    SELECT id FROM profesores WHERE telefono LIKE '+54 9 11 5555-11%'
+), demo_disciplines AS (
+    SELECT id FROM disciplinas WHERE nombre IN (
+        'Ballet Inicial (4 a 6 años)', 'Jazz Infantil (7 a 10 años)', 'Danza Urbana Teen',
+        'Danza Contemporánea', 'Ritmos Latinos Adultos', 'Entrenamiento Escénico'
+    )
+), demo_enrollments AS (
+    SELECT i.id FROM inscripciones i JOIN demo_students a ON a.id = i.alumno_id
+), demo_charges AS (
+    SELECT id FROM cargos WHERE idempotency_key LIKE 'demo-seed:v1:%'
+), demo_payments AS (
+    SELECT id FROM pagos WHERE idempotency_key LIKE 'demo-seed:v1:%'
+), actual AS (
+    SELECT jsonb_build_object(
+        'usuarios', (SELECT count(*) FROM usuarios WHERE lower(nombre_usuario) LIKE 'demo-%'),
+        'usuario_roles', (SELECT count(*) FROM usuario_roles ur JOIN usuarios u ON u.id=ur.usuario_id WHERE lower(u.nombre_usuario) LIKE 'demo-%'),
+        'salones', (SELECT count(*) FROM salones WHERE nombre IN ('Sala Principal','Estudio Infantil','Sala de Ensayo')),
+        'profesores', (SELECT count(*) FROM demo_professors),
+        'observaciones_profesores', (SELECT count(*) FROM observaciones_profesores op JOIN demo_professors p ON p.id=op.profesor_id WHERE op.observacion='Seguimiento pedagógico trimestral al día.'),
+        'bonificaciones', (SELECT count(*) FROM bonificaciones WHERE descripcion IN ('Descuento hermanos 10%','Beca institucional 25%','Convenio familiar','Promoción apertura 2025')),
+        'recargos', (SELECT count(*) FROM recargos WHERE descripcion IN ('Mora por vencimiento 5%','Gastos administrativos','Recargo extraordinario 2025')),
+        'metodo_pagos', (SELECT count(*) FROM metodo_pagos WHERE descripcion IN ('Efectivo','Transferencia bancaria','Tarjeta de débito','Tarjeta de crédito')),
+        'sub_conceptos', (SELECT count(*) FROM sub_conceptos WHERE descripcion IN ('Indumentaria','Materiales de clase','Eventos y talleres','Trámites administrativos')),
+        'conceptos', (SELECT count(*) FROM conceptos WHERE descripcion IN ('Remera institucional','Medias de danza','Kit de práctica','Cuaderno coreográfico','Entrada muestra anual','Taller intensivo de fin de semana','Certificado de alumno regular','Duplicado de credencial')),
+        'stocks', (SELECT count(*) FROM stocks WHERE codigo_barras IN ('7790000000012','7790000000029','7790000000036','7790000000043','7790000000050','7790000000067')),
+        'disciplinas', (SELECT count(*) FROM demo_disciplines),
+        'disciplina_horarios', (SELECT count(*) FROM disciplina_horarios h JOIN demo_disciplines d ON d.id=h.disciplina_id),
+        'alumnos', (SELECT count(*) FROM demo_students),
+        'inscripciones', (SELECT count(*) FROM demo_enrollments),
+        'disciplina_tarifas', (SELECT count(*) FROM disciplina_tarifas t JOIN demo_disciplines d ON d.id=t.disciplina_id),
+        'inscripcion_condiciones_economicas', (SELECT count(*) FROM inscripcion_condiciones_economicas c JOIN demo_enrollments i ON i.id=c.inscripcion_id),
+        'mensualidades', (SELECT count(*) FROM mensualidades m JOIN demo_enrollments i ON i.id=m.inscripcion_id),
+        'matriculas', (SELECT count(*) FROM matriculas m JOIN demo_students a ON a.id=m.alumno_id),
+        'asistencias_mensuales', (SELECT count(*) FROM asistencias_mensuales am JOIN demo_disciplines d ON d.id=am.disciplina_id),
+        'asistencias_alumno_mensual', (SELECT count(*) FROM asistencias_alumno_mensual aam JOIN demo_enrollments i ON i.id=aam.inscripcion_id),
+        'asistencias_diarias', (SELECT count(*) FROM asistencias_diarias ad JOIN asistencias_alumno_mensual aam ON aam.id=ad.asistencia_alumno_mensual_id JOIN demo_enrollments i ON i.id=aam.inscripcion_id),
+        'ventas_stock', (SELECT count(*) FROM ventas_stock WHERE idempotency_key LIKE 'demo-seed:v1:%'),
+        'cargos', (SELECT count(*) FROM demo_charges),
+        'cargo_liquidaciones', (SELECT count(*) FROM cargo_liquidaciones cl JOIN demo_charges c ON c.id=cl.cargo_id),
+        'pagos', (SELECT count(*) FROM demo_payments),
+        'aplicaciones_pago', (SELECT count(*) FROM aplicaciones_pago ap JOIN demo_payments p ON p.id=ap.pago_id),
+        'egresos', (SELECT count(*) FROM egresos WHERE idempotency_key LIKE 'demo-seed:v1:%'),
+        'movimientos_caja', (SELECT count(*) FROM movimientos_caja WHERE idempotency_key LIKE 'demo-seed:v1:%'),
+        'movimientos_credito', (SELECT count(*) FROM movimientos_credito WHERE idempotency_key LIKE 'demo-seed:v1:%'),
+        'movimientos_stock', (SELECT count(*) FROM movimientos_stock WHERE idempotency_key LIKE 'demo-seed:v1:%'),
+        'recibos', (SELECT count(*) FROM recibos r JOIN demo_payments p ON p.id=r.pago_id),
+        'recibos_pendientes', (SELECT count(*) FROM recibos_pendientes rp JOIN demo_payments p ON p.id=rp.pago_id)
+    ) AS counts
+), expected AS (
+    SELECT jsonb_build_object(
+        'usuarios',5,'usuario_roles',5,'salones',3,'profesores',6,'observaciones_profesores',6,
+        'bonificaciones',4,'recargos',3,'metodo_pagos',4,'sub_conceptos',4,'conceptos',8,
+        'stocks',6,'disciplinas',6,'disciplina_horarios',11,'alumnos',28,'inscripciones',34,
+        'disciplina_tarifas',12,'inscripcion_condiciones_economicas',40,'mensualidades',70,
+        'matriculas',26,'asistencias_mensuales',6,'asistencias_alumno_mensual',18,
+        'asistencias_diarias',54,'ventas_stock',6,'cargos',115,'cargo_liquidaciones',115,
+        'pagos',48,'aplicaciones_pago',82,'egresos',7,'movimientos_caja',61,
+        'movimientos_credito',11,'movimientos_stock',14,'recibos',48,'recibos_pendientes',48
+    ) AS counts
+), expected_matrix(role_code, permission_code) AS (
+    SELECT 'SUPERADMIN', codigo FROM permisos
+    UNION ALL SELECT 'DIRECCION', codigo FROM permisos WHERE codigo <> 'PERM_ROLES_ADMIN'
+    UNION ALL SELECT 'ADMINISTRADOR', codigo FROM permisos WHERE codigo <> 'PERM_ROLES_ADMIN'
+    UNION ALL SELECT 'SECRETARIA', codigo FROM permisos WHERE codigo IN ('PERM_APP_ACCESO','PERM_PAGOS_REGISTRAR','PERM_CREDITOS_CONSUMIR','PERM_CONDICIONES_ECONOMICAS_ADMIN','PERM_ALUMNOS_LEER','PERM_ALUMNOS_ADMIN','PERM_INSCRIPCIONES_LEER','PERM_INSCRIPCIONES_ADMIN','PERM_DISCIPLINAS_LEER','PERM_PROFESORES_LEER','PERM_ASISTENCIAS_LEER','PERM_ASISTENCIAS_REGISTRAR','PERM_PAGOS_LEER','PERM_CAJA_LEER','PERM_STOCK_LEER','PERM_REPORTES_LEER','PERM_CONFIG_LEER')
+    UNION ALL SELECT 'CAJA', codigo FROM permisos WHERE codigo IN ('PERM_APP_ACCESO','PERM_ALUMNOS_LEER','PERM_PAGOS_LEER','PERM_PAGOS_REGISTRAR','PERM_CAJA_LEER','PERM_STOCK_LEER','PERM_CONFIG_LEER','PERM_CREDITOS_CONSUMIR')
+), actual_matrix AS (
+    SELECT r.codigo, p.codigo FROM roles r JOIN rol_permisos rp ON rp.rol_id=r.id JOIN permisos p ON p.id=rp.permiso_id
+    WHERE r.codigo IN ('SUPERADMIN','DIRECCION','ADMINISTRADOR','SECRETARIA','CAJA','PROFESOR')
+), matrix_diff AS (
+    (SELECT * FROM expected_matrix EXCEPT SELECT * FROM actual_matrix)
+    UNION ALL
+    (SELECT * FROM actual_matrix EXCEPT SELECT * FROM expected_matrix)
+), expected_demo_users(username, role_code) AS (
+    VALUES ('demo-superadmin','SUPERADMIN'),('demo-direccion','DIRECCION'),
+           ('demo-administrador','ADMINISTRADOR'),('demo-secretaria','SECRETARIA'),('demo-caja','CAJA')
+), actual_demo_users AS (
+    SELECT lower(u.nombre_usuario), r.codigo
+    FROM usuarios u JOIN usuario_roles ur ON ur.usuario_id=u.id JOIN roles r ON r.id=ur.rol_id
+    WHERE lower(u.nombre_usuario) LIKE 'demo-%' AND u.activo
+), demo_user_diff AS (
+    (SELECT * FROM expected_demo_users EXCEPT SELECT * FROM actual_demo_users)
+    UNION ALL
+    (SELECT * FROM actual_demo_users EXCEPT SELECT * FROM expected_demo_users)
+)
+SELECT CASE WHEN
+    (SELECT counts FROM actual) = (SELECT counts FROM expected)
+    AND (SELECT sum(value::integer) FROM actual, LATERAL jsonb_each_text(counts)) = 914
+    AND (SELECT count(*) FROM roles) = 6
+    AND (SELECT count(*) FROM permisos WHERE activo AND sistema) = 32
+    AND (SELECT count(*) FROM rol_permisos) = 119
+    AND NOT EXISTS (SELECT 1 FROM matrix_diff)
+    AND NOT EXISTS (SELECT 1 FROM demo_user_diff)
+    AND EXISTS (
+        SELECT 1 FROM alumnos WHERE documento='49287134' AND activo
+          AND extract(month FROM fecha_nacimiento)=extract(month FROM (CURRENT_TIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires')::date)
+          AND extract(day FROM fecha_nacimiento)=extract(day FROM (CURRENT_TIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires')::date)
+          AND otras_notas LIKE 'Ficha revisada por administración. Actualización de referencia: %'
+    )
+THEN 'true' ELSE 'false' END;
+'@
+    return $result -eq 'true'
+}
 
+function Invoke-DemoSeed {
+    param(
+        [Parameter(Mandatory)][datetime] $AnchorDate,
+        [Parameter(Mandatory)][datetime] $BusinessDate
+    )
+
+    $manifest = Get-LocalMigrationManifest
     $containerId = $null
     $seedReference = $null
     if ($Action -eq "SeedNative") {
@@ -643,6 +826,9 @@ function Invoke-DemoSeed {
         $input = @(
             "\set ON_ERROR_STOP on",
             "\set demo_anchor_date $($AnchorDate.ToString('yyyy-MM-dd'))",
+            "\set demo_business_date $($BusinessDate.ToString('yyyy-MM-dd'))",
+            "\set demo_expected_flyway_count $($manifest.Count)",
+            "\set demo_expected_flyway_latest $($manifest.LatestVersion)",
             "\set demo_superadmin_password_hash $($script:demoHashes['demo-superadmin'])",
             "\set demo_direccion_password_hash $($script:demoHashes['demo-direccion'])",
             "\set demo_administrador_password_hash $($script:demoHashes['demo-administrador'])",
@@ -847,7 +1033,8 @@ function Assert-HttpAndRbac {
     Assert-True -Condition (@($profile.Json.roles) -contains "SUPERADMIN") -Message "Perfil superadmin sin rol"
     Assert-Equal -Actual @($profile.Json.permisos).Count -Expected 32 -Message "Superadmin sin catálogo completo"
     $notifications = Invoke-Api -Session $session -Method "GET" -Path "/notificaciones/cumpleaneros" -ExpectedStatus 200 -Token $superToken
-    Assert-True -Condition (@($notifications.Json).Count -ge 1) -Message "No se generó la notificación de cumpleaños demo"
+    $expectedBirthday = "Alumno: Sof$([char]0x00ED)a Ben$([char]0x00ED)tez"
+    Assert-True -Condition (@($notifications.Json) -contains $expectedBirthday) -Message "No se generó la notificación de cumpleaños demo"
     $assignable = Invoke-Api -Session $session -Method "GET" -Path "/usuarios/roles-asignables" -ExpectedStatus 200 -Token $superToken
     Assert-True -Condition (@($assignable.Json.codigo) -notcontains "PROFESOR") -Message "PROFESOR aparece asignable"
 
@@ -875,30 +1062,28 @@ function Assert-HttpAndRbac {
 }
 
 function Assert-FlywayAndSchema {
-    $localMigrations = @(Get-ChildItem -LiteralPath $script:migrationRoot -Filter "V*__*.sql" -File | Sort-Object Name)
-    Assert-Equal -Actual $localMigrations.Count -Expected 7 -Message "Se esperaban exactamente V1-V7"
-    Assert-Equal -Actual $localMigrations[-1].Name -Expected "V7__jere_platform_student_source_exports.sql" -Message "V7 no es la última migración productiva"
-    Assert-Equal -Actual @($localMigrations | Where-Object { $_.Name -match '(?i)demo.*seed|seed.*demo' }).Count -Expected 0 -Message "Existe una migración demo"
+    $manifest = Get-LocalMigrationManifest
 
     $history = Invoke-Sql -Query @"
 SELECT count(*) || '|' || max(version::int) || '|' ||
        count(*) FILTER (WHERE NOT success) || '|' ||
-       count(*) FILTER (WHERE script='V6__rbac_permission_catalog_and_base_roles.sql' AND success) || '|' ||
-       count(*) FILTER (WHERE script='V7__jere_platform_student_source_exports.sql' AND success) || '|' ||
        count(*) FILTER (WHERE lower(script) LIKE '%demo%seed%' OR lower(script) LIKE '%seed%demo%')
 FROM flyway_schema_history;
 "@
     $parts = $history.Split("|")
-    Assert-Equal -Actual $parts.Count -Expected 6 -Message "Historial Flyway ilegible"
-    Assert-Equal -Actual $parts[0] -Expected "7" -Message "Cantidad Flyway inesperada"
-    Assert-Equal -Actual $parts[1] -Expected "7" -Message "Versión Flyway inesperada"
+    Assert-Equal -Actual $parts.Count -Expected 4 -Message "Historial Flyway ilegible"
+    Assert-Equal -Actual $parts[0] -Expected ([string]$manifest.Count) -Message "Cantidad Flyway inesperada"
+    Assert-Equal -Actual $parts[1] -Expected ([string]$manifest.LatestVersion) -Message "Versión Flyway inesperada"
     Assert-Equal -Actual $parts[2] -Expected "0" -Message "Hay migraciones fallidas"
-    Assert-Equal -Actual $parts[3] -Expected "1" -Message "V6 productiva ausente"
-    Assert-Equal -Actual $parts[4] -Expected "1" -Message "V7 productiva ausente"
-    Assert-Equal -Actual $parts[5] -Expected "0" -Message "Hay una migración demo"
+    Assert-Equal -Actual $parts[3] -Expected "0" -Message "Hay una migración demo"
+    $historyScripts = @((Invoke-Sql "SELECT script FROM flyway_schema_history WHERE success ORDER BY installed_rank;") -split "`r?`n")
+    Assert-Equal -Actual $historyScripts.Count -Expected $manifest.Count -Message "Cantidad de scripts Flyway inesperada"
+    foreach ($migration in $manifest.Scripts) {
+        Assert-True -Condition ($historyScripts -contains $migration) -Message "Flyway no aplicó $migration"
+    }
     Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM roles WHERE codigo='PROFESOR' AND NOT activo AND sistema AND NOT editable;") -Expected "1" -Message "PROFESOR no conserva su contrato"
     Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM rol_permisos rp JOIN roles r ON r.id=rp.rol_id WHERE r.codigo='PROFESOR';") -Expected "0" -Message "PROFESOR tiene permisos"
-    Pass "Flyway/Hibernate/RBAC" "V1-V7, ddl-auto=validate, sin migración demo"
+    Pass "Flyway/Hibernate/RBAC" "$($manifest.Count) migraciones, última V$($manifest.LatestVersion), ddl-auto=validate"
 }
 
 function Assert-DatabaseEmptyForDemo {
@@ -923,7 +1108,7 @@ BEGIN
 END
 $$;
 '@ | Out-Null
-    Pass "Base local vacía" "sin datos ajenos al catálogo productivo V1-V7"
+    Pass "Base local vacía" "sin datos ajenos al catálogo productivo"
 }
 
 function Configure-DemoEnvironment {
@@ -938,8 +1123,12 @@ function Configure-DemoEnvironment {
         POSTGRES_PORT = [string]$script:postgresPort
         BACKEND_PORT = [string]$script:backendPort
         FRONTEND_PORT = [string]$script:frontendPort
-        BACKEND_IMAGE = "gestudio-backend:demo-local"
-        FRONTEND_IMAGE = "gestudio-frontend:demo-local"
+        BACKEND_IMAGE = $script:backendImage
+        FRONTEND_IMAGE = $script:frontendImage
+        VCS_REF = (Get-RepositoryRevision)
+        COMPOSE_SHA = (Get-ComposeSha)
+        BACKEND_SOURCE_SHA = (Get-SourceFingerprint -RelativeRoot 'backend')
+        FRONTEND_SOURCE_SHA = (Get-SourceFingerprint -RelativeRoot 'frontend')
         SPRING_PROFILES_ACTIVE = "dev"
         SPRING_JPA_HIBERNATE_DDL_AUTO = "validate"
         SPRING_FLYWAY_ENABLED = "true"
@@ -951,8 +1140,9 @@ function Configure-DemoEnvironment {
         APP_CORS_ALLOWED_ORIGINS = $script:frontendUrl
         APP_SCHEDULING_ENABLED = "false"
         APP_BOOTSTRAP_SUPERADMIN_ENABLED = "false"
-        APP_BOOTSTRAP_ADMIN_ENABLED = "false"
-        APP_BOOTSTRAP_ADMIN_RESET_EXISTING_PASSWORD = "false"
+        APP_LOCAL_ADMIN_PASSWORD_RESET_ENABLED = "false"
+        APP_LOCAL_ADMIN_PASSWORD_RESET_USERNAME = ""
+        APP_LOCAL_ADMIN_PASSWORD_RESET_PASSWORD = ""
         APP_SECURITY_REFRESH_COOKIE_NAME = $script:cookieName
         APP_SECURITY_REFRESH_COOKIE_SECURE = "false"
         APP_SECURITY_REFRESH_COOKIE_SAME_SITE = "Strict"
@@ -979,6 +1169,88 @@ function Show-Diagnostics {
     catch { }
 }
 
+function Get-ImageFreshness {
+    param(
+        [Parameter(Mandatory)][string] $Service,
+        [Parameter(Mandatory)][string] $Image,
+        [Parameter(Mandatory)][string] $ExpectedRevision,
+        [Parameter(Mandatory)][string] $ExpectedComposeSha,
+        [Parameter(Mandatory)][string] $ExpectedSourceSha,
+        [AllowEmptyString()][string] $ExpectedFlyway = "",
+        [AllowEmptyString()][string] $ExpectedHealthContract = ""
+    )
+
+    try {
+        $imageId = Invoke-Docker -Arguments @("image", "inspect", "--format", "{{.Id}}", $Image) -Capture -IgnoreDeadline
+        $labelsJson = Invoke-Docker -Arguments @("image", "inspect", "--format", "{{json .Config.Labels}}", $Image) -Capture -IgnoreDeadline
+    }
+    catch {
+        return [pscustomobject]@{ Ready = $false; Detail = "imagen inexistente: $Image" }
+    }
+
+    $state = Get-ServiceState -Service $Service
+    if ([string]::IsNullOrWhiteSpace($state.Id)) {
+        return [pscustomobject]@{ Ready = $false; Detail = "contenedor ausente para $Image" }
+    }
+    $containerImage = Invoke-Docker -Arguments @("inspect", "--format", "{{.Image}}", $state.Id) -Capture -IgnoreDeadline
+    if ($containerImage -ne $imageId) {
+        return [pscustomobject]@{ Ready = $false; Detail = "contenedor basado en imagen anterior" }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($labelsJson) -or $labelsJson -eq "null") {
+        return [pscustomobject]@{ Ready = $false; Detail = "imagen sin metadata de build" }
+    }
+    $labels = $labelsJson | ConvertFrom-Json
+    $revisionProperty = $labels.PSObject.Properties['org.opencontainers.image.revision']
+    $revision = if ($null -eq $revisionProperty) { "" } else { [string]$revisionProperty.Value }
+    if ($revision -ne $ExpectedRevision) {
+        return [pscustomobject]@{ Ready = $false; Detail = "imagen desactualizada: revisión '$revision'" }
+    }
+    $composeProperty = $labels.PSObject.Properties['org.gestudio.compose.sha256']
+    $composeSha = if ($null -eq $composeProperty) { "" } else { [string]$composeProperty.Value }
+    if ($composeSha -ne $ExpectedComposeSha) {
+        return [pscustomobject]@{ Ready = $false; Detail = "imagen incompatible con Compose actual" }
+    }
+    $sourceProperty = $labels.PSObject.Properties['org.gestudio.source.sha256']
+    $sourceSha = if ($null -eq $sourceProperty) { "" } else { [string]$sourceProperty.Value }
+    if ($sourceSha -ne $ExpectedSourceSha) {
+        return [pscustomobject]@{ Ready = $false; Detail = "imagen desactualizada respecto del contenido fuente" }
+    }
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedFlyway)) {
+        try {
+            $imageFlyway = Invoke-Docker -Arguments @(
+                "run", "--rm", "--network", "none", "--entrypoint", "cat", $Image,
+                "/app/build-metadata/flyway-latest"
+            ) -Capture -IgnoreDeadline
+        }
+        catch {
+            return [pscustomobject]@{ Ready = $false; Detail = "imagen sin metadata Flyway legible" }
+        }
+        if ($imageFlyway -ne $ExpectedFlyway) {
+            return [pscustomobject]@{ Ready = $false; Detail = "imagen Flyway V$imageFlyway; esperada V$ExpectedFlyway" }
+        }
+    }
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedHealthContract)) {
+        try {
+            $imageHealthContract = Invoke-Docker -Arguments @(
+                "run", "--rm", "--network", "none", "--entrypoint", "cat", $Image,
+                "/app/build-metadata/health-contract"
+            ) -Capture -IgnoreDeadline
+        }
+        catch {
+            return [pscustomobject]@{ Ready = $false; Detail = "imagen sin contrato de health legible" }
+        }
+        if ($imageHealthContract -ne $ExpectedHealthContract) {
+            return [pscustomobject]@{ Ready = $false; Detail = "health '$imageHealthContract'; esperado '$ExpectedHealthContract'" }
+        }
+    }
+
+    return [pscustomobject]@{
+        Ready = $true
+        Detail = "vigente; imageId=$($imageId.Substring(7, 12)); revisión=$($revision.Substring(0, 12))"
+    }
+}
+
 function Invoke-Status {
     foreach ($required in @($script:composeFile, $script:seedPath)) {
         if (-not (Test-Path -LiteralPath $required)) { throw "Falta $required" }
@@ -986,27 +1258,34 @@ function Invoke-Status {
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { throw "Docker no está disponible" }
     Invoke-Docker -Arguments @("info", "--format", "{{.ServerVersion}}") -Capture -IgnoreDeadline | Out-Null
 
+    $manifest = Get-LocalMigrationManifest
+    $expectedRevision = Get-RepositoryRevision
+    $expectedComposeSha = Get-ComposeSha
+    $expectedBackendSourceSha = Get-SourceFingerprint -RelativeRoot 'backend'
+    $expectedFrontendSourceSha = Get-SourceFingerprint -RelativeRoot 'frontend'
     $states = @("db", "backend", "frontend") | ForEach-Object { Get-ServiceState -Service $_ }
     $flyway = "no disponible"
+    $flywayReady = $false
     $seedReady = $false
+    $databaseDetail = ""
     $frontReady = $false
     $dbState = @($states | Where-Object { $_.Service -eq "db" })[0]
     if ($dbState.State -eq "running" -and $dbState.Health -eq "healthy") {
         try {
-            $flyway = Invoke-Sql "SELECT COALESCE(max(version::int)::text, 'ninguna') FROM flyway_schema_history WHERE success;"
-            $seedReady = (Invoke-Sql @"
-SELECT CASE WHEN
-    (SELECT count(*) FROM usuarios WHERE lower(nombre_usuario) LIKE 'demo-%') = 5 AND
-    (SELECT count(*) FROM alumnos WHERE email LIKE '%@correo.local') = 28 AND
-    EXISTS (
-        SELECT 1 FROM alumnos
-        WHERE documento='49287134'
-          AND otras_notas LIKE 'Ficha revisada por administración. Actualización de referencia: %'
-    )
-THEN 'true' ELSE 'false' END;
-"@) -eq "true"
+            $history = (Invoke-Sql "SELECT count(*) || '|' || COALESCE(max(version::int), 0) || '|' || count(*) FILTER (WHERE NOT success) FROM flyway_schema_history;").Split("|")
+            $historyScripts = @((Invoke-Sql "SELECT script FROM flyway_schema_history WHERE success ORDER BY installed_rank;") -split "`r?`n" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+            $flyway = $history[1]
+            $flywayReady = $history.Count -eq 3 `
+                -and $history[0] -eq [string]$manifest.Count `
+                -and $history[1] -eq [string]$manifest.LatestVersion `
+                -and $history[2] -eq "0" `
+                -and @(Compare-Object -ReferenceObject $manifest.Scripts -DifferenceObject $historyScripts).Count -eq 0
+            $seedReady = Test-DemoSeedContract
         }
-        catch { $flyway = "error de consulta" }
+        catch {
+            $flyway = "error de consulta"
+            $databaseDetail = Redact $_.Exception.Message
+        }
     }
     try {
         $statusSession = New-HttpSession
@@ -1014,12 +1293,26 @@ THEN 'true' ELSE 'false' END;
     }
     catch { $frontReady = $false }
 
+    $backendFresh = Get-ImageFreshness -Service "backend" -Image $script:backendImage `
+        -ExpectedRevision $expectedRevision -ExpectedComposeSha $expectedComposeSha `
+        -ExpectedSourceSha $expectedBackendSourceSha `
+        -ExpectedFlyway ([string]$manifest.LatestVersion) -ExpectedHealthContract "actuator-readiness-v1"
+    $frontendFresh = Get-ImageFreshness -Service "frontend" -Image $script:frontendImage `
+        -ExpectedRevision $expectedRevision -ExpectedComposeSha $expectedComposeSha `
+        -ExpectedSourceSha $expectedFrontendSourceSha
     $allHealthy = @($states | Where-Object { $_.State -ne "running" -or $_.Health -ne "healthy" }).Count -eq 0
-    $available = $allHealthy -and $frontReady -and $seedReady -and $flyway -eq "6"
+    $available = $allHealthy -and $frontReady -and $seedReady -and $flywayReady `
+        -and $backendFresh.Ready -and $frontendFresh.Ready
     Write-Host "Frontend: $($script:frontendUrl)"
     Write-Host "Backend:  $($script:backendUrl)"
     Write-Host "Base:     $($script:postgresDb) en localhost:$($script:postgresPort)"
-    Write-Host "Flyway:   $flyway"
+    Write-Host "Flyway:   $flyway (esperada: $($manifest.LatestVersion))"
+    Write-Host "Seed:     $(if ($seedReady) { 'completo (914 filas, usuarios y RBAC)' } else { 'incompleto o incompatible' })"
+    if (-not [string]::IsNullOrWhiteSpace($databaseDetail)) {
+        Write-Host "Base/seed: $databaseDetail"
+    }
+    Write-Host "Backend image:  $($backendFresh.Detail)"
+    Write-Host "Frontend image: $($frontendFresh.Detail)"
     $states | Select-Object @{N="Contenedor";E={$_.Service}}, @{N="Estado";E={$_.State}}, @{N="Health";E={$_.Health}} | Format-Table -AutoSize | Out-Host
     Write-Host "Demo disponible: $(if ($available) { 'SÍ' } else { 'NO' })"
     return $available
@@ -1042,17 +1335,22 @@ function Invoke-Start {
     Configure-DemoEnvironment
     $script:stackAttempted = $true
 
-    Invoke-Compose -Arguments @("up", "-d", "db") -Capture | Out-Null
+    Invoke-Compose -Arguments @("up", "-d", "--force-recreate", "db") -Capture | Out-Null
     Wait-ServiceHealthy -Service "db"
     $passwordInput = "\set runtime_password $($script:postgresPassword)`nALTER ROLE $($script:postgresUser) PASSWORD :'runtime_password';`n"
     Invoke-PsqlInput -InputText $passwordInput | Out-Null
     Pass "PostgreSQL persistente" "$($script:postgresDb) en $($script:postgresPort)"
 
-    Invoke-Compose -Arguments @("build", "backend", "frontend") -Capture | Out-Null
-    Invoke-Compose -Arguments @("up", "-d", "backend", "frontend") -Capture | Out-Null
+    $buildStarted = Get-Date
+    Write-Host "[INFO] Construyendo imágenes backend/frontend..."
+    Invoke-Compose -Arguments @("build", "backend", "frontend")
+    Pass "Build de imágenes" "$([math]::Round(((Get-Date) - $buildStarted).TotalSeconds, 1)) segundos"
+
+    Invoke-Compose -Arguments @("up", "-d", "--no-deps", "--force-recreate", "backend") -Capture | Out-Null
     Wait-ServiceHealthy -Service "backend"
+    Invoke-Compose -Arguments @("up", "-d", "--no-deps", "--force-recreate", "frontend") -Capture | Out-Null
     Wait-ServiceHealthy -Service "frontend"
-    Pass "Imágenes y stack Compose" "proyecto $($script:project)"
+    Pass "Stack Compose recreado" "backend/frontend usan las imágenes recién construidas"
 
     Assert-FlywayAndSchema
     $rbacBefore = Get-RbacSnapshot
@@ -1062,7 +1360,8 @@ function Invoke-Start {
     Pass "BCrypt" "5 hashes distintos; BOM normalizado; límite real validado"
 
     $anchor = Get-AnchorDate
-    Invoke-DemoSeed -AnchorDate $anchor
+    $businessDate = Get-BusinessDate
+    Invoke-DemoSeed -AnchorDate $anchor -BusinessDate $businessDate
     foreach ($username in @($script:demoPasswords.Keys | Sort-Object)) {
         $storedHash = Invoke-Sql "SELECT contrasena FROM usuarios WHERE lower(nombre_usuario)='$username';"
         Add-Secret $storedHash
@@ -1073,7 +1372,7 @@ function Invoke-Start {
     $firstSnapshot = Get-DatabaseSnapshot
     Pass "Primera aplicación del seed" "914 filas e integridad interna validadas"
 
-    Invoke-DemoSeed -AnchorDate $anchor
+    Invoke-DemoSeed -AnchorDate $anchor -BusinessDate $businessDate
     $secondSnapshot = Get-DatabaseSnapshot
     Assert-Equal -Actual $secondSnapshot -Expected $firstSnapshot -Message "La segunda aplicación cambió el snapshot"
     Assert-Equal -Actual (Get-RbacSnapshot) -Expected $rbacBefore -Message "La segunda aplicación modificó RBAC"
@@ -1086,7 +1385,7 @@ function Invoke-Start {
 
     Assert-HttpAndRbac
     Write-Host ""
-    [void](Invoke-Status)
+    if (-not (Invoke-Status)) { throw "El stack arrancó pero no satisface el contrato de vigencia" }
     Write-Host ""
     Write-Host "DEMO LOCAL LISTA" -ForegroundColor Green
 }
@@ -1113,7 +1412,8 @@ function Invoke-SeedNative {
     New-BcryptHashes
     Pass "BCrypt" "5 hashes distintos generados sin persistir claves en archivos"
 
-    Invoke-DemoSeed -AnchorDate (Get-BusinessDate)
+    $businessDate = Get-BusinessDate
+    Invoke-DemoSeed -AnchorDate $businessDate -BusinessDate $businessDate
     foreach ($username in @($script:demoPasswords.Keys | Sort-Object)) {
         $storedHash = Invoke-Sql "SELECT contrasena FROM usuarios WHERE lower(nombre_usuario)='$username';"
         Add-Secret $storedHash
@@ -1141,7 +1441,7 @@ function Invoke-Reset {
 try {
     switch ($Action) {
         "Start" { Invoke-Start }
-        "Status" { [void](Invoke-Status) }
+        "Status" { if (-not (Invoke-Status)) { $exitCode = 1 } }
         "Stop" { Invoke-Stop }
         "Reset" { Invoke-Reset }
         "SeedNative" { Invoke-SeedNative }

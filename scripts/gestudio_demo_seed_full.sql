@@ -1,5 +1,5 @@
 -- ESTE ARCHIVO NO ES UNA MIGRACIÓN FLYWAY.
--- Seed manual, sintético y descartable para validar Gestudio después de V1..V7.
+-- Seed manual, sintético y descartable para validar Gestudio después de todas las migraciones productivas.
 -- No ejecutar sobre una base que contenga datos que deban conservarse.
 
 \set ON_ERROR_STOP on
@@ -11,6 +11,9 @@ SET LOCAL TIME ZONE 'America/Argentina/Buenos_Aires';
 CREATE TEMP TABLE _demo_config ON COMMIT DROP AS
 SELECT
     :'demo_anchor_date'::date AS anchor_date,
+    :'demo_business_date'::date AS business_date,
+    :'demo_expected_flyway_count'::integer AS expected_flyway_count,
+    :'demo_expected_flyway_latest'::integer AS expected_flyway_latest,
     date_trunc('month', :'demo_anchor_date'::date)::date AS month_0,
     (date_trunc('month', :'demo_anchor_date'::date) - interval '1 month')::date AS month_1,
     (date_trunc('month', :'demo_anchor_date'::date) - interval '2 months')::date AS month_2,
@@ -24,6 +27,9 @@ DECLARE
 BEGIN
     IF (SELECT anchor_date FROM _demo_config) NOT BETWEEN DATE '2020-01-01' AND DATE '2099-12-31' THEN
         RAISE EXCEPTION 'demo_anchor_date fuera del rango admitido';
+    END IF;
+    IF (SELECT business_date FROM _demo_config) NOT BETWEEN DATE '2020-01-01' AND DATE '2099-12-31' THEN
+        RAISE EXCEPTION 'demo_business_date fuera del rango admitido';
     END IF;
 
     FOREACH required_table IN ARRAY ARRAY[
@@ -48,29 +54,20 @@ BEGIN
         RAISE EXCEPTION 'Faltan tablas requeridas: %', array_to_string(missing_tables, ', ');
     END IF;
 
-    IF (SELECT count(*) FROM public.flyway_schema_history WHERE success) <> 7
+    IF (SELECT count(*) FROM public.flyway_schema_history WHERE success) <>
+            (SELECT expected_flyway_count FROM _demo_config)
+       OR (SELECT COALESCE(max(version::integer), 0) FROM public.flyway_schema_history WHERE success)
+            <> (SELECT expected_flyway_latest FROM _demo_config)
        OR EXISTS (SELECT 1 FROM public.flyway_schema_history WHERE NOT success)
-       OR NOT EXISTS (
-            SELECT 1
-            FROM public.flyway_schema_history
-            WHERE version = '6'
-              AND success
-              AND script = 'V6__rbac_permission_catalog_and_base_roles.sql'
-       )
-       OR NOT EXISTS (
-            SELECT 1
-            FROM public.flyway_schema_history
-            WHERE version = '7'
-              AND success
-              AND script = 'V7__jere_platform_student_source_exports.sql'
-       )
        OR EXISTS (
             SELECT 1
             FROM public.flyway_schema_history
             WHERE lower(script) LIKE '%demo%seed%'
                OR lower(script) LIKE '%seed%demo%'
        ) THEN
-        RAISE EXCEPTION 'El historial Flyway no coincide con V1..V7 productivas';
+        RAISE EXCEPTION 'El historial Flyway no coincide con las migraciones productivas esperadas (cantidad %, última V%)',
+            (SELECT expected_flyway_count FROM _demo_config),
+            (SELECT expected_flyway_latest FROM _demo_config);
     END IF;
 
     IF (SELECT count(*) FROM public.permisos WHERE activo AND sistema) <> 32 THEN
@@ -494,10 +491,11 @@ INSERT INTO public.alumnos
 SELECT
     student.nombre,
     student.apellido,
-    (SELECT anchor_date FROM _demo_config) -
-        CASE WHEN student.seq = 1 THEN interval '12 years'
+    CASE WHEN student.seq = 1 THEN (SELECT business_date FROM _demo_config) - interval '12 years'
+         ELSE (SELECT anchor_date FROM _demo_config) -
+        CASE
              WHEN student.seq <= 18 THEN interval '12 years' + student.seq * interval '2 months' + student.seq * interval '3 days'
-             ELSE interval '25 years' + student.seq * interval '5 months' + student.seq * interval '2 days' END,
+             ELSE interval '25 years' + student.seq * interval '5 months' + student.seq * interval '2 days' END END,
     '+54 9 11 5555-' || lpad((3000 + student.seq)::text, 4, '0'),
     NULL,
     student.email,
@@ -1781,6 +1779,17 @@ BEGIN
     SELECT sum(value::integer) INTO direct_total FROM jsonb_each_text(actual_counts);
     IF direct_total <> 914 THEN
         RAISE EXCEPTION 'El total de filas gestionadas directamente debe ser 914 y fue %', direct_total;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM public.alumnos
+        WHERE documento = '49287134'
+          AND activo
+          AND extract(month FROM fecha_nacimiento) = extract(month FROM (SELECT business_date FROM _demo_config))
+          AND extract(day FROM fecha_nacimiento) = extract(day FROM (SELECT business_date FROM _demo_config))
+    ) THEN
+        RAISE EXCEPTION 'El alumno de cumpleaños demo no coincide con demo_business_date';
     END IF;
 
     SELECT COALESCE(sum(p.monto_recibido), 0)

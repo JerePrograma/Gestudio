@@ -1,6 +1,7 @@
 # Plan de pruebas
 
-Estado documental: `GATE-1 LOCAL VALIDADO / INTEGRACIÓN REMOTA PENDIENTE`. Las pruebas de Partes B, C y D permanecen `NO_VERIFICADO` y no se ejecutan antes de sus merges precedentes.
+Estado documental histórico: este plan precede a la integración final. El
+resultado vigente de las partes A-D se consolidó en el informe 23.
 
 Referencias: [tablero](./00_INDEX.md), [baseline](./01_BASELINE_Y_HALLAZGOS.md), [matriz RBAC](./02_MATRIZ_RBAC.md), [Etapa 1](./03_ETAPA_1_SEGURIDAD_RBAC.md), [Etapa 1B](./04_ETAPA_1B_LIQUIDACION_FINANCIERA.md), [Etapa 2](./05_ETAPA_2_UX_OPERATIVA.md), [bitácora](./09_BITACORA_IMPLEMENTACION.md), [decisiones](./10_DECISIONES_Y_BLOQUEOS.md) y [checklist de release](./11_CHECKLIST_RELEASE.md).
 
@@ -292,7 +293,7 @@ Registrar navegador/versión, viewport, rol, recorrido y resultado. Una captura 
 
 ## Comandos de gate desde PowerShell
 
-Desde `C:\laburo\Gestudio`:
+Desde la raíz del checkout:
 
 ```powershell
 git status --short --branch

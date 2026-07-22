@@ -1,6 +1,8 @@
-param(
+﻿param(
     [switch] $SkipBackendBuild,
-    [switch] $VerboseHttp
+    [switch] $VerboseHttp,
+    [ValidateRange(5, 180)]
+    [int] $TimeoutMinutes = 45
 )
 
 $ErrorActionPreference = "Stop"
@@ -13,7 +15,8 @@ $composeFile = Join-Path $repoRoot "docker-compose.yml"
 $seedPath = Join-Path $repoRoot "scripts/gestudio_demo_seed_full.sql"
 $migrationRoot = Join-Path $backendRoot "src/main/resources/db/migration"
 $startedAt = Get-Date
-$deadline = $startedAt.AddMinutes(35)
+$lastResultAt = $startedAt
+$deadline = $startedAt.AddMinutes($TimeoutMinutes)
 $suffix = ([Guid]::NewGuid().ToString("N")).Substring(0, 10)
 $project = "gestudio-demo-seed-$PID-$suffix"
 $tempRoot = Join-Path ([IO.Path]::GetTempPath()) $project
@@ -38,6 +41,7 @@ $postgresUser = "gestudio_demo_$suffix"
 $postgresPassword = $null
 $jwtSecret = $null
 $anchorDate = $null
+$businessDate = $null
 $apiBase = $null
 $frontendOrigin = $null
 $javaHome = $null
@@ -49,6 +53,7 @@ $bcryptClasspath = $null
 $demoPasswords = @{}
 $demoHashes = @{}
 $actorTokens = @{}
+$migrationManifest = $null
 
 function Add-Result {
     param(
@@ -57,9 +62,13 @@ function Add-Result {
         [Parameter(Mandatory)][string] $Detail
     )
 
+    $now = Get-Date
+    $elapsed = [math]::Round(($now - $script:lastResultAt).TotalSeconds, 1)
+    $script:lastResultAt = $now
     $script:results.Add([pscustomobject]@{
         Etapa = $Stage
         Resultado = $Result
+        Duracion = "${elapsed}s"
         Detalle = $Detail
     })
 
@@ -68,7 +77,7 @@ function Add-Result {
         "FAIL" { "Red" }
         default { "Cyan" }
     }
-    Write-Host "[$Result] $Stage - $Detail" -ForegroundColor $color
+    Write-Host "[$Result] $Stage (${elapsed}s) - $Detail" -ForegroundColor $color
 }
 
 function Add-Secret {
@@ -94,7 +103,7 @@ function Redact {
 
 function Assert-Deadline {
     if ((Get-Date) -gt $script:deadline) {
-        throw "Se agotó el timeout global de 35 minutos"
+        throw "Se agotó el timeout global de $($script:TimeoutMinutes) minutos"
     }
 }
 
@@ -149,6 +158,33 @@ function Get-BusinessDate {
     return [TimeZoneInfo]::ConvertTime([DateTimeOffset]::UtcNow, $zone).Date
 }
 
+function Get-LocalMigrationManifest {
+    $entries = @(Get-ChildItem -LiteralPath $script:migrationRoot -Filter "V*__*.sql" -File | ForEach-Object {
+        if ($_.Name -notmatch '^V(?<version>[0-9]+)__.+\.sql$') {
+            throw "Nombre de migración Flyway inválido: $($_.Name)"
+        }
+        [pscustomobject]@{ Version = [int]$matches.version; Script = $_.Name }
+    } | Sort-Object Version)
+    if ($entries.Count -eq 0) { throw "No hay migraciones Flyway locales" }
+    if (@($entries.Version | Select-Object -Unique).Count -ne $entries.Count) {
+        throw "Hay versiones Flyway locales duplicadas"
+    }
+    for ($index = 0; $index -lt $entries.Count; $index++) {
+        if ($entries[$index].Version -ne ($index + 1)) {
+            throw "La cadena Flyway local no es contigua desde V1"
+        }
+    }
+    if (@($entries | Where-Object { $_.Script -match '(?i)demo.*seed|seed.*demo' }).Count -ne 0) {
+        throw "Existe una migración Flyway demo"
+    }
+    return [pscustomobject]@{
+        Count = $entries.Count
+        LatestVersion = $entries[-1].Version
+        LatestScript = $entries[-1].Script
+        Scripts = @($entries.Script)
+    }
+}
+
 function Set-ScopedEnvironmentVariable {
     param(
         [Parameter(Mandatory)][string] $Name,
@@ -176,26 +212,41 @@ function Invoke-Native {
     )
 
     if (-not $IgnoreDeadline) { Assert-Deadline }
-if (-not $script:isWindowsHost -and [IO.Path]::GetFileName($FilePath) -eq "mvnw") {
-    $Arguments = @($FilePath) + $Arguments
-    $FilePath = "bash"
-}
+    if (-not $script:isWindowsHost -and [IO.Path]::GetFileName($FilePath) -eq "mvnw") {
+        $Arguments = @($FilePath) + $Arguments
+        $FilePath = "bash"
+    }
     $previousErrorAction = $ErrorActionPreference
     try {
         $ErrorActionPreference = "Continue"
-        $output = @(& $FilePath @Arguments 2>&1)
+        if ($Capture) {
+            $output = @(& $FilePath @Arguments 2>&1)
+        }
+        else {
+            $tail = [Collections.Generic.Queue[string]]::new()
+            & $FilePath @Arguments 2>&1 | ForEach-Object {
+                $line = Redact $_.ToString()
+                Write-Host $line
+                $tail.Enqueue($line)
+                if ($tail.Count -gt 80) { [void]$tail.Dequeue() }
+            }
+        }
         $code = $LASTEXITCODE
     }
     finally { $ErrorActionPreference = $previousErrorAction }
 
-    $text = ($output | ForEach-Object { $_.ToString() }) -join "`n"
+    $text = if ($Capture) {
+        ($output | ForEach-Object { $_.ToString() }) -join "`n"
+    }
+    else {
+        @($tail) -join "`n"
+    }
     if ($code -ne 0) {
-        $tail = (($text -split "`r?`n") | Select-Object -Last 80) -join "`n"
-        throw "El comando $([IO.Path]::GetFileName($FilePath)) falló con código ${code}: $(Redact $tail)"
+        $errorTail = (($text -split "`r?`n") | Select-Object -Last 80) -join "`n"
+        throw "El comando $([IO.Path]::GetFileName($FilePath)) falló con código ${code}: $(Redact $errorTail)"
     }
 
     if ($Capture) { return $text.Trim() }
-    if (-not [string]::IsNullOrWhiteSpace($text)) { Write-Host (Redact $text) }
 }
 
 function Invoke-Docker {
@@ -285,7 +336,10 @@ function Assert-SeedStaticContract {
         "ESTE ARCHIVO NO ES UNA MIGRACIÓN FLYWAY",
         "\set ON_ERROR_STOP on",
         "BEGIN;",
-        "COMMIT;"
+        "COMMIT;",
+        "demo_business_date",
+        "demo_expected_flyway_count",
+        "demo_expected_flyway_latest"
     )) {
         if (-not $seed.Contains($requiredText)) {
             throw "El seed no contiene el contrato obligatorio: $requiredText"
@@ -301,7 +355,7 @@ function Assert-SeedStaticContract {
         '(?im)^\s*SET\s+session_replication_role\b' = "El seed intenta desactivar integridad referencial"
         '(?im)^\s*ALTER\s+TABLE\b.*DISABLE\s+TRIGGER\b' = "El seed intenta desactivar triggers"
         '(?i)admin[/]admin' = "El seed contiene una credencial conocida"
-        '(?i)V6__.*demo.*seed|V6__.*seed.*demo' = "El seed se presenta como una migración V6 demo"
+        '(?i)V[0-9]+__.*demo.*seed|V[0-9]+__.*seed.*demo' = "El seed se presenta como una migración Flyway demo"
         '(?<!\\)\$2[aby]\$[0-9]{2}\$[./A-Za-z0-9]{53}' = "El seed contiene un hash BCrypt fijo"
     }
 
@@ -371,6 +425,9 @@ function Invoke-DemoSeed {
             "-U", $script:postgresUser,
             "-d", $script:postgresDb,
             "-v", "demo_anchor_date=$($script:anchorDate.ToString('yyyy-MM-dd'))",
+            "-v", "demo_business_date=$($script:businessDate.ToString('yyyy-MM-dd'))",
+            "-v", "demo_expected_flyway_count=$($script:migrationManifest.Count)",
+            "-v", "demo_expected_flyway_latest=$($script:migrationManifest.LatestVersion)",
             "-v", "demo_superadmin_password_hash=$($script:demoHashes['demo-superadmin'])",
             "-v", "demo_direccion_password_hash=$($script:demoHashes['demo-direccion'])",
             "-v", "demo_administrador_password_hash=$($script:demoHashes['demo-administrador'])",
@@ -493,7 +550,7 @@ function Build-Backend {
     Push-Location $script:backendRoot
     try {
         Invoke-Native -FilePath $script:mavenWrapper -Arguments @(
-            "-q", "package"
+            "-B", "-ntp", "package"
         )
     }
     finally { Pop-Location }
@@ -673,8 +730,9 @@ function Configure-BackendEnvironment {
     Set-ScopedEnvironmentVariable -Name "APP_TIME_ZONE" -Value "America/Argentina/Buenos_Aires"
     Set-ScopedEnvironmentVariable -Name "APP_SCHEDULING_ENABLED" -Value "false"
     Set-ScopedEnvironmentVariable -Name "APP_BOOTSTRAP_SUPERADMIN_ENABLED" -Value "false"
-    Set-ScopedEnvironmentVariable -Name "APP_BOOTSTRAP_ADMIN_ENABLED" -Value "false"
-    Set-ScopedEnvironmentVariable -Name "APP_BOOTSTRAP_ADMIN_RESET_EXISTING_PASSWORD" -Value "false"
+    Set-ScopedEnvironmentVariable -Name "APP_LOCAL_ADMIN_PASSWORD_RESET_ENABLED" -Value "false"
+    Set-ScopedEnvironmentVariable -Name "APP_LOCAL_ADMIN_PASSWORD_RESET_USERNAME" -Value ""
+    Set-ScopedEnvironmentVariable -Name "APP_LOCAL_ADMIN_PASSWORD_RESET_PASSWORD" -Value ""
     Set-ScopedEnvironmentVariable -Name "APP_SECURITY_REFRESH_COOKIE_SECURE" -Value "false"
     Set-ScopedEnvironmentVariable -Name "APP_CORS_ALLOWED_ORIGINS" -Value $script:frontendOrigin
     Set-ScopedEnvironmentVariable -Name "APP_RECEIPTS_PATH" -Value $script:receiptsRoot
@@ -1281,6 +1339,8 @@ try {
         if (-not (Test-Path -LiteralPath $required)) { throw "Falta recurso requerido: $required" }
     }
     Add-Result -Stage "Estructura del repositorio" -Result "PASS" -Detail "Compose, backend, migraciones y seed presentes"
+    $migrationManifest = Get-LocalMigrationManifest
+    Add-Result -Stage "Contrato Flyway local" -Result "PASS" -Detail "$($migrationManifest.Count) migraciones contiguas; última V$($migrationManifest.LatestVersion)"
     Assert-SeedStaticContract
 
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { throw "Docker no está disponible en PATH" }
@@ -1309,15 +1369,27 @@ try {
             Sort-Object Length -Descending)
         if ($jars.Count -eq 0) { throw "-SkipBackendBuild requiere un JAR existente en backend/target" }
         $backendJar = $jars[0].FullName
+        $buildInputs = @(
+            Get-Item -LiteralPath (Join-Path $backendRoot "pom.xml")
+            Get-ChildItem -LiteralPath (Join-Path $backendRoot "src") -File -Recurse
+        )
+        $latestInput = $buildInputs | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+        if ($backendJar.LastWriteTimeUtc -lt $latestInput.LastWriteTimeUtc) {
+            throw "-SkipBackendBuild rechazado: el JAR es anterior a $($latestInput.FullName)"
+        }
         Add-Result -Stage "Build backend" -Result "INFO" -Detail "Se reutilizó $([IO.Path]::GetFileName($backendJar))"
     }
 
-    $dbPort = Get-FreePort
-    $backendPort = Get-FreePort
-    $frontendPort = Get-FreePort
+    $ports = [Collections.Generic.HashSet[int]]::new()
+    while ($ports.Count -lt 3) { [void]$ports.Add((Get-FreePort)) }
+    $portValues = @($ports)
+    $dbPort = $portValues[0]
+    $backendPort = $portValues[1]
+    $frontendPort = $portValues[2]
     $apiBase = "http://127.0.0.1:$backendPort/api"
     $frontendOrigin = "http://127.0.0.1:$frontendPort"
-    $anchorDate = Get-BusinessDate
+    $businessDate = Get-BusinessDate
+    $anchorDate = $businessDate.AddDays(-1)
     $postgresPassword = New-HexSecret 24
     $jwtSecret = New-HexSecret 64
     Add-Secret $postgresPassword
@@ -1333,6 +1405,7 @@ try {
     Write-Host "[INFO] Proyecto Compose aislado: $project"
     Write-Host "[INFO] Puertos aleatorios: PostgreSQL=$dbPort backend=$backendPort"
     Write-Host "[INFO] Fecha ancla: $($anchorDate.ToString('yyyy-MM-dd'))"
+    Write-Host "[INFO] Fecha de negocio: $($businessDate.ToString('yyyy-MM-dd'))"
 
     $stackAttempted = $true
     Invoke-Compose -Arguments @("up", "-d", "db")
@@ -1350,19 +1423,14 @@ try {
     Add-Result -Stage "Flyway mediante backend real" -Result "PASS" -Detail "Backend inició con ddl-auto=validate"
 
     $history = Invoke-Sql -Query "SELECT installed_rank, COALESCE(version,''), description, type, script, COALESCE(checksum::text,''), success FROM flyway_schema_history ORDER BY installed_rank;"
-    Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM flyway_schema_history WHERE script='V6__rbac_permission_catalog_and_base_roles.sql' AND success") -Expected "1" -Message "La V6 productiva no fue aplicada"
-    Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM flyway_schema_history WHERE script='V7__jere_platform_student_source_exports.sql' AND success") -Expected "1" -Message "La V7 productiva no fue aplicada"
+    Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM flyway_schema_history WHERE success") -Expected ([string]$migrationManifest.Count) -Message "Flyway no aplicó la cantidad esperada de migraciones"
+    Assert-Equal -Actual (Invoke-Sql "SELECT max(version::int) FROM flyway_schema_history WHERE success") -Expected ([string]$migrationManifest.LatestVersion) -Message "Flyway no alcanzó la última versión local"
     Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM flyway_schema_history WHERE NOT success") -Expected "0" -Message "Flyway contiene migraciones fallidas"
     Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM flyway_schema_history WHERE lower(script) LIKE '%demo%seed%'") -Expected "0" -Message "Se detectó una migración Flyway demo"
 
-    $localMigrations = @(Get-ChildItem -LiteralPath $migrationRoot -Filter "V*__*.sql" -File | Sort-Object Name)
-    $demoMigrations = @($localMigrations | Where-Object { $_.Name -match '(?i)demo.*seed|seed.*demo' })
-    Assert-Equal -Actual $demoMigrations.Count -Expected 0 -Message "Existe una migración demo en db/migration"
-    $historyScripts = @((Invoke-Sql "SELECT script FROM flyway_schema_history WHERE success ORDER BY installed_rank;") -split "`r?`n")
-    foreach ($migration in $localMigrations) {
-        Assert-True -Condition ($historyScripts -contains $migration.Name) -Message "Flyway no aplicó $($migration.Name)"
-    }
-    Add-Result -Stage "Historial Flyway" -Result "PASS" -Detail "$($localMigrations.Count) migraciones reales; V6/V7 productivas presentes; ninguna demo"
+    $historyScripts = @((Invoke-Sql "SELECT script FROM flyway_schema_history WHERE success ORDER BY installed_rank;") -split "`r?`n" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    Assert-Equal -Actual (@(Compare-Object -ReferenceObject $migrationManifest.Scripts -DifferenceObject $historyScripts).Count) -Expected 0 -Message "flyway_schema_history no coincide con las migraciones locales"
+    Add-Result -Stage "Historial Flyway" -Result "PASS" -Detail "$($migrationManifest.Count) migraciones reales hasta V$($migrationManifest.LatestVersion); manifiesto exacto; ninguna demo"
     Write-Host "[INFO] flyway_schema_history:`n$history"
 
     $rbacBefore = Get-RbacSnapshot
@@ -1422,7 +1490,10 @@ try {
     Assert-True -Condition (@($profile.Json.permisos).Count -eq 32) -Message "Perfil técnico sin catálogo completo"
     $assignable = Invoke-Api -Method "GET" -Path "/usuarios/roles-asignables" -Token $superToken -ExpectedStatus 200
     Assert-True -Condition (@($assignable.Json.codigo) -notcontains "PROFESOR") -Message "PROFESOR aparece como rol asignable"
-    Add-Result -Stage "Perfil y roles asignables" -Result "PASS" -Detail "32 permisos; Profesor no asignable"
+    $birthdays = Invoke-Api -Method "GET" -Path "/notificaciones/cumpleaneros" -Token $superToken -ExpectedStatus 200
+    $expectedBirthday = "Alumno: Sof$([char]0x00ED)a Ben$([char]0x00ED)tez"
+    Assert-True -Condition (@($birthdays.Json) -contains $expectedBirthday) -Message "No se generó el cumpleaños demo del día"
+    Add-Result -Stage "Perfil, roles y cumpleaños" -Result "PASS" -Detail "32 permisos; Profesor no asignable; cumpleaños HTTP 200"
 
     $ids = Invoke-Sql -Query @"
 SELECT a.id, i.id
@@ -1442,6 +1513,7 @@ ORDER BY i.id LIMIT 1;
     foreach ($endpoint in @(
         @{ Name="Alumnos"; Path="/alumnos?page=0&size=5" },
         @{ Name="Disciplinas"; Path="/disciplinas" },
+        @{ Name="Disciplinas con horarios"; Path="/disciplinas/listado" },
         @{ Name="Profesores"; Path="/profesores" },
         @{ Name="Inscripciones"; Path="/inscripciones?page=0&size=5" },
         @{ Name="Mensualidades"; Path="/mensualidades/inscripcion/$inscripcionId" },
@@ -1561,7 +1633,7 @@ finally {
 
 Write-Host ""
 Write-Host "Resumen de validación" -ForegroundColor Cyan
-$results | Format-Table -AutoSize Etapa, Resultado, Detalle
+$results | Format-Table -AutoSize Etapa, Resultado, Duracion, Detalle
 Write-Host "Duración: $([math]::Round(((Get-Date) - $startedAt).TotalSeconds, 1)) segundos"
 
 if ($exitCode -ne 0) {

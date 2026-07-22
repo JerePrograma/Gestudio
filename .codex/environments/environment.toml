@@ -23,20 +23,26 @@ function Assert-Command {
 
 @(
     "git",
-    "java",
-    "mvn",
     "node",
-    "npm"
+    "npm",
+    "docker"
 ) | ForEach-Object {
     Assert-Command $_
 }
 
 Write-Host "Verificando Java..."
-$javaVersion = (& java -version 2>&1 | Select-Object -First 1)
+if ([string]::IsNullOrWhiteSpace($env:JAVA_HOME)) {
+    throw "JAVA_HOME no está definido. Gestudio requiere un JDK 21."
+}
+$javaExe = Join-Path $env:JAVA_HOME "bin\java.exe"
+if (-not (Test-Path -LiteralPath $javaExe -PathType Leaf)) {
+    throw "JAVA_HOME no contiene bin\java.exe: $env:JAVA_HOME"
+}
+$javaVersion = (& $javaExe -version 2>&1 | Select-Object -First 1)
 Write-Host $javaVersion
 
 if ("$javaVersion" -notmatch 'version "21(\.|")') {
-    throw "Le Dance requiere JDK 21. Versión detectada: $javaVersion"
+    throw "Gestudio requiere JDK 21. Versión detectada: $javaVersion"
 }
 
 Write-Host "Preparando dependencias Maven..."
@@ -47,7 +53,7 @@ try {
         & ".\mvnw.cmd" -q -DskipTests dependency:go-offline
     }
     else {
-        & mvn -q -DskipTests dependency:go-offline
+        throw "Falta backend\mvnw.cmd. No se usa Maven global como fallback."
     }
 
     if ($LASTEXITCODE -ne 0) {
@@ -66,8 +72,7 @@ try {
         & npm ci
     }
     else {
-        Write-Warning "No existe package-lock.json. Se ejecutará npm install sin generar lockfile."
-        & npm install --no-package-lock
+        throw "Falta frontend\package-lock.json. No se usa npm install como fallback."
     }
 
     if ($LASTEXITCODE -ne 0) {
@@ -79,7 +84,7 @@ finally {
 }
 
 Write-Host ""
-Write-Host "Entorno Le Dance preparado correctamente."
+Write-Host "Entorno Gestudio preparado correctamente."
 Write-Host "Repositorio: $((Get-Location).Path)"
 Write-Host "Java: $javaVersion"
 Write-Host "Node: $(& node --version)"
@@ -91,48 +96,17 @@ script = ""
 
 [cleanup.win32]
 script = '''
-$ErrorActionPreference = "Continue"
-
-$temporaryPaths = @(
-    ".\.cache\tmp",
-    ".\frontend\.vite"
-)
-
-foreach ($path in $temporaryPaths) {
-    if (Test-Path $path) {
-        Remove-Item `
-            -LiteralPath $path `
-            -Recurse `
-            -Force `
-            -ErrorAction SilentlyContinue
-    }
-}
-
-Write-Host "Limpieza local finalizada."
-Write-Host "Los contenedores Docker no fueron detenidos automáticamente."
+$ErrorActionPreference = "Stop"
+& ".\scripts\codex\cleanup.ps1"
+exit $LASTEXITCODE
 '''
 
 [[actions]]
 name = "Estado"
 icon = "tool"
 command = '''
-git status --short --branch
-
-Write-Host ""
-Write-Host "Java:"
-java -version
-
-Write-Host ""
-Write-Host "Maven:"
-mvn -version
-
-Write-Host ""
-Write-Host "Node:"
-node --version
-
-Write-Host ""
-Write-Host "npm:"
-npm --version
+& ".\scripts\codex\status.ps1"
+exit $LASTEXITCODE
 '''
 
 [[actions]]
@@ -147,7 +121,7 @@ try {
         & ".\mvnw.cmd" clean verify
     }
     else {
-        & mvn clean verify
+        throw "Falta backend\mvnw.cmd."
     }
 
     if ($LASTEXITCODE -ne 0) {
@@ -167,7 +141,25 @@ $ErrorActionPreference = "Stop"
 
 Push-Location "frontend"
 try {
+    & npm audit
+
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
+
+    & npm audit --omit=dev
+
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
+
     & npm run lint
+
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
+
+    & npm test
 
     if ($LASTEXITCODE -ne 0) {
         exit $LASTEXITCODE
@@ -189,43 +181,8 @@ name = "Validar todo"
 icon = "tool"
 command = '''
 $ErrorActionPreference = "Stop"
-
-Push-Location "backend"
-try {
-    if (Test-Path ".\mvnw.cmd") {
-        & ".\mvnw.cmd" clean verify
-    }
-    else {
-        & mvn clean verify
-    }
-
-    if ($LASTEXITCODE -ne 0) {
-        throw "Falló la validación del backend. Código: $LASTEXITCODE"
-    }
-}
-finally {
-    Pop-Location
-}
-
-Push-Location "frontend"
-try {
-    & npm run lint
-
-    if ($LASTEXITCODE -ne 0) {
-        throw "Falló el lint del frontend. Código: $LASTEXITCODE"
-    }
-
-    & npm run build
-
-    if ($LASTEXITCODE -ne 0) {
-        throw "Falló el build del frontend. Código: $LASTEXITCODE"
-    }
-}
-finally {
-    Pop-Location
-}
-
-Write-Host "Backend y frontend validados correctamente."
+& ".\scripts\codex\validate.ps1" -Scope All
+exit $LASTEXITCODE
 '''
 
 [[actions]]

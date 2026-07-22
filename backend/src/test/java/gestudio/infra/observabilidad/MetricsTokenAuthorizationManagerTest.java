@@ -15,9 +15,10 @@ class MetricsTokenAuthorizationManagerTest {
 
         assertThat(decision(manager, "metrics-secret")).isTrue();
         assertThat(decision(manager, "wrong-secret")).isFalse();
+        assertThat(decision(manager, "metrics-secrex")).isFalse();
         assertThat(decision(manager, " metrics-secret")).isFalse();
         assertThat(decision(manager, "metrics-secret ")).isFalse();
-        assertThat(decision(manager, null)).isFalse();
+        assertThat(decision(manager)).isFalse();
     }
 
     @Test
@@ -37,11 +38,20 @@ class MetricsTokenAuthorizationManagerTest {
         assertThat(decision(manager, "x".repeat(513))).isFalse();
     }
 
-    private static boolean decision(MetricsTokenAuthorizationManager manager, String token) {
+    @Test
+    void rechazaHeadersDuplicadosAunqueContenganElTokenCorrecto() {
+        MetricsTokenAuthorizationManager manager =
+                new MetricsTokenAuthorizationManager("metrics-secret");
+
+        assertThat(decision(manager, "metrics-secret", "metrics-secret")).isFalse();
+        assertThat(decision(manager, "wrong-secret", "metrics-secret")).isFalse();
+    }
+
+    private static boolean decision(MetricsTokenAuthorizationManager manager, String... tokens) {
         MockHttpServletRequest request = new MockHttpServletRequest();
-        if (token != null) {
+        for (String token : tokens) {
             request.addHeader(MetricsTokenAuthorizationManager.HEADER_NAME, token);
         }
-        return manager.check(() -> null, new RequestAuthorizationContext(request)).isGranted();
+        return manager.authorize(() -> null, new RequestAuthorizationContext(request)).isGranted();
     }
 }

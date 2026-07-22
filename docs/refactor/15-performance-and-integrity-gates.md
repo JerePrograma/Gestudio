@@ -31,7 +31,8 @@ PostgreSQL explícito, `open-in-view` predeterminado, aviso futuro de annotation
 processing de `javac`, puerto host 5432 ocupado y nueva versión mayor de npm
 disponible. No se corrigieron porque no son fallos de este gate.
 
-La confirmación remota posterior quedó registrada en `CI Le Dance` run
+La confirmación remota posterior quedó registrada en el workflow histórico
+entonces denominado `CI Le Dance`, run
 `28544656047`: commit `33c03bbd7cadaa1342134156bc7cb8c9de22e795`, jobs
 `validate` y `build-images` en `SUCCESS`.
 

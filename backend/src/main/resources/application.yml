@@ -4,7 +4,7 @@ spring:
   datasource:
     driver-class-name: org.postgresql.Driver
   jpa:
-    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    open-in-view: false
     hibernate:
       ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:validate}
     properties:
@@ -90,11 +90,10 @@ app:
     enabled: ${APP_BOOTSTRAP_SUPERADMIN_ENABLED:false}
     username: ${APP_BOOTSTRAP_SUPERADMIN_USERNAME:}
     password: ${APP_BOOTSTRAP_SUPERADMIN_PASSWORD:}
-  bootstrap-admin:
-    enabled: ${APP_BOOTSTRAP_ADMIN_ENABLED:false}
-    username: ${APP_BOOTSTRAP_ADMIN_USERNAME:}
-    password: ${APP_BOOTSTRAP_ADMIN_PASSWORD:}
-    reset-existing-password: ${APP_BOOTSTRAP_ADMIN_RESET_EXISTING_PASSWORD:false}
+  local-admin-password-reset:
+    enabled: ${APP_LOCAL_ADMIN_PASSWORD_RESET_ENABLED:false}
+    username: ${APP_LOCAL_ADMIN_PASSWORD_RESET_USERNAME:}
+    password: ${APP_LOCAL_ADMIN_PASSWORD_RESET_PASSWORD:}
   jere-platform-student-export:
     enabled: ${APP_JERE_PLATFORM_STUDENT_EXPORT_ENABLED:false}
     organization-id: ${APP_JERE_PLATFORM_STUDENT_EXPORT_ORGANIZATION_ID:}

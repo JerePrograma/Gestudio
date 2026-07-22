@@ -76,8 +76,9 @@ logs/
 *~
 
 # Local database and operational artifacts
-/*.dump
-/*.backup*
+*.dump
+*.backup
+*.backup.*
 /backup*.sql
 /basebackup*/
 /backup-*/
@@ -87,6 +88,9 @@ logs/
 # Coverage Reports
 coverage/
 lcov-report/
+playwright-report/
+test-results/
+*.trace.zip
 
 # Debugging
 debug/

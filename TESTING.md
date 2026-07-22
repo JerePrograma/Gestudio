@@ -1,177 +1,88 @@
-# Unit Testing Progress Report - Le Dance Backend
+# Validación de Gestudio
 
-**Date:** February 15, 2026  
-**Status:** ✅ Initial Phase Complete
+Esta guía define los comandos soportados. Los resultados de una release se
+registran en la bitácora de cierre correspondiente; iniciar un servidor o
+compilar una parte del proyecto no sustituye estos gates.
 
-## Summary
+## Requisitos
 
-Created comprehensive unit tests for the Java `/gestudio/util` package to improve code coverage. All tests passing with code coverage metrics now tracked.
+- JDK 21 indicado por `JAVA_HOME`;
+- Docker Engine y Docker Compose disponibles para Testcontainers y los drills;
+- Node.js 22 LTS y npm;
+- PowerShell 7 para el flujo principal y Windows PowerShell 5.1 para la
+  comprobación de compatibilidad cuando se trabaja en Windows.
 
-## What Was Accomplished
+El Maven global no es un requisito: se usa siempre el wrapper versionado.
 
-### 1. **Created FilePathResolverTest** 
-- **File:** [`backend/src/test/java/gestudio/util/FilePathResolverTest.java`](backend/src/test/java/gestudio/util/FilePathResolverTest.java)
-- **Test Count:** 13 comprehensive unit tests
-- **Status:** ✅ All passing
+## Backend
 
-### 2. **Test Coverage Details**
+Desde la raíz, en PowerShell:
 
-#### FilePathResolver Tests Implemented:
-
-| Test Name | Purpose |
-|-----------|---------|
-| `testOfWithSingleSegment()` | Verify path resolution with one segment |
-| `testOfWithMultipleSegments()` | Verify path resolution with multiple segments |
-| `testOfWithThreeSegments()` | Verify path resolution with three segments |
-| `testOfWithManySegments()` | Verify path resolution with many segments |
-| `testOfWithSpecialCharacters()` | Handle hyphens and underscores in segments |
-| `testOfWithEmptySegment()` | Handle empty string segments gracefully |
-| `testConstructorIsPrivate()` | Verify utility class cannot be instantiated |
-| `testPathStartsWithBaseDirectory()` | Verify paths start with GESTUDIO_HOME |
-| `testOfWithNumericSegments()` | Handle numeric segment names |
-| `testOfWithMixedCaseSegments()` | Handle mixed case in segment names |
-| `testConsistencyOfResolution()` | Verify identical inputs produce identical outputs |
-| `testOfWithDotSegments()` | Handle dot-prefixed files like `.htaccess` |
-| `testNoTrailingSlash()` | Ensure paths don't have unnecessary trailing slashes |
-
-### 3. **Code Coverage Metrics**
-
-**FilePathResolver Coverage:**
-```
-Line Coverage:        83% (5 of 6 lines covered)
-Instruction Coverage: 77% (17 of 22 instructions)
-Branch Coverage:      50% (2 of 4 branches)
-Complexity Coverage:  60% (3 of 5)
+```powershell
+Push-Location backend
+try {
+    .\mvnw.cmd --version
+    .\mvnw.cmd -B -ntp clean test
+    .\mvnw.cmd -B -ntp clean verify
+}
+finally {
+    Pop-Location
+}
 ```
 
-**Test Execution Results:**
-- Total Tests Run: 15
-  - FilePathResolverTest: 13 ✅
-  - PaymentCalculationServicioTest: 2 ✅
-- Failures: 0
-- Errors: 0
-- Skipped: 0
+En Linux o GitHub Actions, reemplazar `mvnw.cmd` por `bash ./mvnw`.
 
-### 4. **Infrastructure Improvements**
+`clean verify` incluye pruebas unitarias, seguridad HTTP, PostgreSQL real con
+Testcontainers, Flyway desde cero y desde estados de actualización soportados,
+concurrencia, planes de consulta y contratos de arquitectura. Los reportes
+JaCoCo se generan bajo `backend/target/site/jacoco/`; `target/` no se versiona.
 
-#### Added JaCoCo Code Coverage Plugin
-- **File Modified:** [`backend/pom.xml`](backend/pom.xml)
-- **Plugin:** JaCoCo Maven Plugin v0.8.11
-- **Coverage Reports Generated:** HTML and CSV formats at `target/site/jacoco/`
+Las pruebas de confinamiento de recibos crean enlaces simbólicos. En Windows
+pueden omitirse únicamente cuando el sistema niega el privilegio de crearlos;
+en Linux/GitHub Actions deben ejecutarse y pasar. El reporte final debe indicar
+la cantidad exacta de skips observados en cada plataforma.
 
-**To view coverage reports:**
-```bash
-# Generate coverage report
-GESTUDIO_HOME=/opt/gestudio JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 mvn clean test
+## Frontend
 
-# Open coverage report in browser
-open backend/target/site/jacoco/index.html
+Partiendo de una instalación reproducible:
+
+```powershell
+Push-Location frontend
+try {
+    npm ci
+    npm audit
+    npm audit --omit=dev
+    npm run lint
+    npm test
+    npm run build
+}
+finally {
+    Pop-Location
+}
 ```
 
-## How to Run Tests
+El script `npm test` ejecuta primero los contratos Node de Nginx y después
+Vitest. El build usa las variables Vite documentadas y su salida queda en
+`frontend/dist/`, que tampoco se versiona.
 
-### Prerequisites
-- Java 21 JDK
-- Maven
-- GESTUDIO_HOME environment variable set
+## Validación integrada
 
-### Run All Tests
-```bash
-cd backend
-GESTUDIO_HOME=/path/to/gestudio mvn test
+```powershell
+pwsh -NoProfile -File .\scripts\codex\validate.ps1 -Scope All
+pwsh -NoProfile -File .\scripts\validate-demo-seed.ps1
+pwsh -NoProfile -File .\scripts\smoke-local.ps1
+pwsh -NoProfile -File .\scripts\ops\verify-observability.ps1
+pwsh -NoProfile -File .\scripts\ops\verify-backup-restore.ps1
+pwsh -NoProfile -File .\scripts\ops\verify-application-rollback.ps1
 ```
 
-### Run Only Util Tests
-```bash
-cd backend
-GESTUDIO_HOME=/path/to/gestudio mvn test -Dtest=FilePathResolverTest
-```
+Cada drill crea un nombre de proyecto Compose aislado, comprueba sus propios
+recursos y ejecuta limpieza en `finally`. No se deben usar nombres de proyecto
+compartidos ni comandos de limpieza global de Docker.
 
-### Generate Coverage Report Only
-```bash
-cd backend
-GESTUDIO_HOME=/path/to/gestudio mvn clean test jacoco:report
-```
+## Criterio de reporte
 
-## Next Steps & Recommendations
-
-### High Priority
-1. **Test Other Utility Classes**
-   - Review all classes in `gestudio/util/` and `gestudio/validaciones/` packages
-   - Currently only 1 util class (FilePathResolver) has tests
-   - Recommendation: Aim for 80%+ coverage in all utility packages
-
-2. **Increase Service Layer Test Coverage**
-   - Currently only `PaymentCalculationServicio` has tests
-   - Estimated 30+ service classes need testing
-   - Start with critical paths: payment, enrollment, attendance services
-
-3. **Create Test Configuration**
-   - Set GESTUDIO_HOME in CI/CD pipeline
-   - Add Maven profiles for different test environments
-
-### Medium Priority
-4. **Add Integration Tests**
-   - Begin testing service-to-repository interactions
-   - Use embedded PostgreSQL for database tests
-
-5. **Test Coverage Thresholds**
-   - Configure Maven to enforce minimum coverage (e.g., 70%)
-   - Add pre-commit hooks to validate coverage
-
-### Low Priority
-6. **Document Testing Standards**
-   - Create TESTING.md for team guidelines
-   - Example patterns for different test types (unit, integration, e2e)
-
-## Coverage Gap Analysis
-
-### Uncovered CodePaths
-The FilePathResolver has 1 uncovered line:
-```java
-throw new IllegalStateException("Variable de entorno GESTUDIO_HOME no definida")
-```
-
-This exception case is difficult to test because:
-- Static initializer runs at class load time
-- Environment variable must be unset, but tests require it
-- Would need test isolation or custom class loader
-
-**Solution:** Could use `junit-pioneer` library's `@SetEnvironmentVariable` annotation in future for better isolation.
-
-## Test Quality Metrics
-
-- **Test Naming:** Clear, descriptive names following convention
-- **Test Isolation:** Each test is independent
-- **Assertions:** Comprehensive assertions for each test case
-- **Documentation:** Each test is well-commented
-- **Edge Cases:** Tests cover normal cases, edge cases, and special characters
-
-## Files Modified
-
-1. ✅ Created: `backend/src/test/java/gestudio/util/FilePathResolverTest.java`
-2. ✅ Modified: `backend/pom.xml` (added JaCoCo plugin)
-
-## Metrics Dashboard
-
-```
-┌─────────────────────────────────────┐
-│ Backend Test Status                 │
-├─────────────────────────────────────┤
-│ Tests Created:        13            │
-│ Tests Passing:        13 (100%)     │
-│ Code Coverage:        ~75% (util)   │
-│ Coverage Reports:     ✅ Enabled    │
-│ CI/CD Ready:          ⚠️  Needs env │
-└─────────────────────────────────────┘
-```
-
-## References
-
-- JUnit 5 Documentation: https://junit.org/junit5/
-- JaCoCo Plugin: https://www.jacoco.org/
-- Spring Boot Testing: https://spring.io/guides/gs/testing-web/
-
----
-
-**Next Command:** `GESTUDIO_HOME=/opt/gestudio JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 mvn test`
+Para cada comando se registra código de salida, duración, cantidad de pruebas,
+fallos, errores y skips. Un resultado previo a la última modificación sirve
+sólo como diagnóstico; la evidencia de release debe corresponder al mismo árbol
+que se publica y a las GitHub Actions ejecutadas sobre su SHA.

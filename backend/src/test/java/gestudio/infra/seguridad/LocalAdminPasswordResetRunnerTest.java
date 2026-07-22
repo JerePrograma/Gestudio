@@ -71,14 +71,14 @@ class LocalAdminPasswordResetRunnerTest {
                 .getAnnotation(ConditionalOnProperty.class);
 
         assertThat(profile.value()).containsExactly("dev");
-        assertThat(condition.name()).containsExactly("app.bootstrap-admin.reset-existing-password");
+        assertThat(condition.name()).containsExactly("app.local-admin-password-reset.enabled");
         assertThat(condition.havingValue()).isEqualTo("true");
         assertThat(condition.matchIfMissing()).isFalse();
     }
 
     private LocalAdminPasswordResetRunner runner() {
         return new LocalAdminPasswordResetRunner(
-                new AdminBootstrapProperties(false, " admin ", PASSWORD),
+                new LocalAdminPasswordResetProperties(" admin ", PASSWORD),
                 usuarios, encoder, passwordPolicy, audit, Clock.fixed(NOW, ZoneOffset.UTC));
     }
 

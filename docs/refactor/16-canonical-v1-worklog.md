@@ -186,7 +186,7 @@
 - Ahead/behind (`origin/main...HEAD`): `0 1`; el commit canónico local sigue exactamente uno adelante y no fue descartado ni publicado desde esta sesión.
 - Estado inicial: worktree y staging limpios; no se creó otra rama y no se ejecutó pull, rebase, reset, commit, push, merge, tag ni deploy.
 - Docker: Docker Desktop estaba instalado pero detenido; se inició sin borrar imágenes, volúmenes, contenedores ni caches. Engine `29.3.1` disponible.
-- `JAVA_HOME` usado por proceso: `C:\Program Files\Java\corretto-21.0.7`; `java 21.0.7` y `javac 21.0.7`.
+- `JAVA_HOME` usado por proceso: JDK Corretto; `java 21.0.7` y `javac 21.0.7`.
 - PostgreSQL: sólo Testcontainers `15.12-alpine3.21`, con puertos host aleatorios (`51770` y `51924` observados). No se abrió conexión a `localhost:5432`; `status.ps1` únicamente informó que ese puerto estaba ocupado.
 
 ### Baseline posterior al commit
@@ -311,7 +311,7 @@
 - El runtime backend contiene sólo `app.jar`, el recurso de firma y directorios de recibos, y ejecuta como usuario `gestudio`. El runtime frontend no contiene fuentes, `package.json`, `/app` ni `node_modules`.
 - No se encontraron los placeholders sensibles de CI en configuración, historial ni filesystem de las imágenes.
 - Advertencias no bloqueantes observadas: auto-attach de Mockito/Byte Buddy, dialecto PostgreSQL explícito, `open-in-view` predeterminado, aviso futuro de annotation processing de `javac`, puerto host 5432 ocupado y actualización mayor de npm disponible.
-- Archivos modificados: `.github/workflows/github.-actions-demo.yml`, `frontend/package.json`, `scripts/codex/validate.ps1`, `docs/refactor/15-performance-and-integrity-gates.md`, este worklog y `docs/development/local-development.md`.
+- Archivos modificados: `.github/workflows/ci.yml`, `frontend/package.json`, `scripts/codex/validate.ps1`, `docs/refactor/15-performance-and-integrity-gates.md`, este worklog y `docs/development/local-development.md`.
 - Confirmación remota posterior: `CI Le Dance` run `28544656047`, commit `33c03bbd7cadaa1342134156bc7cb8c9de22e795`; `validate` y `build-images` finalizaron `SUCCESS`.
 
 ## Aislamiento PostgreSQL y cierre acotado de concurrencia - 2026-07-01
@@ -348,8 +348,14 @@
 
 ### Implementación y validación
 
-- El initializer productivo ya satisfacía el contrato: bean condicional sólo con `APP_BOOTSTRAP_ADMIN_ENABLED=true`, default `false`, tabla `usuarios` vacía, rol activo `ADMINISTRADOR` buscado sin distinguir mayúsculas, `PasswordEncoder`, usuario activo y log limitado al ID/instrucción de apagar la bandera. No se cambió código productivo, V1, roles ni seguridad.
-- `AdminBootstrapRunnerTest` quedó con 8 tests para creación única/codificada, usernames inválidos, passwords ausente/corta/>72 bytes, usuario preexistente, rol ausente/inactivo, condición Spring deshabilitada y reinicio accidental sin mutación.
+- En ese corte histórico, el inicializador productivo usaba un toggle legacy
+  deshabilitado por defecto, exigía tabla `usuarios` vacía, rol activo
+  `ADMINISTRADOR`, `PasswordEncoder`, usuario activo y log limitado al ID. Ese
+  mecanismo fue retirado por el cierre de 2026-07-22.
+- La suite de bootstrap que luego se consolidó como
+  `SuperadminBootstrapRunnerTest` cubrió creación única/codificada, usernames
+  inválidos, passwords ausente/corta/>72 bytes, usuario preexistente, rol
+  ausente/inactivo, condición Spring deshabilitada y reinicio sin mutación.
 - Gate focalizado: PASS, 8 tests, 0 failures/errors/skipped, Maven 26.867 s.
 - Primer `clean verify`: FAIL ambiental, 66 tests alcanzados y 9 errors porque Docker Desktop estaba detenido (`Could not find a valid Docker environment`). Se inició Docker Desktop sin borrar recursos y se repitió el mismo gate.
 - `clean verify` final: PASS, 75 tests, 0 failures/errors/skipped, 01:18 min; PostgreSQL 15.12 Testcontainers, Flyway exactamente V1, Hibernate validate, JaCoCo sobre 221 clases y JAR generado.

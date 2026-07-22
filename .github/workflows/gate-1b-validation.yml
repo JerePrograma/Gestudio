@@ -3,6 +3,8 @@ name: GATE-1B validation
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -19,10 +21,10 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
       - name: Configure Java 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5
         with:
           distribution: temurin
           java-version: "21"
@@ -30,9 +32,9 @@ jobs:
           cache-dependency-path: backend/pom.xml
 
       - name: Configure Node 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
-          node-version: "22.14.0"
+          node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -44,7 +46,7 @@ jobs:
             echo "UTC=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
             echo "America/Argentina/Buenos_Aires=$(TZ=America/Argentina/Buenos_Aires date '+%Y-%m-%dT%H:%M:%S%z')"
             echo "GITHUB_SHA=$GITHUB_SHA"
-            echo "GITHUB_HEAD_REF=$GITHUB_HEAD_REF"
+            echo "GITHUB_HEAD_REF=${GITHUB_HEAD_REF:-}"
             echo "--- git status --short --branch"
             git status --short --branch
             echo "--- git rev-parse HEAD"
@@ -72,11 +74,12 @@ jobs:
           } | tee environment.log
 
       - name: Publish environment evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: environment-evidence
           path: environment.log
           if-no-files-found: error
+          retention-days: 14
 
   validate-backend:
     name: Scope Backend
@@ -84,10 +87,10 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
       - name: Configure Java 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5
         with:
           distribution: temurin
           java-version: "21"
@@ -102,7 +105,7 @@ jobs:
 
       - name: Publish backend evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: backend-evidence
           path: |
@@ -111,6 +114,7 @@ jobs:
             backend/target/failsafe-reports
             backend/target/site/jacoco
           if-no-files-found: error
+          retention-days: 14
 
   validate-frontend:
     name: Scope Frontend
@@ -118,12 +122,12 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
       - name: Configure Node 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
-          node-version: "22.14.0"
+          node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -139,11 +143,12 @@ jobs:
 
       - name: Publish frontend evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: frontend-evidence
           path: validation-frontend.log
           if-no-files-found: error
+          retention-days: 14
 
   validate-all:
     name: Scope All
@@ -151,10 +156,10 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
       - name: Configure Java 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5
         with:
           distribution: temurin
           java-version: "21"
@@ -162,9 +167,9 @@ jobs:
           cache-dependency-path: backend/pom.xml
 
       - name: Configure Node 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
-          node-version: "22.14.0"
+          node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -180,7 +185,7 @@ jobs:
 
       - name: Publish all-scope evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: all-scope-evidence
           path: |
@@ -189,6 +194,7 @@ jobs:
             backend/target/failsafe-reports
             backend/target/site/jacoco
           if-no-files-found: error
+          retention-days: 14
 
   smoke-local:
     name: Smoke local
@@ -197,7 +203,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
       - name: Execute canonical smoke
         shell: pwsh
@@ -214,13 +220,14 @@ jobs:
 
       - name: Publish smoke evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: smoke-evidence
           path: |
             smoke-local.log
             smoke-docker-resources.log
           if-no-files-found: error
+          retention-days: 14
 
   validate-demo-seed:
     name: Demo seed
@@ -229,10 +236,10 @@ jobs:
     timeout-minutes: 50
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
       - name: Configure Java 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5
         with:
           distribution: temurin
           java-version: "21"
@@ -254,10 +261,11 @@ jobs:
 
       - name: Publish demo evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: demo-seed-evidence
           path: |
             demo-seed.log
             demo-docker-resources.log
           if-no-files-found: error
+          retention-days: 14

@@ -2,11 +2,13 @@ package gestudio.infra.observabilidad;
 
 import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.security.authorization.AuthorizationManager;
+import org.springframework.security.authorization.AuthorizationResult;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.web.access.intercept.RequestAuthorizationContext;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.Enumeration;
 import java.util.function.Supplier;
 
 public final class MetricsTokenAuthorizationManager
@@ -23,9 +25,26 @@ public final class MetricsTokenAuthorizationManager
     }
 
     @Override
+    public AuthorizationResult authorize(Supplier<Authentication> authentication,
+                                         RequestAuthorizationContext context) {
+        return decision(context);
+    }
+
+    @Override
+    @SuppressWarnings("deprecation")
     public AuthorizationDecision check(Supplier<Authentication> authentication,
                                        RequestAuthorizationContext context) {
-        return new AuthorizationDecision(matches(context.getRequest().getHeader(HEADER_NAME)));
+        return decision(context);
+    }
+
+    private AuthorizationDecision decision(RequestAuthorizationContext context) {
+        Enumeration<String> values = context.getRequest().getHeaders(HEADER_NAME);
+        if (values == null || !values.hasMoreElements()) {
+            return new AuthorizationDecision(false);
+        }
+
+        String candidate = values.nextElement();
+        return new AuthorizationDecision(!values.hasMoreElements() && matches(candidate));
     }
 
     boolean matches(String candidate) {

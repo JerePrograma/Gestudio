@@ -41,7 +41,7 @@ Todos los demás endpoints Actuator quedan fuera de la exposición web o denegad
 Variable requerida en producción:
 
 ```text
-APP_OBSERVABILITY_METRICS_TOKEN=<valor aleatorio independiente>
+APP_OBSERVABILITY_METRICS_TOKEN=<valor-aleatorio-independiente-de-al-menos-32-bytes-UTF-8>
 ```
 
 Cabecera requerida:
@@ -103,6 +103,8 @@ Formato admitido:
 - resto limitado a letras, números, punto, guion, guion bajo y dos puntos.
 
 Cuando el valor falta o es inseguro, el backend genera un UUID. El valor efectivo siempre se devuelve en la respuesta.
+
+Para los orígenes CORS configurados, el navegador puede enviar `X-Request-ID` y leerlo en la respuesta. El contrato mantiene `Access-Control-Allow-Credentials: true`, por lo que las cookies de sesión siguen sujetas al origen explícitamente permitido; no se habilita un origen comodín.
 
 Ejemplo:
 
@@ -302,3 +304,10 @@ El gate técnico se considera cerrado únicamente cuando código, pruebas y dril
 - evidencia de carga y ajuste de umbrales.
 
 Producción permanece en `NO-GO` hasta una autorización separada.
+
+## Evidencia local 2026-07-22
+
+`pwsh -NoProfile -File .\scripts\ops\verify-observability.ps1` terminó con
+8/8 pasos, 0 fallos, exit 0 y 39,8 s. Validó readiness/liveness, Prometheus
+fail-closed y autenticado, request ID generado/saneado, redacción, perfil hostil
+y cleanup sin contenedores, redes o volúmenes residuales.

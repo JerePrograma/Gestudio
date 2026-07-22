@@ -1,8 +1,11 @@
-# Requirements: Membership Management System (Le Dance)
+# Historical requirements: Gestudio membership management system
+
+> Non-authoritative historical product notes. Current contracts live in the
+> code, Flyway migrations, tests, and maintained project documentation.
 
 ## Introduction
 
-Le Dance is a comprehensive membership and enrollment management system designed for sports facilities, dance academies, music schools, and similar organizations that operate on a subscription-based model. The system enables administrators to manage student/member records, track disciplinary enrollments, monitor payment status, issue receipts, and maintain daily cash flow records. The platform supports complex concepts such as discounts (bonificaciones), surcharges (recargos), attendance tracking, multiple payment methods, and detailed financial reporting.
+Gestudio is a comprehensive membership and enrollment management system designed for sports facilities, dance academies, music schools, and similar organizations that operate on a subscription-based model. The system enables administrators to manage student/member records, track disciplinary enrollments, monitor payment status, issue receipts, and maintain daily cash flow records. The platform supports complex concepts such as discounts (bonificaciones), surcharges (recargos), attendance tracking, multiple payment methods, and detailed financial reporting.
 
 ---
 
@@ -482,4 +485,3 @@ Le Dance is a comprehensive membership and enrollment management system designed
 - **Frontend State Management:** Component-level state with React hooks (useState, useCallback, useMemo).
 - **Async Operations:** Payment reconciliation (saldoRestante calculation), monthly fee generation, and attendance sheet creation may require background task support in future iterations.
 - **Extensibility:** The system is designed to support future features such as automated SMS/email collection reminders, multi-branch support, and advanced financial reporting modules.
-

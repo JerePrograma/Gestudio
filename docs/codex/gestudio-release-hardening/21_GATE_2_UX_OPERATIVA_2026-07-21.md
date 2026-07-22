@@ -5,7 +5,8 @@
 > SHA candidato validado: `52175e49b03a2fc7b4e1c729a0f8a4a7f1c30113`  
 > PR funcional: `#21`  
 > Merge funcional: `7d8872a59acb923fae664f806b01e459f372dc1c`  
-> Resultado: **correcciones técnicas integradas; GATE-2 humano continúa pendiente**
+> Resultado del corte histórico: correcciones técnicas integradas; el recorrido
+> humano no se ejecutó ese día y fue cerrado el 2026-07-22 según el informe 23.
 
 ## 1. Alcance ejecutado
 
@@ -184,17 +185,18 @@ PR `#21`:
 - fusionado con `expected_head_sha=52175e49...`;
 - merge: `7d8872a59acb923fae664f806b01e459f372dc1c`.
 
-## 9. Estado de recorridos humanos
+## 9. Seguimiento de recorridos humanos
 
 | Rol | Estado | Motivo |
 |---|---|---|
-| SUPERADMIN | PENDIENTE | sin navegador y evidencia completa |
-| DIRECCION | PENDIENTE | sin verificación visual de menú/URL directa |
-| ADMINISTRADOR | PENDIENTE | sin recorrido funcional completo |
-| SECRETARIA | PENDIENTE | búsqueda corregida; flujo humano pendiente |
-| CAJA | PENDIENTE | Pagos corregido; circuito financiero/stock pendiente |
+| SUPERADMIN | PASS 2026-07-22 | navegador, reporte con datos, usuarios y roles |
+| DIRECCION | PASS 2026-07-22 | menú, URL directa y denegación de roles |
+| ADMINISTRADOR | PASS 2026-07-22 | recorrido funcional y denegación de roles |
+| SECRETARIA | PASS 2026-07-22 | alumnos, inscripción, asistencia, pagos, caja y reporte |
+| CAJA | PASS 2026-07-22 | pagos, caja, stock, lectura y denegaciones académicas |
 
-No se marca PASS por API, análisis estático o suites.
+El PASS posterior proviene de navegador headed real; no se infiere desde API,
+análisis estático o suites.
 
 ## 10. Recuperación
 
@@ -204,11 +206,10 @@ No se marca PASS por API, análisis estático o suites.
 - siguen vigentes los runbooks canónicos;
 - V1-V7 permanecen intactas.
 
-## 11. Riesgos y pendientes
+## 11. Límites registrados
 
-- IDs técnicos pueden persistir en módulos no recorridos visualmente;
-- accesibilidad, teclado, contraste y modales no están cerrados;
-- responsive 360/390/768/escritorio no tiene evidencia completa;
+- IDs técnicos pueden persistir en módulos ajenos al guion;
+- el recorrido cubrió teclado/foco básico y 390/escritorio, no una auditoría WCAG completa;
 - búsqueda ampliada puede requerir índices con volúmenes mayores;
 - staging no existe;
 - producción no está autorizada;
@@ -221,7 +222,7 @@ No se marca PASS por API, análisis estático o suites.
 | Desarrollo local | GO |
 | Validación técnica | GO |
 | Demo automatizada | GO |
-| Demo humana | NO-GO / PENDIENTE |
+| Demo humana | GO / PASS 2026-07-22 |
 | Demo comercial | NO-GO |
 | Staging | NO-GO / NO PROVISTO |
 | Producción | NO-GO / NO AUTORIZADA |

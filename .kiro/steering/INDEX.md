@@ -1,4 +1,9 @@
-# Le Dance Steering Documents
+# Gestudio historical steering documents
+
+> Historical, non-authoritative guidance. The implemented system and current
+> rules are defined by `AGENTS.md`, the code, Flyway migrations, and the
+> operations documentation. In particular, Gestudio is currently a layered
+> modular monolith; the hexagonal structure described below is aspirational.
 
 **Purpose**: Define standards, best practices, and guidelines for consistent codebase development  
 **Effective Date**: February 16, 2026  
@@ -375,4 +380,4 @@ New team members should:
 
 ---
 
-*These steering documents define the standards for Le Dance. Follow them consistently, question them thoughtfully, and improve them continuously.*
+*Use these historical notes only when they agree with Gestudio's current source of truth.*

@@ -56,9 +56,7 @@ const SalonesFormulario: React.FC = () => {
 
     try {
       const salon = await salonesApi.obtenerSalonPorId(Number(idBusqueda));
-      console.log("Salon data received:", salon);
       const convertedSalon = convertToSalonFormValues(salon);
-      console.log("Converted salon data:", convertedSalon);
       setFormValues(convertedSalon);
       setSalonId(salon.id);
       setMensaje("Salon encontrado.");
@@ -81,8 +79,6 @@ const SalonesFormulario: React.FC = () => {
     async (
       values: SalonRegistroRequest & Partial<SalonModificacionRequest>
     ) => {
-      console.log("Valores a guardar:", values);
-
       try {
         if (salonId) {
           await salonesApi.actualizarSalon(
