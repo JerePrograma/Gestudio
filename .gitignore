@@ -83,9 +83,9 @@ logs/
 *.backup.*
 /backup*.sql
 /basebackup*/
-/backup-/
+/backup-*/
 /output*.txt
-/backend/backup-/
+/backend/backup-*/
 
 # Coverage Reports
 coverage/
