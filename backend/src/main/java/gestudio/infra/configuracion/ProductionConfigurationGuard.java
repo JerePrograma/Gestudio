@@ -9,7 +9,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 
 @Component
-@Profile("prod")
+@Profile({"prod", "remote-demo"})
 public class ProductionConfigurationGuard {
 
     public ProductionConfigurationGuard(
@@ -18,14 +18,14 @@ public class ProductionConfigurationGuard {
             @Value("${app.observability.metrics-token:}") String metricsToken) {
         if (app.corsAllowedOrigins().stream().anyMatch(origin -> !isSecureOrigin(origin))) {
             throw new IllegalStateException(
-                    "Producción exige orígenes CORS HTTPS explícitos, sin wildcard, path ni credenciales");
+                    "Los perfiles públicos exigen orígenes CORS HTTPS explícitos, sin wildcard, path ni credenciales");
         }
         if (security.refreshCookie() == null || !security.refreshCookie().secure()) {
-            throw new IllegalStateException("Producción exige la cookie de refresh Secure");
+            throw new IllegalStateException("Los perfiles públicos exigen la cookie de refresh Secure");
         }
         if (metricsToken == null || metricsToken.getBytes(StandardCharsets.UTF_8).length < 32) {
             throw new IllegalStateException(
-                    "Producción exige un token de métricas independiente de al menos 32 bytes UTF-8");
+                    "Los perfiles públicos exigen un token de métricas independiente de al menos 32 bytes UTF-8");
         }
     }
 
