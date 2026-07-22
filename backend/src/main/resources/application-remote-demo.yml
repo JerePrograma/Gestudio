@@ -26,6 +26,8 @@ app:
   receipts-path: ${APP_RECEIPTS_PATH}
   cors-allowed-origins: ${APP_CORS_ALLOWED_ORIGINS}
   scheduling-enabled: false
+  remote-demo:
+    proxy-token: ${APP_REMOTE_DEMO_PROXY_TOKEN}
   observability:
     metrics-token: ${APP_OBSERVABILITY_METRICS_TOKEN}
   security:
