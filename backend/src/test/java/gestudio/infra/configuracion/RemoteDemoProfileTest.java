@@ -1,5 +1,6 @@
 package gestudio.infra.configuracion;
 
+import gestudio.infra.seguridad.RemoteDemoProxyTokenFilter;
 import gestudio.infra.seguridad.SecurityProperties;
 import gestudio.servicios.email.EmailService;
 import gestudio.servicios.email.IEmailService;
@@ -22,6 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class RemoteDemoProfileTest {
 
     private static final String METRICS_TOKEN = "metrics-token-independent-with-32-bytes";
+    private static final String PROXY_TOKEN = "pages-proxy-token-independent-32-bytes";
 
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
             .withInitializer(context -> context.getEnvironment().setActiveProfiles("remote-demo"))
@@ -30,6 +32,7 @@ class RemoteDemoProfileTest {
                     "app.time-zone=America/Argentina/Buenos_Aires",
                     "app.receipts-path=receipts",
                     "app.cors-allowed-origins=https://app.example.test",
+                    "app.remote-demo.proxy-token=" + PROXY_TOKEN,
                     "app.observability.metrics-token=" + METRICS_TOKEN,
                     "app.security.bcrypt-strength=12",
                     "app.security.refresh-cookie.name=gestudio_remote_demo_refresh",
@@ -39,10 +42,11 @@ class RemoteDemoProfileTest {
                     "app.security.refresh-cookie.path=/api/login");
 
     @Test
-    void activaGuardasPublicasYEmailNoOp() {
+    void activaGuardasPublicasProxyAutenticadoYEmailNoOp() {
         contextRunner.run(context -> {
             assertThat(context).hasNotFailed();
             assertThat(context).hasSingleBean(ProductionConfigurationGuard.class);
+            assertThat(context).hasSingleBean(RemoteDemoProxyTokenFilter.class);
             assertThat(context).hasSingleBean(IEmailService.class);
             assertThat(context).hasSingleBean(NoOpEmailService.class);
         });
@@ -50,6 +54,10 @@ class RemoteDemoProfileTest {
         Profile guardProfile = ProductionConfigurationGuard.class.getAnnotation(Profile.class);
         assertThat(guardProfile).isNotNull();
         assertThat(guardProfile.value()).containsExactlyInAnyOrder("prod", "remote-demo");
+
+        Profile proxyProfile = RemoteDemoProxyTokenFilter.class.getAnnotation(Profile.class);
+        assertThat(proxyProfile).isNotNull();
+        assertThat(proxyProfile.value()).containsExactly("remote-demo");
 
         Profile noOpProfile = NoOpEmailService.class.getAnnotation(Profile.class);
         assertThat(noOpProfile).isNotNull();
@@ -61,7 +69,7 @@ class RemoteDemoProfileTest {
     }
 
     @Test
-    void fallaCerradoConCorsCookieOMetricasInseguras() {
+    void fallaCerradoConCorsCookieMetricasOProxyInseguros() {
         assertStartupFailure(
                 contextRunner.withPropertyValues("app.cors-allowed-origins=http://app.example.test"),
                 "CORS HTTPS");
@@ -71,6 +79,9 @@ class RemoteDemoProfileTest {
         assertStartupFailure(
                 contextRunner.withPropertyValues("app.observability.metrics-token=short"),
                 "token de métricas");
+        assertStartupFailure(
+                contextRunner.withPropertyValues("app.remote-demo.proxy-token=short"),
+                "token de proxy");
     }
 
     @Test
@@ -86,6 +97,8 @@ class RemoteDemoProfileTest {
         assertThat(source.getProperty("spring.jpa.hibernate.ddl-auto")).isEqualTo("validate");
         assertThat(source.getProperty("spring.flyway.enabled")).isEqualTo(true);
         assertThat(source.getProperty("app.scheduling-enabled")).isEqualTo(false);
+        assertThat(source.getProperty("app.remote-demo.proxy-token"))
+                .isEqualTo("${APP_REMOTE_DEMO_PROXY_TOKEN}");
         assertThat(source.getProperty("app.security.refresh-cookie.secure"))
                 .isEqualTo("${APP_SECURITY_REFRESH_COOKIE_SECURE:true}");
         assertThat(source.getProperty("app.observability.metrics-token"))
@@ -112,7 +125,11 @@ class RemoteDemoProfileTest {
 
     @Configuration(proxyBeanMethods = false)
     @EnableConfigurationProperties({AppProperties.class, SecurityProperties.class})
-    @Import({ProductionConfigurationGuard.class, NoOpEmailService.class})
+    @Import({
+            ProductionConfigurationGuard.class,
+            RemoteDemoProxyTokenFilter.class,
+            NoOpEmailService.class
+    })
     static class RemoteDemoTestConfiguration {
     }
 }
