@@ -28,7 +28,12 @@
     }
     $script:environmentValues = $values
 
-    foreach ($secretName in @("POSTGRES_PASSWORD", "JWT_SECRET", "APP_OBSERVABILITY_METRICS_TOKEN")) {
+    foreach ($secretName in @(
+        "POSTGRES_PASSWORD",
+        "JWT_SECRET",
+        "APP_REMOTE_DEMO_PROXY_TOKEN",
+        "APP_OBSERVABILITY_METRICS_TOKEN"
+    )) {
         if ($values.ContainsKey($secretName)) { Add-Secret ([string]$values[$secretName]) }
     }
 }
@@ -85,7 +90,7 @@ function Assert-EnvironmentContract {
         "SPRING_PROFILES_ACTIVE", "SPRING_JPA_HIBERNATE_DDL_AUTO", "SPRING_FLYWAY_ENABLED",
         "POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD", "JWT_SECRET", "JWT_ISSUER",
         "JWT_ACCESS_TOKEN_TTL", "JWT_REFRESH_TOKEN_TTL", "APP_TIME_ZONE", "APP_RECEIPTS_PATH",
-        "APP_CORS_ALLOWED_ORIGINS", "APP_OBSERVABILITY_METRICS_TOKEN",
+        "APP_CORS_ALLOWED_ORIGINS", "APP_REMOTE_DEMO_PROXY_TOKEN", "APP_OBSERVABILITY_METRICS_TOKEN",
         "APP_SECURITY_REFRESH_COOKIE_NAME", "APP_SECURITY_REFRESH_COOKIE_SECURE",
         "APP_SECURITY_REFRESH_COOKIE_SAME_SITE", "APP_SECURITY_REFRESH_COOKIE_DOMAIN",
         "APP_SECURITY_REFRESH_COOKIE_PATH", "APP_SCHEDULING_ENABLED",
@@ -118,7 +123,12 @@ function Assert-EnvironmentContract {
     Assert-Equal (Get-EnvironmentValue "SERVER_PORT") "8080" "SERVER_PORT remoto incorrecto"
     Assert-Equal (Get-EnvironmentValue "BACKEND_PORT") "18080" "BACKEND_PORT remoto incorrecto"
 
-    foreach ($name in @("POSTGRES_PASSWORD", "JWT_SECRET", "APP_OBSERVABILITY_METRICS_TOKEN")) {
+    foreach ($name in @(
+        "POSTGRES_PASSWORD",
+        "JWT_SECRET",
+        "APP_REMOTE_DEMO_PROXY_TOKEN",
+        "APP_OBSERVABILITY_METRICS_TOKEN"
+    )) {
         $value = Get-EnvironmentValue $name
         if ($value -match '(?i)REPLACE_WITH|CHANGE[_-]?ME|<|>') {
             throw "$name todavía contiene un placeholder"
@@ -133,12 +143,16 @@ function Assert-EnvironmentContract {
     if ([Text.Encoding]::UTF8.GetByteCount($jwtSecret) -lt 32) {
         throw "JWT_SECRET debe tener al menos 32 bytes UTF-8"
     }
+    $proxyToken = Get-EnvironmentValue "APP_REMOTE_DEMO_PROXY_TOKEN"
+    if ([Text.Encoding]::UTF8.GetByteCount($proxyToken) -lt 32) {
+        throw "APP_REMOTE_DEMO_PROXY_TOKEN debe tener al menos 32 bytes UTF-8"
+    }
     $metricsToken = Get-EnvironmentValue "APP_OBSERVABILITY_METRICS_TOKEN"
     if ([Text.Encoding]::UTF8.GetByteCount($metricsToken) -lt 32) {
         throw "APP_OBSERVABILITY_METRICS_TOKEN debe tener al menos 32 bytes UTF-8"
     }
-    if ($jwtSecret -eq $metricsToken) {
-        throw "JWT_SECRET y APP_OBSERVABILITY_METRICS_TOKEN deben ser independientes"
+    if ($jwtSecret -eq $metricsToken -or $jwtSecret -eq $proxyToken -or $metricsToken -eq $proxyToken) {
+        throw "JWT_SECRET, APP_REMOTE_DEMO_PROXY_TOKEN y APP_OBSERVABILITY_METRICS_TOKEN deben ser independientes"
     }
 
     $databaseName = Get-EnvironmentValue "POSTGRES_DB"
@@ -166,7 +180,7 @@ function Assert-EnvironmentContract {
         }
     }
 
-    Pass "Entorno remoto" "perfil, secretos, CORS y cookie cumplen el contrato"
+    Pass "Entorno remoto" "perfil, secretos, proxy, CORS y cookie cumplen el contrato"
 }
 
 function Assert-Prerequisites {
@@ -252,4 +266,3 @@ function Assert-NetworkExposure {
     Assert-Equal ([string]$bindings[0].HostPort) (Get-EnvironmentValue "BACKEND_PORT") "Puerto backend publicado inesperado"
     Pass "Aislamiento de red" "PostgreSQL sin puerto y backend sólo en 127.0.0.1"
 }
-
