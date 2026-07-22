@@ -62,12 +62,14 @@ logs/
 # Environment Files
 .env
 .env.local
+.env.remote-demo
 .env.development
 .env.production
 .env.test
 .env.*.local
 !.env.example
 !.env.local.example
+!.env.remote-demo.example
 
 # Miscellaneous
 *.bak
@@ -81,9 +83,9 @@ logs/
 *.backup.*
 /backup*.sql
 /basebackup*/
-/backup-*/
+/backup-/
 /output*.txt
-/backend/backup-*/
+/backend/backup-/
 
 # Coverage Reports
 coverage/
