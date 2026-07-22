@@ -13,6 +13,7 @@ $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $composeFile = Join-Path $repoRoot "docker-compose.yml"
 $remoteComposeFile = Join-Path $repoRoot "docker-compose.remote-demo.yml"
 $seedPath = Join-Path $PSScriptRoot "gestudio_demo_seed_full.sql"
+$seedContractPath = Join-Path $PSScriptRoot "remote-demo/validate-demo-seed.sql"
 $backendRoot = Join-Path $repoRoot "backend"
 $migrationRoot = Join-Path $backendRoot "src/main/resources/db/migration"
 $project = "gestudio-remote-demo"
@@ -42,6 +43,8 @@ $caughtMessage = $null
 foreach ($module in @(
     "remote-demo/common.ps1",
     "remote-demo/environment.ps1",
+    "remote-demo/database.ps1",
+    "remote-demo/credentials.ps1",
     "remote-demo/seed.ps1",
     "remote-demo/lifecycle.ps1"
 )) {
