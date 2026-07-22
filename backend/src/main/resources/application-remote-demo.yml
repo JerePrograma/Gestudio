@@ -1,0 +1,52 @@
+spring:
+  config:
+    activate:
+      on-profile: remote-demo
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+    baseline-on-migrate: false
+    baseline-version: 1
+
+jwt:
+  secret: ${JWT_SECRET}
+  issuer: ${JWT_ISSUER}
+  audience: ${JWT_AUDIENCE:gestudio-web}
+  access-token-ttl: ${JWT_ACCESS_TOKEN_TTL:PT15M}
+  refresh-token-ttl: ${JWT_REFRESH_TOKEN_TTL:P1D}
+
+app:
+  time-zone: ${APP_TIME_ZONE}
+  receipts-path: ${APP_RECEIPTS_PATH}
+  cors-allowed-origins: ${APP_CORS_ALLOWED_ORIGINS}
+  scheduling-enabled: false
+  observability:
+    metrics-token: ${APP_OBSERVABILITY_METRICS_TOKEN}
+  security:
+    bcrypt-strength: ${APP_SECURITY_BCRYPT_STRENGTH:12}
+    refresh-cookie:
+      name: ${APP_SECURITY_REFRESH_COOKIE_NAME:gestudio_remote_demo_refresh}
+      secure: ${APP_SECURITY_REFRESH_COOKIE_SECURE:true}
+      same-site: ${APP_SECURITY_REFRESH_COOKIE_SAME_SITE:Strict}
+      domain: ${APP_SECURITY_REFRESH_COOKIE_DOMAIN:}
+      path: ${APP_SECURITY_REFRESH_COOKIE_PATH:/api/login}
+  bootstrap-superadmin:
+    enabled: false
+    username: ""
+    password: ""
+  local-admin-password-reset:
+    enabled: false
+    username: ""
+    password: ""
+  jere-platform-student-export:
+    enabled: false
+
+logging:
+  level:
+    root: ${LOGGING_LEVEL_ROOT:INFO}
