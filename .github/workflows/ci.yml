@@ -62,6 +62,9 @@ jobs:
           npm run lint
           npm test
           npm run build
+          test -f dist/_headers
+          grep -F "connect-src 'self' https://example.invalid;" dist/_headers
+          ! grep -F '__GESTUDIO_API_ORIGIN__' dist/_headers
 
       - name: Validate local Compose
         run: docker compose config --quiet
@@ -91,6 +94,117 @@ jobs:
           VITE_API_BASE_URL: https://api.example.invalid/api
           VITE_APP_TIME_ZONE: America/Argentina/Buenos_Aires
         run: docker compose -f docker-compose.yml -f docker-compose.prod.yml config --quiet
+
+      - name: Validate remote demo contracts
+        env:
+          POSTGRES_PASSWORD: ci-remote-database-password
+          JWT_SECRET: ci-remote-jwt-secret-with-at-least-32-characters
+          APP_CORS_ALLOWED_ORIGINS: https://app.example.invalid
+          APP_OBSERVABILITY_METRICS_TOKEN: ci-remote-independent-metrics-token
+        run: |
+          set -euo pipefail
+          git check-ignore --no-index --quiet .env.remote-demo
+          test -f scripts/remote-demo/validate-demo-seed.sql
+          grep -F "= 914" scripts/remote-demo/validate-demo-seed.sql
+          remote_config="$(mktemp)"
+          trap 'rm -f "$remote_config"' EXIT
+          docker compose \
+            --profile local-frontend-only \
+            --env-file .env.remote-demo.example \
+            -f docker-compose.yml \
+            -f docker-compose.remote-demo.yml \
+            -p gestudio-remote-demo-ci \
+            config --format json > "$remote_config"
+          test "$(jq -r '(.services.db.ports // []) | length' "$remote_config")" = "0"
+          test "$(jq -r '.services.backend.ports | length' "$remote_config")" = "1"
+          test "$(jq -r '.services.backend.ports[0].host_ip' "$remote_config")" = "127.0.0.1"
+          test "$(jq -r '.services.backend.ports[0].published' "$remote_config")" = "18080"
+          test "$(jq -r '.services.backend.environment.SPRING_PROFILES_ACTIVE' "$remote_config")" = "remote-demo"
+          test "$(jq -r '.services.backend.environment.APP_SECURITY_REFRESH_COOKIE_SECURE' "$remote_config")" = "true"
+          test "$(jq -r '.services.frontend.profiles[0]' "$remote_config")" = "local-frontend-only"
+          pwsh -NoProfile -Command '
+            $paths = @(
+              (Resolve-Path "./scripts/demo-remote.ps1").Path
+            ) + @(
+              Get-ChildItem "./scripts/remote-demo" -Filter "*.ps1" -File |
+                Sort-Object FullName |
+                ForEach-Object FullName
+            )
+            foreach ($path in $paths) {
+              $tokens = $null
+              $errors = $null
+              [void][System.Management.Automation.Language.Parser]::ParseFile(
+                $path,
+                [ref] $tokens,
+                [ref] $errors
+              )
+              if (@($errors).Count -gt 0) {
+                Write-Host "Errores de parser en $path"
+                $errors | Format-List | Out-Host
+                exit 1
+              }
+            }
+          '
+
+  remote-demo-powershell:
+    runs-on: windows-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout verified SHA
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Parse remote demo scripts with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $paths = @(
+            (Resolve-Path '.\scripts\demo-remote.ps1').Path
+          ) + @(
+            Get-ChildItem '.\scripts\remote-demo' -Filter '*.ps1' -File |
+              Sort-Object FullName |
+              ForEach-Object FullName
+          )
+          foreach ($path in $paths) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              $path,
+              [ref] $tokens,
+              [ref] $errors
+            )
+            if (@($errors).Count -gt 0) {
+              Write-Host "Errores de parser en $path"
+              $errors | Format-List | Out-Host
+              exit 1
+            }
+          }
+
+      - name: Parse remote demo scripts with PowerShell 7
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $paths = @(
+            (Resolve-Path '.\scripts\demo-remote.ps1').Path
+          ) + @(
+            Get-ChildItem '.\scripts\remote-demo' -Filter '*.ps1' -File |
+              Sort-Object FullName |
+              ForEach-Object FullName
+          )
+          foreach ($path in $paths) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              $path,
+              [ref] $tokens,
+              [ref] $errors
+            )
+            if (@($errors).Count -gt 0) {
+              Write-Host "Errores de parser en $path"
+              $errors | Format-List | Out-Host
+              exit 1
+            }
+          }
 
   build-images:
     needs: validate
@@ -140,6 +254,8 @@ jobs:
           trap 'docker rm -f "$frontend_id" >/dev/null 2>&1 || true' EXIT
           docker cp "$frontend_id:/usr/share/nginx/html" /tmp/gestudio-frontend-html
           ! grep -R -F -l 'http://localhost:8080' /tmp/gestudio-frontend-html
+          test -f /tmp/gestudio-frontend-html/_headers
+          ! grep -F '__GESTUDIO_API_ORIGIN__' /tmp/gestudio-frontend-html/_headers
 
   smoke:
     needs: validate
