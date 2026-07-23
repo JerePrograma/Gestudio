@@ -54,10 +54,19 @@ class RemoteDemoPricingCoverageContractTest {
 
         assertThat(validation)
                 .contains(
+                        "demo_anchor AS",
+                        "substring(",
+                        "Actualización de referencia:",
+                        "extract(year FROM anchor_date)",
                         "invalid_pricing_coverage",
                         "HAVING count(t.id) <> 2",
                         "min(t.vigente_desde) > b.year_start",
+                        "count(*) FROM demo_anchor WHERE anchor_date IS NOT NULL",
                         "= 914"
+                )
+                .doesNotContain(
+                        "extract(month FROM (CURRENT_TIMESTAMP",
+                        "extract(day FROM (CURRENT_TIMESTAMP"
                 );
     }
 }
