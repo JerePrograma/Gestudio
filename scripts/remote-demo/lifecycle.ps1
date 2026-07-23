@@ -70,7 +70,7 @@ function Wait-RemoteServiceHealthy {
         $now = Get-Date
         if ($now -ge $nextProgress) {
             $elapsedSeconds = [int][Math]::Floor(($now - $startedAt).TotalSeconds)
-            Write-Host "[INFO] Esperando $Service: estado=$($state.State), health=$($state.Health), transcurrido=${elapsedSeconds}s/${effectiveTimeout}s"
+            Write-Host "[INFO] Esperando ${Service}: estado=$($state.State), health=$($state.Health), transcurrido=${elapsedSeconds}s/${effectiveTimeout}s"
             $nextProgress = $now.AddSeconds(10)
         }
 
