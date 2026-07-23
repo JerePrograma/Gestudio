@@ -73,4 +73,17 @@ class RemoteDemoPublicDeploymentContractTest {
                         "Write-TunnelState \\"
                 );
     }
+
+    @Test
+    void ocultamientoDirectoNoDisparaElEndpointDeError() throws IOException {
+        String filter = Files.readString(root.resolve(
+                "backend/src/main/java/gestudio/infra/seguridad/RemoteDemoProxyTokenFilter.java"));
+
+        assertThat(filter)
+                .contains(
+                        "response.setStatus(HttpServletResponse.SC_NOT_FOUND)",
+                        "response.setContentLength(0)"
+                )
+                .doesNotContain("response.sendError");
+    }
 }
