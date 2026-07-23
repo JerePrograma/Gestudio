@@ -1,0 +1,2 @@
+param([string]$BackendUrl='http://localhost:18080')
+Set-StrictMode -Version Latest;$ErrorActionPreference='Stop';$repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'));& (Join-Path $repo 'scripts\demo-local.ps1') -Action Status;if($LASTEXITCODE-ne 0){throw 'El dataset demo persistente no está disponible. No se ejecutó Reset.'};$v=Join-Path $repo 'scripts\validate-demo-seed.ps1';if(Test-Path $v){& $v;if($LASTEXITCODE-ne 0){throw 'Falló la validación del seed demo.'}};Write-Host 'Dataset demo validado sin crear pagos ni egresos.'

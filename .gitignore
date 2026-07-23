@@ -1,7 +1,6 @@
 # Maven
 !.mvn/wrapper/maven-wrapper.jar
 /backend/target/
-
 # Gradle
 .gradle/
 build/
@@ -10,7 +9,6 @@ build/
 /pdfs/
 /backend/.idea/
 /backend/.idea/workspace.xml
-
 # Node.js / Vite / Wrangler
 node_modules/
 /frontend/dist/
@@ -22,7 +20,6 @@ yarn-error.log*
 .vite/
 *.log
 !frontend/package-lock.json
-
 # IDE Configurations
 .idea/
 *.iws
@@ -41,7 +38,6 @@ nbdist/
 .nb-gradle/
 .vscode/
 .history/
-
 # OS Files
 .DS_Store
 .AppleDouble
@@ -53,13 +49,11 @@ $RECYCLE.BIN/
 *.pid
 *.swp
 *.swo
-
 # Logs
 logs/
 *.log.*
 *.out
 *.err
-
 # Environment Files
 .env
 .env.local
@@ -71,13 +65,11 @@ logs/
 !.env.example
 !.env.local.example
 !.env.remote-demo.example
-
 # Miscellaneous
 *.bak
 *.tmp
 *.temp
 *~
-
 # Local database and operational artifacts
 *.dump
 *.backup
@@ -87,14 +79,17 @@ logs/
 /backup-*/
 /output*.txt
 /backend/backup-*/
-
 # Coverage Reports
 coverage/
 lcov-report/
 playwright-report/
 test-results/
 *.trace.zip
-
+# Manual visual generado
+artifacts/manual/
+docs/manual-usuarios/screenshots/
+docs/manual-usuarios/.tmp/
+docs/manual-usuarios/videos/
 # Debugging
 debug/
 error.log
