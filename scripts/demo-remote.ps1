@@ -1,6 +1,6 @@
 ﻿param(
     [Parameter(Mandatory)]
-    [ValidateSet("Start", "Status", "Stop", "Reset", "ResetPassword")]
+    [ValidateSet("Start", "Status", "Stop", "Reset", "ResetPassword", "RepairPricing")]
     [string] $Action,
     [string] $EnvFile = "",
     [string] $Username = ""
@@ -15,6 +15,7 @@ $composeFile = Join-Path $repoRoot "docker-compose.yml"
 $remoteComposeFile = Join-Path $repoRoot "docker-compose.remote-demo.yml"
 $seedPath = Join-Path $PSScriptRoot "gestudio_demo_seed_full.sql"
 $seedContractPath = Join-Path $PSScriptRoot "remote-demo/validate-demo-seed.sql"
+$pricingCoveragePath = Join-Path $PSScriptRoot "remote-demo/repair-demo-pricing.sql"
 $backendRoot = Join-Path $repoRoot "backend"
 $migrationRoot = Join-Path $backendRoot "src/main/resources/db/migration"
 $project = "gestudio-remote-demo"
@@ -68,6 +69,7 @@ try {
             }
             Reset-DemoPassword -Username ($Username.Trim().ToLowerInvariant())
         }
+        "RepairPricing" { Repair-DemoPricingCoverage }
     }
 }
 catch {
