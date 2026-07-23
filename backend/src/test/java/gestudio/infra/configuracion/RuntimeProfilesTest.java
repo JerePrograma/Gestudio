@@ -51,6 +51,15 @@ class RuntimeProfilesTest {
     }
 
     @Test
+    void remoteDemoActivaUnSoloEmailNoOpYSinSchedulers() {
+        runWithProfile("remote-demo", "false", context -> {
+            assertThat(context).hasSingleBean(IEmailService.class);
+            assertThat(context).hasSingleBean(NoOpEmailService.class);
+            assertThat(context).doesNotHaveBean(ScheduledTasks.class);
+        });
+    }
+
+    @Test
     void prodActivaEmailRealYSchedulersConfigurables() {
         runWithProfile("prod", "true", context -> {
             assertThat(context).hasSingleBean(IEmailService.class);
@@ -66,7 +75,8 @@ class RuntimeProfilesTest {
         runner.run(context -> {
             assertThat(context).hasFailed();
             assertThat(context.getStartupFailure())
-                    .hasRootCauseMessage("Debe activar exactamente un perfil Spring explícito: dev, test o prod");
+                    .hasRootCauseMessage(
+                            "Debe activar exactamente un perfil Spring explícito: dev, test, prod o remote-demo");
         });
     }
 
