@@ -1,4 +1,38 @@
-﻿function Invoke-DemoSeed {
+﻿function Invoke-DemoPricingCoverageRepair {
+    if (-not (Test-Path -LiteralPath $script:pricingCoveragePath -PathType Leaf)) {
+        throw "Falta reparación tarifaria demo: $($script:pricingCoveragePath)"
+    }
+
+    $businessDate = Get-BusinessDate
+    $repairSql = [IO.File]::ReadAllText($script:pricingCoveragePath)
+    $input = @(
+        "\set ON_ERROR_STOP on",
+        "\set demo_business_date $($businessDate.ToString('yyyy-MM-dd'))",
+        $repairSql
+    ) -join "`n"
+
+    return Invoke-PsqlInput -InputText ($input + "`n") -TuplesOnly
+}
+
+function Repair-DemoPricingCoverage {
+    Assert-EnvironmentContract
+    Assert-Prerequisites
+
+    $databaseState = Get-ServiceState "db"
+    if ($databaseState.State -ne "running" -or $databaseState.Health -ne "healthy") {
+        throw "PostgreSQL remoto debe estar running/healthy antes de reparar tarifas"
+    }
+
+    $summary = (Invoke-DemoPricingCoverageRepair).Trim()
+    $parts = $summary.Split("|")
+    Assert-Equal $parts.Count 3 "Resumen de reparación tarifaria ilegible"
+    Assert-Equal $parts[0] "6" "Cantidad de disciplinas demo inesperada"
+    Assert-Equal $parts[1] "12" "La reparación alteró la cantidad canónica de tarifas"
+    Assert-True (Test-DemoSeedContract) "El dataset demo no satisface el contrato después de reparar tarifas"
+    Pass "Tarifas demo" "seis disciplinas cubiertas desde $($parts[2]); 12 tarifas e IDs preservados"
+}
+
+function Invoke-DemoSeed {
     $manifest = Get-LocalMigrationManifest
     $businessDate = Get-BusinessDate
     $seed = [IO.File]::ReadAllText($script:seedPath)
@@ -17,14 +51,19 @@
     ) -join "`n"
     $output = Invoke-PsqlInput ($input + "`n")
     Assert-True ($output -match "GESTUDIO DEMO SEED: ejecución completada y validada") "El seed no emitió su confirmación canónica"
+    [void](Invoke-DemoPricingCoverageRepair)
 }
 
 function Initialize-DemoSeedIfRequired {
     $userCountRaw = Invoke-Sql "SELECT count(*) FROM usuarios WHERE lower(nombre_usuario) LIKE 'demo-%';"
     $userCount = [int]$userCountRaw
-    if ($userCount -eq 5 -and (Test-DemoSeedContract)) {
-        Pass "Dataset demo" "existente y compatible"
-        return
+    if ($userCount -eq 5) {
+        [void](Invoke-DemoPricingCoverageRepair)
+        if (Test-DemoSeedContract) {
+            Pass "Dataset demo" "existente, compatible y con cobertura tarifaria anual"
+            return
+        }
+        throw "La base contiene un namespace demo parcial o incompatible; use Reset para recrearla"
     }
     if ($userCount -ne 0) {
         throw "La base contiene un namespace demo parcial o incompatible; use Reset para recrearla"
