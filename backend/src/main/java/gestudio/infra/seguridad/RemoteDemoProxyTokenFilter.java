@@ -21,6 +21,8 @@ import java.security.MessageDigest;
 public final class RemoteDemoProxyTokenFilter extends OncePerRequestFilter {
 
     public static final String HEADER_NAME = "X-Gestudio-Proxy-Token";
+    private static final String CF_CONNECTING_IP_HEADER = "CF-Connecting-IP";
+    private static final String CF_RAY_HEADER = "CF-Ray";
 
     private final byte[] expectedToken;
 
@@ -39,7 +41,7 @@ public final class RemoteDemoProxyTokenFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
-        return path == null || !(path.equals("/api") || path.startsWith("/api/"));
+        return !isApiPath(path) && !isCloudflareEdgeRequest(request);
     }
 
     @Override
@@ -47,15 +49,37 @@ public final class RemoteDemoProxyTokenFilter extends OncePerRequestFilter {
                                     HttpServletResponse response,
                                     FilterChain filterChain)
             throws ServletException, IOException {
+        if (!isApiPath(request.getRequestURI())) {
+            hideResponse(response);
+            return;
+        }
+
         String candidate = request.getHeader(HEADER_NAME);
         byte[] candidateBytes = candidate == null
                 ? new byte[0]
                 : candidate.getBytes(StandardCharsets.UTF_8);
         if (!MessageDigest.isEqual(expectedToken, candidateBytes)) {
-            response.setHeader("Cache-Control", "no-store");
-            response.sendError(HttpServletResponse.SC_NOT_FOUND);
+            hideResponse(response);
             return;
         }
         filterChain.doFilter(request, response);
+    }
+
+    private static boolean isApiPath(String path) {
+        return path != null && (path.equals("/api") || path.startsWith("/api/"));
+    }
+
+    private static boolean isCloudflareEdgeRequest(HttpServletRequest request) {
+        return hasText(request.getHeader(CF_CONNECTING_IP_HEADER))
+                || hasText(request.getHeader(CF_RAY_HEADER));
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.isBlank();
+    }
+
+    private static void hideResponse(HttpServletResponse response) throws IOException {
+        response.setHeader("Cache-Control", "no-store");
+        response.sendError(HttpServletResponse.SC_NOT_FOUND);
     }
 }
