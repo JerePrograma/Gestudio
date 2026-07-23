@@ -137,10 +137,13 @@ function Invoke-Start {
     Ensure-RemoteDatabase
     Ensure-BackendImage
 
+    Write-Host "[INFO] Recreando contenedor backend con la imagen validada..."
     Invoke-Compose -Arguments @("up", "-d", "--no-deps", "--force-recreate", "backend") -Capture | Out-Null
+    Write-Host "[INFO] Esperando health del backend; no interrumpa esta etapa..."
     Wait-ServiceHealthy "backend"
     Pass "Backend" "healthy en loopback"
 
+    Write-Host "[INFO] Validando exposición de red, Flyway, dataset demo y readiness..."
     Assert-NetworkExposure
     Assert-FlywayHistory
     Initialize-DemoSeedIfRequired
