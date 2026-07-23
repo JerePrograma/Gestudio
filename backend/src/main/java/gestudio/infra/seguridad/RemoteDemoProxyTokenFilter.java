@@ -78,8 +78,9 @@ public final class RemoteDemoProxyTokenFilter extends OncePerRequestFilter {
         return value != null && !value.isBlank();
     }
 
-    private static void hideResponse(HttpServletResponse response) throws IOException {
+    private static void hideResponse(HttpServletResponse response) {
         response.setHeader("Cache-Control", "no-store");
-        response.sendError(HttpServletResponse.SC_NOT_FOUND);
+        response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+        response.setContentLength(0);
     }
 }
