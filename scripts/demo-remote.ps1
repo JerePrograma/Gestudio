@@ -1,8 +1,9 @@
 ﻿param(
     [Parameter(Mandatory)]
-    [ValidateSet("Start", "Status", "Stop", "Reset")]
+    [ValidateSet("Start", "Status", "Stop", "Reset", "ResetPassword")]
     [string] $Action,
-    [string] $EnvFile = ""
+    [string] $EnvFile = "",
+    [string] $Username = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -61,6 +62,12 @@ try {
         "Status" { if (-not (Invoke-Status)) { $exitCode = 1 } }
         "Stop" { Invoke-Stop }
         "Reset" { Invoke-Reset }
+        "ResetPassword" {
+            if ([string]::IsNullOrWhiteSpace($Username)) {
+                throw "ResetPassword exige -Username"
+            }
+            Reset-DemoPassword -Username $Username.Trim().ToLowerInvariant()
+        }
     }
 }
 catch {
