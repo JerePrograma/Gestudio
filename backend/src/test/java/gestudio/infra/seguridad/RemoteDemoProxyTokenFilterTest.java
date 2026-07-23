@@ -32,6 +32,8 @@ class RemoteDemoProxyTokenFilterTest {
         assertThat(invoked).isFalse();
         assertThat(response.getStatus()).isEqualTo(404);
         assertThat(response.getHeader("Cache-Control")).isEqualTo("no-store");
+        assertThat(response.isCommitted()).isFalse();
+        assertThat(response.getContentAsByteArray()).isEmpty();
     }
 
     @Test
@@ -78,6 +80,8 @@ class RemoteDemoProxyTokenFilterTest {
             assertThat(invoked).as(path).isFalse();
             assertThat(response.getStatus()).as(path).isEqualTo(404);
             assertThat(response.getHeader("Cache-Control")).as(path).isEqualTo("no-store");
+            assertThat(response.isCommitted()).as(path).isFalse();
+            assertThat(response.getContentAsByteArray()).as(path).isEmpty();
         }
     }
 }
