@@ -61,4 +61,23 @@ class RemoteDemoProxyTokenFilterTest {
 
         assertThat(invoked).isTrue();
     }
+
+    @Test
+    void ocultaReadinessYOtrosPathsCuandoLleganDesdeCloudflare() throws Exception {
+        RemoteDemoProxyTokenFilter filter = new RemoteDemoProxyTokenFilter(TOKEN);
+
+        for (String path : new String[]{"/actuator/health/readiness", "/actuator/prometheus", "/"}) {
+            MockHttpServletRequest request = new MockHttpServletRequest("GET", path);
+            request.addHeader("CF-Ray", "1234567890abcdef-EZE");
+            request.addHeader("CF-Connecting-IP", "203.0.113.10");
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            AtomicBoolean invoked = new AtomicBoolean(false);
+
+            filter.doFilter(request, response, (ignoredRequest, ignoredResponse) -> invoked.set(true));
+
+            assertThat(invoked).as(path).isFalse();
+            assertThat(response.getStatus()).as(path).isEqualTo(404);
+            assertThat(response.getHeader("Cache-Control")).as(path).isEqualTo("no-store");
+        }
+    }
 }
