@@ -17,6 +17,75 @@ function Test-Readiness {
     finally { $client.Dispose() }
 }
 
+function Wait-RemoteServiceHealthy {
+    param(
+        [Parameter(Mandatory)][string] $Service,
+        [int] $TimeoutSeconds = 0
+    )
+
+    $effectiveTimeout = if ($TimeoutSeconds -gt 0) {
+        $TimeoutSeconds
+    }
+    elseif ($Service -eq "backend") {
+        300
+    }
+    else {
+        120
+    }
+
+    $startedAt = Get-Date
+    $localDeadline = $startedAt.AddSeconds($effectiveTimeout)
+    $nextProgress = $startedAt
+    $lastState = $null
+
+    while ((Get-Date) -lt $localDeadline -and (Get-Date) -lt $script:deadline) {
+        $state = Get-ServiceState $Service
+        $lastState = $state
+
+        if ($state.State -eq "running") {
+            if ($state.Health -eq "healthy") { return }
+            if ($Service -eq "backend" -and (Test-Readiness)) {
+                Pass "Backend readiness" "UP antes del siguiente ciclo de healthcheck Docker"
+                return
+            }
+        }
+
+        if ($state.State -in @("exited", "dead", "restarting", "removing")) {
+            throw "$Service entró en estado $($state.State) antes de estar healthy"
+        }
+        if ($state.Health -eq "unhealthy") {
+            throw "$Service fue marcado unhealthy por Docker"
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($state.Id)) {
+            $restartCountRaw = Invoke-Docker -Arguments @(
+                "inspect", "--format", "{{.RestartCount}}", $state.Id
+            ) -Capture -IgnoreDeadline
+            $restartCount = 0
+            if ([int]::TryParse($restartCountRaw.Trim(), [ref]$restartCount) -and $restartCount -gt 0) {
+                throw "$Service se reinició $restartCount vez/veces antes de estar healthy"
+            }
+        }
+
+        $now = Get-Date
+        if ($now -ge $nextProgress) {
+            $elapsedSeconds = [int][Math]::Floor(($now - $startedAt).TotalSeconds)
+            Write-Host "[INFO] Esperando $Service: estado=$($state.State), health=$($state.Health), transcurrido=${elapsedSeconds}s/${effectiveTimeout}s"
+            $nextProgress = $now.AddSeconds(10)
+        }
+
+        Start-Sleep -Seconds 2
+    }
+
+    $stateDetail = if ($null -eq $lastState) {
+        "sin estado"
+    }
+    else {
+        "estado=$($lastState.State), health=$($lastState.Health)"
+    }
+    throw "Timeout de ${effectiveTimeout}s esperando $Service healthy ($stateDetail)"
+}
+
 function Set-BuildMetadataEnvironment {
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) { return }
     try {
@@ -68,7 +137,7 @@ function Ensure-RemoteDatabase {
     }
 
     Invoke-Compose -Arguments @("up", "-d", "--force-recreate", "db") -Capture | Out-Null
-    Wait-ServiceHealthy "db"
+    Wait-RemoteServiceHealthy "db"
     Sync-DatabasePassword
     Pass "PostgreSQL" "healthy, credencial sincronizada y sin publicación de puerto"
 }
@@ -140,7 +209,7 @@ function Invoke-Start {
     Write-Host "[INFO] Recreando contenedor backend con la imagen validada..."
     Invoke-Compose -Arguments @("up", "-d", "--no-deps", "--force-recreate", "backend") -Capture | Out-Null
     Write-Host "[INFO] Esperando health del backend; no interrumpa esta etapa..."
-    Wait-ServiceHealthy "backend"
+    Wait-RemoteServiceHealthy "backend"
     Pass "Backend" "healthy en loopback"
 
     Write-Host "[INFO] Validando exposición de red, Flyway, dataset demo y readiness..."
