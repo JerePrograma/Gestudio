@@ -291,7 +291,8 @@ COMMIT;
         Invoke-PsqlInput -InputText ($sql + "`n") | Out-Null
 
         $summary = Invoke-Sql @"
-SELECT u.nombre_usuario || '|' || r.codigo || '|' || u.auth_version || '|' || u.activo
+SELECT u.nombre_usuario || '|' || r.codigo || '|' || u.auth_version || '|' ||
+       CASE WHEN u.activo THEN '1' ELSE '0' END
 FROM public.usuarios u
 JOIN public.roles r ON r.id = u.rol_id
 WHERE lower(u.nombre_usuario) = lower(convert_from(decode('$usernameBase64', 'base64'), 'UTF8'));
@@ -299,7 +300,7 @@ WHERE lower(u.nombre_usuario) = lower(convert_from(decode('$usernameBase64', 'ba
         $parts = $summary.Split("|")
         Assert-Equal $parts.Count 4 "Resumen de cuenta demo ilegible"
         Assert-Equal $parts[0] $Username "Usuario restablecido inesperado"
-        Assert-Equal $parts[3] "t" "La cuenta demo no quedó activa"
+        Assert-Equal $parts[3] "1" "La cuenta demo no quedó activa"
         Pass "Contraseña demo" "$($parts[0]) restablecida; rol=$($parts[1]); auth_version=$($parts[2]); sesiones revocadas"
     }
     finally {
