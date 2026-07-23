@@ -11,9 +11,10 @@ build/
 /backend/.idea/
 /backend/.idea/workspace.xml
 
-# Node.js / Vite
+# Node.js / Vite / Wrangler
 node_modules/
 /frontend/dist/
+/frontend/.wrangler/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
