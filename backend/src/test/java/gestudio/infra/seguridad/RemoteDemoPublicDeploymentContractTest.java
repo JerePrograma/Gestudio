@@ -35,6 +35,21 @@ class RemoteDemoPublicDeploymentContractTest {
     }
 
     @Test
+    void refreshPublicoReproduceElOriginDelNavegador() throws IOException {
+        String script = Files.readString(root.resolve("scripts/deploy-remote-demo-public.ps1"));
+
+        assertThat(script)
+                .contains(
+                        "$refreshCheck = @{",
+                        "Uri = \"$pagesOriginNormalized/api/login/refresh\"",
+                        "Method = \"POST\"",
+                        "Headers = @{ \"Origin\" = $pagesOriginNormalized }",
+                        "ExpectedStatuses = @(401)"
+                )
+                .doesNotContain("ExpectedStatuses = @(401, 403)");
+    }
+
+    @Test
     void despliegueSoloDetieneTunelesRegistradosPorGestudio() throws IOException {
         String script = Files.readString(root.resolve("scripts/deploy-remote-demo-public.ps1"));
 
