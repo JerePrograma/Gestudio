@@ -689,6 +689,7 @@ function Assert-PublicDeployment {
     $refreshCheck = @{
         Uri = "$pagesOriginNormalized/api/login/refresh"
         Method = "POST"
+        Headers = @{ "Origin" = $pagesOriginNormalized }
         Body = "{}"
         ExpectedStatuses = @(401)
         TimeoutSeconds = 180
