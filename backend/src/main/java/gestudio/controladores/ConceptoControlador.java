@@ -67,19 +67,35 @@ public class ConceptoControlador {
         return ResponseEntity.noContent().build();
     }
 
-    // Nuevo endpoint para listar conceptos por descripcion de subconcepto.
-    @GetMapping("/sub-concepto/{subConceptoDesc}")
+    @GetMapping("/sub-concepto/{subConceptoSelector}")
     public ResponseEntity<List<ConceptoResponse>> listarConceptosPorSubConcepto(
-            @PathVariable("subConceptoDesc") String subConceptoDesc) {
+            @PathVariable String subConceptoSelector) {
 
-        SubConcepto subConcepto = subConceptoServicio.findByDescripcionIgnoreCase(subConceptoDesc);
-        if (subConcepto == null) {
+        Long subConceptoId = resolverSubConceptoId(subConceptoSelector);
+        if (subConceptoId == null) {
             return ResponseEntity.notFound().build();
         }
-        List<Concepto> conceptos = conceptoRepositorio.findBySubConceptoId(subConcepto.getId());
+
+        List<Concepto> conceptos = conceptoRepositorio.findBySubConceptoId(subConceptoId);
         List<ConceptoResponse> responses = conceptos.stream()
                 .map(conceptoMapper::toResponse)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(responses);
+    }
+
+    private Long resolverSubConceptoId(String selector) {
+        try {
+            Long id = Long.valueOf(selector);
+            try {
+                return subConceptoServicio.obtenerSubConceptoPorId(id).id();
+            } catch (IllegalArgumentException inexistentePorId) {
+                // Conserva compatibilidad con descripciones numéricas.
+            }
+        } catch (NumberFormatException noEsId) {
+            // La ruta legacy selecciona por descripción.
+        }
+
+        SubConcepto subConcepto = subConceptoServicio.findByDescripcionIgnoreCase(selector);
+        return subConcepto == null ? null : subConcepto.getId();
     }
 }
