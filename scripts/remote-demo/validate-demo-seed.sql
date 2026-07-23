@@ -1,4 +1,10 @@
-WITH demo_students AS (
+WITH business AS (
+    SELECT make_date(
+        extract(year FROM (CURRENT_TIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires')::date)::integer,
+        1,
+        1
+    ) AS year_start
+), demo_students AS (
     SELECT id FROM alumnos WHERE email LIKE '%@correo.local'
 ), demo_professors AS (
     SELECT id FROM profesores WHERE telefono LIKE '+54 9 11 5555-11%'
@@ -84,6 +90,14 @@ WITH demo_students AS (
     (SELECT * FROM expected_demo_users EXCEPT SELECT * FROM actual_demo_users)
     UNION ALL
     (SELECT * FROM actual_demo_users EXCEPT SELECT * FROM expected_demo_users)
+), invalid_pricing_coverage AS (
+    SELECT d.id
+    FROM demo_disciplines d
+    CROSS JOIN business b
+    LEFT JOIN disciplina_tarifas t ON t.disciplina_id = d.id
+    GROUP BY d.id, b.year_start
+    HAVING count(t.id) <> 2
+        OR min(t.vigente_desde) > b.year_start
 )
 SELECT CASE WHEN
     (SELECT counts FROM actual) = (SELECT counts FROM expected)
@@ -93,6 +107,7 @@ SELECT CASE WHEN
     AND (SELECT count(*) FROM rol_permisos) = 119
     AND NOT EXISTS (SELECT 1 FROM matrix_diff)
     AND NOT EXISTS (SELECT 1 FROM demo_user_diff)
+    AND NOT EXISTS (SELECT 1 FROM invalid_pricing_coverage)
     AND EXISTS (
         SELECT 1 FROM alumnos WHERE documento='49287134' AND activo
           AND extract(month FROM fecha_nacimiento)=extract(month FROM (CURRENT_TIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires')::date)
