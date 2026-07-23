@@ -87,7 +87,10 @@ public class ConceptoControlador {
         try {
             Long id = Long.valueOf(selector);
             try {
-                return subConceptoServicio.obtenerSubConceptoPorId(id).id();
+                var subConceptoPorId = subConceptoServicio.obtenerSubConceptoPorId(id);
+                if (subConceptoPorId != null) {
+                    return subConceptoPorId.id();
+                }
             } catch (IllegalArgumentException inexistentePorId) {
                 // Conserva compatibilidad con descripciones numéricas.
             }
