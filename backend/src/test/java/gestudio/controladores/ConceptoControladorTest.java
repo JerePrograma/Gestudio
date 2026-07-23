@@ -51,6 +51,20 @@ class ConceptoControladorTest {
     }
 
     @Test
+    void selectorNumericoConBusquedaPorIdNulaConservaElFallbackPorDescripcion() {
+        when(subConceptos.obtenerSubConceptoPorId(1L)).thenReturn(null);
+        when(subConceptos.findByDescripcionIgnoreCase("1"))
+                .thenReturn(new SubConcepto(7L, "1", true));
+        when(conceptos.findBySubConceptoId(7L)).thenReturn(List.of());
+
+        var response = controller.listarConceptosPorSubConcepto("1");
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isEmpty();
+        verify(conceptos).findBySubConceptoId(7L);
+    }
+
+    @Test
     void selectorTextualConservaLaBusquedaLegacyPorDescripcion() {
         when(subConceptos.findByDescripcionIgnoreCase("INDUMENTARIA"))
                 .thenReturn(new SubConcepto(7L, "INDUMENTARIA", true));
