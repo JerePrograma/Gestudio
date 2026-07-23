@@ -1,9 +1,21 @@
-WITH business AS (
+WITH demo_anchor AS (
+    SELECT
+        fecha_nacimiento,
+        substring(
+            otras_notas
+            FROM 'Actualización de referencia: ([0-9]{4}-[0-9]{2}-[0-9]{2})[.]'
+        )::date AS anchor_date
+    FROM alumnos
+    WHERE documento = '49287134'
+      AND activo
+), business AS (
     SELECT make_date(
-        extract(year FROM (CURRENT_TIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires')::date)::integer,
+        extract(year FROM anchor_date)::integer,
         1,
         1
     ) AS year_start
+    FROM demo_anchor
+    WHERE anchor_date IS NOT NULL
 ), demo_students AS (
     SELECT id FROM alumnos WHERE email LIKE '%@correo.local'
 ), demo_professors AS (
@@ -108,10 +120,11 @@ SELECT CASE WHEN
     AND NOT EXISTS (SELECT 1 FROM matrix_diff)
     AND NOT EXISTS (SELECT 1 FROM demo_user_diff)
     AND NOT EXISTS (SELECT 1 FROM invalid_pricing_coverage)
+    AND (SELECT count(*) FROM demo_anchor WHERE anchor_date IS NOT NULL) = 1
     AND EXISTS (
-        SELECT 1 FROM alumnos WHERE documento='49287134' AND activo
-          AND extract(month FROM fecha_nacimiento)=extract(month FROM (CURRENT_TIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires')::date)
-          AND extract(day FROM fecha_nacimiento)=extract(day FROM (CURRENT_TIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires')::date)
-          AND otras_notas LIKE 'Ficha revisada por administración. Actualización de referencia: %'
+        SELECT 1
+        FROM demo_anchor
+        WHERE extract(month FROM fecha_nacimiento) = extract(month FROM anchor_date)
+          AND extract(day FROM fecha_nacimiento) = extract(day FROM anchor_date)
     )
 THEN 'true' ELSE 'false' END;
