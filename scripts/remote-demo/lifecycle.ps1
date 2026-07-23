@@ -37,6 +37,53 @@ function Set-BuildMetadataEnvironment {
     }
 }
 
+function Test-BackendImageCurrent {
+    $expectedComposeSha = [Environment]::GetEnvironmentVariable("COMPOSE_SHA", "Process")
+    $expectedSourceSha = [Environment]::GetEnvironmentVariable("BACKEND_SOURCE_SHA", "Process")
+    if ([string]::IsNullOrWhiteSpace($expectedComposeSha) -or [string]::IsNullOrWhiteSpace($expectedSourceSha)) {
+        return $false
+    }
+
+    $image = Get-EnvironmentValue "BACKEND_IMAGE"
+    try {
+        $actual = Invoke-Docker -Arguments @(
+            "image", "inspect", "--format",
+            "{{ index .Config.Labels `"org.gestudio.compose.sha256`" }}|{{ index .Config.Labels `"org.gestudio.source.sha256`" }}",
+            $image
+        ) -Capture -IgnoreDeadline
+    }
+    catch {
+        return $false
+    }
+
+    return $actual.Trim() -eq "$expectedComposeSha|$expectedSourceSha"
+}
+
+function Ensure-RemoteDatabase {
+    $state = Get-ServiceState "db"
+    if ($state.State -eq "running" -and $state.Health -eq "healthy") {
+        Sync-DatabasePassword
+        Pass "PostgreSQL" "existente, healthy, credencial sincronizada y sin publicación de puerto"
+        return
+    }
+
+    Invoke-Compose -Arguments @("up", "-d", "--force-recreate", "db") -Capture | Out-Null
+    Wait-ServiceHealthy "db"
+    Sync-DatabasePassword
+    Pass "PostgreSQL" "healthy, credencial sincronizada y sin publicación de puerto"
+}
+
+function Ensure-BackendImage {
+    if (Test-BackendImageCurrent) {
+        Pass "Imagen backend" "actual; se reutiliza sin reconstruir"
+        return
+    }
+
+    Write-Host "[INFO] Construyendo imagen backend remote-demo..."
+    Invoke-Compose -Arguments @("build", "backend")
+    Pass "Imagen backend" "construida para el árbol backend y Compose actuales"
+}
+
 function Show-Diagnostics {
     try {
         $ps = Invoke-Compose -Arguments @("ps", "-a") -Capture -IgnoreDeadline
@@ -87,13 +134,9 @@ function Invoke-Start {
     Set-BuildMetadataEnvironment
     $script:stackAttempted = $true
 
-    Invoke-Compose -Arguments @("up", "-d", "--force-recreate", "db") -Capture | Out-Null
-    Wait-ServiceHealthy "db"
-    Sync-DatabasePassword
-    Pass "PostgreSQL" "healthy, credencial sincronizada y sin publicación de puerto"
+    Ensure-RemoteDatabase
+    Ensure-BackendImage
 
-    Write-Host "[INFO] Construyendo imagen backend remote-demo..."
-    Invoke-Compose -Arguments @("build", "backend")
     Invoke-Compose -Arguments @("up", "-d", "--no-deps", "--force-recreate", "backend") -Capture | Out-Null
     Wait-ServiceHealthy "backend"
     Pass "Backend" "healthy en loopback"
