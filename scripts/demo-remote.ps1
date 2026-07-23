@@ -66,7 +66,7 @@ try {
             if ([string]::IsNullOrWhiteSpace($Username)) {
                 throw "ResetPassword exige -Username"
             }
-            Reset-DemoPassword -Username $Username.Trim().ToLowerInvariant()
+            Reset-DemoPassword -Username ($Username.Trim().ToLowerInvariant())
         }
     }
 }
