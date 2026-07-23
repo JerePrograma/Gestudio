@@ -43,11 +43,14 @@ class RemoteDemoPasswordResetContractTest {
                         "auth_version = COALESCE(u.auth_version, 0) + 1",
                         "UPDATE public.refresh_sessions",
                         "DEMO_PASSWORD_RESET_LOCAL",
-                        "INSERT INTO public.auditoria_eventos"
+                        "INSERT INTO public.auditoria_eventos",
+                        "CASE WHEN u.activo THEN '1' ELSE '0' END",
+                        "Assert-Equal $parts[3] \"1\""
                 )
                 .doesNotContain(
                         "Write-Host $plain",
-                        "Write-Host $passwordHash"
+                        "Write-Host $passwordHash",
+                        "Assert-Equal $parts[3] \"t\""
                 );
     }
 }
