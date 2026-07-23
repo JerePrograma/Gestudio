@@ -85,9 +85,9 @@ BEGIN
 END
 $verify$;
 
-COMMIT;
-
 SELECT count(DISTINCT d.id) || '|' || count(t.id) || '|' || min(t.vigente_desde)
 FROM _demo_pricing_disciplines d
 JOIN public.disciplina_tarifas t
   ON t.disciplina_id = d.id;
+
+COMMIT;
