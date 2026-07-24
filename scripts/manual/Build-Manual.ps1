@@ -66,6 +66,10 @@ foreach ($variableName in $script:ManualDemoCredentialVariables.Values) {
 }
 
 $script:applicationStartedByGenerator = $false
+$script:nodePathBefore = [Environment]::GetEnvironmentVariable('NODE_PATH', 'Process')
+$script:playwrightRuntimePrepared = $false
+$playwrightRuntimeDirectory = Join-Path $OutputDirectory '.playwright-runtime'
+$playwrightNodeModules = Join-Path $playwrightRuntimeDirectory 'node_modules'
 $completed = $false
 $locationPushed = $false
 
@@ -91,6 +95,21 @@ function Invoke-ManualStage {
     }
 }
 
+function Clear-ManualPlaywrightRuntime {
+    [CmdletBinding()]
+    param()
+
+    try {
+        if (Test-Path -LiteralPath $playwrightRuntimeDirectory) {
+            Remove-Item -LiteralPath $playwrightRuntimeDirectory -Recurse -Force
+        }
+    }
+    finally {
+        [Environment]::SetEnvironmentVariable('NODE_PATH', $script:nodePathBefore, 'Process')
+        $script:playwrightRuntimePrepared = $false
+    }
+}
+
 try {
     Push-Location -LiteralPath $repoRoot
     $locationPushed = $true
@@ -99,13 +118,47 @@ try {
     Assert-ManualDemoCredentials
     New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 
-    Invoke-ManualStage -Name '1/6 Preflight' -Action {
+    Invoke-ManualStage -Name '1/7 Preflight' -Action {
         & (Join-Path $PSScriptRoot 'Preflight-Manual.ps1') `
             -BaseUrl $BaseUrl `
             -BackendUrl $BackendUrl
     }
 
-    Invoke-ManualStage -Name '2/6 Demo local' -Action {
+    Invoke-ManualStage -Name '2/7 Runtime Playwright' -Action {
+        if (Test-Path -LiteralPath $playwrightRuntimeDirectory) {
+            Remove-Item -LiteralPath $playwrightRuntimeDirectory -Recurse -Force
+        }
+
+        New-Item -ItemType Directory -Force -Path $playwrightRuntimeDirectory | Out-Null
+
+        Invoke-ManualNativeCommand `
+            -FilePath 'npm' `
+            -Arguments @(
+                'install'
+                '--no-audit'
+                '--no-fund'
+                '--no-save'
+                '--package-lock=false'
+                '--prefix'
+                $playwrightRuntimeDirectory
+                'playwright@1.54.1'
+            ) | Out-Null
+
+        $playwrightPackagePath = Join-Path $playwrightNodeModules 'playwright\package.json'
+        if (-not (Test-Path -LiteralPath $playwrightPackagePath -PathType Leaf)) {
+            throw 'npm no instaló el runtime aislado de Playwright 1.54.1.'
+        }
+
+        $nodePath = $playwrightNodeModules
+        if (-not [string]::IsNullOrWhiteSpace($script:nodePathBefore)) {
+            $nodePath += [IO.Path]::PathSeparator + $script:nodePathBefore
+        }
+
+        [Environment]::SetEnvironmentVariable('NODE_PATH', $nodePath, 'Process')
+        $script:playwrightRuntimePrepared = $true
+    }
+
+    Invoke-ManualStage -Name '3/7 Demo local' -Action {
         if ($SkipApplicationStart) {
             & (Join-Path $PSScriptRoot 'Start-Gestudio.ps1') `
                 -BaseUrl $BaseUrl `
@@ -121,19 +174,19 @@ try {
         }
     }
 
-    Invoke-ManualStage -Name '3/6 Dataset demo' -Action {
+    Invoke-ManualStage -Name '4/7 Dataset demo' -Action {
         & (Join-Path $PSScriptRoot 'Seed-ManualDemo.ps1') `
             -BackendUrl $BackendUrl
     }
 
-    Invoke-ManualStage -Name '4/6 Capturas reales' -Action {
+    Invoke-ManualStage -Name '5/7 Capturas reales' -Action {
         & (Join-Path $PSScriptRoot 'Capture-Manual.ps1') `
             -BaseUrl $BaseUrl `
             -OutputDirectory $OutputDirectory `
             -Headed:$Headed
     }
 
-    Invoke-ManualStage -Name '5/6 HTML y PDF' -Action {
+    Invoke-ManualStage -Name '6/7 HTML y PDF' -Action {
         & (Join-Path $PSScriptRoot 'Render-Manual.ps1') `
             -BaseUrl $BaseUrl `
             -BackendUrl $BackendUrl `
@@ -141,7 +194,9 @@ try {
             -ApplicationStartedByGenerator:$script:applicationStartedByGenerator
     }
 
-    Invoke-ManualStage -Name '6/6 Validación estructural' -Action {
+    Clear-ManualPlaywrightRuntime
+
+    Invoke-ManualStage -Name '7/7 Validación estructural' -Action {
         & (Join-Path $PSScriptRoot 'Validate-Manual.ps1') `
             -OutputDirectory $OutputDirectory
     }
@@ -159,13 +214,26 @@ finally {
         Write-Host ''
         Write-Host 'Deteniendo únicamente la demo iniciada por este generador...'
 
-        $stopResult = Invoke-ManualPowerShellFile `
-            -Path (Join-Path $repoRoot 'scripts\demo-local.ps1') `
-            -Arguments @('-Action', 'Stop') `
-            -AllowFailure
+        $stopResult = @(
+            Invoke-ManualPowerShellFile `
+                -Path (Join-Path $repoRoot 'scripts\demo-local.ps1') `
+                -Arguments @('-Action', 'Stop') `
+                -AllowFailure
+        ) | Select-Object -Last 1
 
-        if ($stopResult.ExitCode -ne 0) {
+        if ($null -eq $stopResult -or
+            -not ($stopResult.PSObject.Properties.Name -contains 'ExitCode') -or
+            $stopResult.ExitCode -ne 0) {
             Write-Warning 'No se pudo detener la demo iniciada por el generador. Revise scripts/demo-local.ps1 -Action Status.'
+        }
+    }
+
+    if ($script:playwrightRuntimePrepared -or (Test-Path -LiteralPath $playwrightRuntimeDirectory)) {
+        try {
+            Clear-ManualPlaywrightRuntime
+        }
+        catch {
+            Write-Warning "No se pudo limpiar el runtime temporal de Playwright: $($_.Exception.Message)"
         }
     }
 
