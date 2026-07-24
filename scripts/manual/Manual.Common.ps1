@@ -130,9 +130,9 @@ function Invoke-ManualDemoScript {
     $processInfo.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$escapedPath`" -Action $Action"
     $processInfo.UseShellExecute = $false
     $processInfo.RedirectStandardInput = $true
-    $processInfo.RedirectStandardOutput = $true
-    $processInfo.RedirectStandardError = $true
-    $processInfo.CreateNoWindow = $true
+    $processInfo.RedirectStandardOutput = $false
+    $processInfo.RedirectStandardError = $false
+    $processInfo.CreateNoWindow = $false
 
     if ($processInfo.PSObject.Properties.Name -contains 'StandardInputEncoding') {
         $processInfo.StandardInputEncoding = New-Object Text.UTF8Encoding($false)
@@ -143,9 +143,6 @@ function Invoke-ManualDemoScript {
     [void]$process.Start()
 
     try {
-        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
-        $stderrTask = $process.StandardError.ReadToEndAsync()
-
         foreach ($variableName in $script:ManualDemoCredentialVariables.Values) {
             $secret = [Environment]::GetEnvironmentVariable($variableName, 'Process')
             $process.StandardInput.WriteLine($secret)
@@ -153,20 +150,11 @@ function Invoke-ManualDemoScript {
 
         $process.StandardInput.Close()
         $process.WaitForExit()
-
-        $stdout = $stdoutTask.Result
-        $stderr = $stderrTask.Result
         $exitCode = $process.ExitCode
     }
     finally {
         $secret = $null
         $process.Dispose()
-    }
-
-    $combined = ($stdout + [Environment]::NewLine + $stderr).Trim()
-
-    if (-not [string]::IsNullOrWhiteSpace($combined)) {
-        Write-Host $combined
     }
 
     if (-not $AllowFailure -and $exitCode -ne 0) {
@@ -175,7 +163,7 @@ function Invoke-ManualDemoScript {
 
     return [pscustomobject]@{
         ExitCode = $exitCode
-        Output = $combined
+        Output = ''
     }
 }
 
