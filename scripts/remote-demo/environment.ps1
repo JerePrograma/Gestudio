@@ -1,4 +1,4 @@
-﻿function Read-EnvironmentFile {
+function Read-EnvironmentFile {
     if (-not (Test-Path -LiteralPath $script:envPath -PathType Leaf)) {
         throw "Falta $($script:envPath). Copie .env.remote-demo.example y complete los valores locales."
     }
@@ -170,12 +170,28 @@ function Assert-EnvironmentContract {
 
     $defaultEnvPath = [IO.Path]::GetFullPath((Join-Path $script:repoRoot ".env.remote-demo"))
     if ([IO.Path]::GetFullPath($script:envPath) -eq $defaultEnvPath -and (Get-Command git -ErrorAction SilentlyContinue)) {
-        $tracked = @(& git -C $script:repoRoot ls-files --error-unmatch .env.remote-demo 2>$null)
-        if ($LASTEXITCODE -eq 0 -and $tracked.Count -gt 0) {
+        $previousErrorActionPreference = $ErrorActionPreference
+
+        try {
+            $ErrorActionPreference = "Continue"
+
+            $tracked = @(& git -C $script:repoRoot ls-files -- .env.remote-demo 2>$null)
+            $trackedExitCode = $LASTEXITCODE
+
+            & git -C $script:repoRoot check-ignore --no-index --quiet -- .env.remote-demo 2>$null
+            $ignoredExitCode = $LASTEXITCODE
+        }
+        finally {
+            $ErrorActionPreference = $previousErrorActionPreference
+        }
+
+        if ($trackedExitCode -ne 0) {
+            throw "No se pudo comprobar si .env.remote-demo está versionado"
+        }
+        if ($tracked.Count -gt 0) {
             throw ".env.remote-demo está versionado; elimínelo del índice antes de continuar"
         }
-        & git -C $script:repoRoot check-ignore --quiet .env.remote-demo
-        if ($LASTEXITCODE -ne 0) {
+        if ($ignoredExitCode -ne 0) {
             throw ".env.remote-demo no está ignorado por Git"
         }
     }
