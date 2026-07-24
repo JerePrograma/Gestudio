@@ -3,7 +3,8 @@ param(
     [string]$BaseUrl = 'http://localhost:18081',
     [Parameter(Mandatory)]
     [string]$OutputDirectory,
-    [switch]$Headed
+    [switch]$Headed,
+    [string]$ResumeFrom
 )
 
 Set-StrictMode -Version Latest
@@ -22,19 +23,40 @@ if (-not (Test-Path -LiteralPath $flowPath -PathType Leaf)) {
 }
 
 New-Item -ItemType Directory -Force -Path $screenshotDirectory | Out-Null
-Get-ChildItem -LiteralPath $screenshotDirectory -Filter '*.png' -File -ErrorAction SilentlyContinue |
-    Remove-Item -Force
+
+if ([string]::IsNullOrWhiteSpace($ResumeFrom)) {
+    Get-ChildItem -LiteralPath $screenshotDirectory -Filter '*.png' -File -ErrorAction SilentlyContinue |
+        Remove-Item -Force
+}
+else {
+    if ([IO.Path]::GetFileName($ResumeFrom) -ne $ResumeFrom -or
+        $ResumeFrom -notmatch '^(?<order>[0-9]{2})-[a-z0-9-]+\.png$') {
+        throw "Nombre de reanudación inválido: $ResumeFrom"
+    }
+
+    $resumeOrder = [int]$Matches.order
+
+    Get-ChildItem -LiteralPath $screenshotDirectory -Filter '*.png' -File -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.Name -match '^(?<order>[0-9]{2})-' -and [int]$Matches.order -ge $resumeOrder
+        } |
+        Remove-Item -Force
+
+    Write-Host "Reanudando capturas desde $ResumeFrom; se conservan las capturas anteriores."
+}
 
 $previousEnvironment = @{
     MANUAL_BASE_URL = [Environment]::GetEnvironmentVariable('MANUAL_BASE_URL', 'Process')
     MANUAL_SCREENSHOT_DIRECTORY = [Environment]::GetEnvironmentVariable('MANUAL_SCREENSHOT_DIRECTORY', 'Process')
     MANUAL_HEADED = [Environment]::GetEnvironmentVariable('MANUAL_HEADED', 'Process')
+    MANUAL_RESUME_FROM = [Environment]::GetEnvironmentVariable('MANUAL_RESUME_FROM', 'Process')
 }
 
 try {
     [Environment]::SetEnvironmentVariable('MANUAL_BASE_URL', $BaseUrl, 'Process')
     [Environment]::SetEnvironmentVariable('MANUAL_SCREENSHOT_DIRECTORY', $screenshotDirectory, 'Process')
     [Environment]::SetEnvironmentVariable('MANUAL_HEADED', $(if ($Headed) { '1' } else { '0' }), 'Process')
+    [Environment]::SetEnvironmentVariable('MANUAL_RESUME_FROM', $ResumeFrom, 'Process')
 
     Write-Host 'Comprobando Chromium administrado por Playwright 1.54.1...'
     Invoke-ManualNativeCommand `
