@@ -41,6 +41,10 @@ foreach ($requiredPath in @($PdfPath, $htmlPath, $metadataPath, $manifestPath)) 
     }
 }
 
+if (-not (Test-Path -LiteralPath $screenshotDirectory -PathType Container)) {
+    throw "No existe el directorio de capturas: $screenshotDirectory"
+}
+
 $pdfBytes = [IO.File]::ReadAllBytes($PdfPath)
 if ($pdfBytes.Length -lt 50000) {
     throw "El PDF es demasiado pequeño: $($pdfBytes.Length) bytes."
@@ -84,18 +88,26 @@ if (@(Compare-Object $expectedOrders ($orders | Sort-Object)).Count -ne 0) {
 }
 
 function Get-ItemScreenshots {
-    param([Parameter(Mandatory)][object]$Item)
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [object]$Item
+    )
 
     $names = [Collections.Generic.List[string]]::new()
 
-    if ($null -ne $Item.screenshot -and -not [string]::IsNullOrWhiteSpace([string]$Item.screenshot)) {
-        $names.Add([string]$Item.screenshot)
+    if ($Item.PSObject.Properties.Name -contains 'screenshot') {
+        $singleName = [string]$Item.screenshot
+        if (-not [string]::IsNullOrWhiteSpace($singleName)) {
+            $names.Add($singleName)
+        }
     }
 
     if ($Item.PSObject.Properties.Name -contains 'screenshots' -and $null -ne $Item.screenshots) {
         foreach ($name in @($Item.screenshots)) {
-            if (-not [string]::IsNullOrWhiteSpace([string]$name) -and -not $names.Contains([string]$name)) {
-                $names.Add([string]$name)
+            $text = [string]$name
+            if (-not [string]::IsNullOrWhiteSpace($text) -and -not $names.Contains($text)) {
+                $names.Add($text)
             }
         }
     }
@@ -104,7 +116,11 @@ function Get-ItemScreenshots {
 }
 
 function Get-PngDimensions {
-    param([Parameter(Mandatory)][string]$Path)
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
 
     $bytes = [IO.File]::ReadAllBytes($Path)
     $signature = @(137, 80, 78, 71, 13, 10, 26, 10)
@@ -119,8 +135,8 @@ function Get-PngDimensions {
         }
     }
 
-    $width = ($bytes[16] -shl 24) -bor ($bytes[17] -shl 16) -bor ($bytes[18] -shl 8) -bor $bytes[19]
-    $height = ($bytes[20] -shl 24) -bor ($bytes[21] -shl 16) -bor ($bytes[22] -shl 8) -bor $bytes[23]
+    $width = ([uint32]$bytes[16] -shl 24) -bor ([uint32]$bytes[17] -shl 16) -bor ([uint32]$bytes[18] -shl 8) -bor [uint32]$bytes[19]
+    $height = ([uint32]$bytes[20] -shl 24) -bor ([uint32]$bytes[21] -shl 16) -bor ([uint32]$bytes[22] -shl 8) -bor [uint32]$bytes[23]
 
     return [pscustomobject]@{
         Width = [uint32]$width
@@ -128,28 +144,36 @@ function Get-PngDimensions {
     }
 }
 
-$manifestScreenshotNames = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+$manifestScreenshotNames = [Collections.Generic.HashSet[string]]::new(
+    [StringComparer]::OrdinalIgnoreCase
+)
+$manualSourceRoot = Join-Path $repoRoot 'docs\manual-usuarios'
 
 foreach ($item in $items) {
-    foreach ($property in @('id', 'title', 'role', 'content')) {
-        if (-not ($item.PSObject.Properties.Name -contains $property) -or [string]::IsNullOrWhiteSpace([string]$item.$property)) {
+    foreach ($property in @('id', 'order', 'title', 'role', 'content', 'required')) {
+        if (-not ($item.PSObject.Properties.Name -contains $property)) {
             throw "La sección de orden $($item.order) no define '$property'."
         }
     }
 
-    if ($item.id -notmatch '^[a-z0-9-]+$') {
+    foreach ($property in @('id', 'title', 'role', 'content')) {
+        if ([string]::IsNullOrWhiteSpace([string]$item.$property)) {
+            throw "La sección de orden $($item.order) tiene '$property' vacío."
+        }
+    }
+
+    if ([string]$item.id -notmatch '^[a-z0-9-]+$') {
         throw "ID inválido en manifest: $($item.id)"
     }
 
-    if ($null -eq $item.route -and $null -eq $item.flow) {
+    $route = if ($item.PSObject.Properties.Name -contains 'route') { [string]$item.route } else { '' }
+    $flow = if ($item.PSObject.Properties.Name -contains 'flow') { [string]$item.flow } else { '' }
+    if ([string]::IsNullOrWhiteSpace($route) -and [string]::IsNullOrWhiteSpace($flow)) {
         throw "La sección '$($item.id)' debe declarar route o flow."
     }
 
-    $contentPath = [IO.Path]::GetFullPath(
-        (Join-Path (Join-Path $repoRoot 'docs\manual-usuarios') ([string]$item.content))
-    )
-
-    if (-not (Test-ManualPathInside -Parent (Join-Path $repoRoot 'docs\manual-usuarios') -Candidate $contentPath)) {
+    $contentPath = [IO.Path]::GetFullPath((Join-Path $manualSourceRoot ([string]$item.content)))
+    if (-not (Test-ManualPathInside -Parent $manualSourceRoot -Candidate $contentPath)) {
         throw "Ruta de contenido fuera de docs/manual-usuarios: $($item.content)"
     }
 
@@ -157,16 +181,18 @@ foreach ($item in $items) {
         throw "No existe el contenido: $($item.content)"
     }
 
-    foreach ($screenshotName in Get-ItemScreenshots -Item $item) {
-        if ([IO.Path]::GetFileName($screenshotName) -ne $screenshotName -or $screenshotName -notmatch '^[0-9]{2}-[a-z0-9-]+\.png$') {
+    $itemScreenshots = @(Get-ItemScreenshots -Item $item)
+    foreach ($screenshotName in $itemScreenshots) {
+        if ([IO.Path]::GetFileName($screenshotName) -ne $screenshotName -or
+            $screenshotName -notmatch '^[0-9]{2}-[a-z0-9-]+\.png$') {
             throw "Nombre de captura inválido: $screenshotName"
         }
 
         if (-not $manifestScreenshotNames.Add($screenshotName)) {
             throw "La captura está declarada más de una vez en el manifest: $screenshotName"
         }
-        $screenshotPath = Join-Path $screenshotDirectory $screenshotName
 
+        $screenshotPath = Join-Path $screenshotDirectory $screenshotName
         if (-not (Test-Path -LiteralPath $screenshotPath -PathType Leaf)) {
             if ([bool]$item.required) {
                 throw "Falta la captura requerida: $screenshotName"
@@ -182,12 +208,22 @@ foreach ($item in $items) {
 
         $dimensions = Get-PngDimensions -Path $screenshotPath
         if ($dimensions.Width -ne 1440 -or $dimensions.Height -lt 900) {
-            throw "Dimensiones inesperadas para $screenshotName: $($dimensions.Width)x$($dimensions.Height)."
+            throw "Dimensiones inesperadas para ${screenshotName}: $($dimensions.Width)x$($dimensions.Height)."
         }
     }
 }
 
 $actualScreenshots = @(Get-ChildItem -LiteralPath $screenshotDirectory -Filter '*.png' -File)
+$unexpectedScreenshotEntries = @(
+    Get-ChildItem -LiteralPath $screenshotDirectory |
+        Where-Object { $_.PSIsContainer -or $_.Extension -ne '.png' } |
+        Select-Object -ExpandProperty Name
+)
+
+if ($unexpectedScreenshotEntries.Count -gt 0) {
+    throw "Existen entradas inesperadas en screenshots: $($unexpectedScreenshotEntries -join ', ')."
+}
+
 if ($actualScreenshots.Count -ne $manifestScreenshotNames.Count) {
     $unreferenced = @(
         $actualScreenshots |
@@ -231,6 +267,10 @@ foreach ($property in $requiredMetadata) {
 
 if ([int]$metadata.screenshotCount -ne $actualScreenshots.Count) {
     throw 'metadata.screenshotCount no coincide con las capturas.'
+}
+
+if ($null -eq $metadata.screenshotSha256) {
+    throw 'metadata.screenshotSha256 no puede ser nulo.'
 }
 
 foreach ($file in $actualScreenshots) {
@@ -297,8 +337,9 @@ if ($htmlText -match '(?i)<script(?:\s|>)') {
     throw 'El HTML generado no debe contener scripts.'
 }
 
-$scanFiles = @($htmlPath, $metadataPath)
-$scanText = ($scanFiles | ForEach-Object { Get-Content -LiteralPath $_ -Raw }) -join "`n"
+$metadataText = Get-Content -LiteralPath $metadataPath -Raw
+$pdfText = [Text.Encoding]::ASCII.GetString($pdfBytes)
+$scanText = $htmlText + "`n" + $metadataText + "`n" + $pdfText
 
 foreach ($marker in @(
     'Authorization'

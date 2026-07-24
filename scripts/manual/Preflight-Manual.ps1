@@ -40,15 +40,14 @@ foreach ($relativePath in $requiredFiles) {
     }
 }
 
-$requiredCommands = @('git', 'docker', 'node', 'npm', 'npx', 'java', 'javac')
+$requiredCommands = @('git', 'docker', 'node', 'npm', 'npx')
 foreach ($commandName in $requiredCommands) {
     if ($null -eq (Get-Command $commandName -ErrorAction SilentlyContinue)) {
-        switch ($commandName) {
-            'docker' { throw 'Falta Docker Desktop o Docker no está disponible.' }
-            'java'   { throw 'Falta Java 21 o java no está disponible.' }
-            'javac'  { throw 'Falta un JDK 21 completo: javac no está disponible.' }
-            default  { throw "Falta la herramienta requerida: $commandName." }
+        if ($commandName -eq 'docker') {
+            throw 'Falta Docker Desktop o Docker no está disponible.'
         }
+
+        throw "Falta la herramienta requerida: $commandName."
     }
 }
 
@@ -80,9 +79,14 @@ $composeVersion = Invoke-ManualNativeCommand `
     -FilePath 'docker' `
     -Arguments @('compose', 'version', '--short') `
     -CaptureOutput
+$composeVersionText = $composeVersion.Output.Trim()
 
-if ($composeVersion.Output -notmatch '^v?2\.') {
-    throw "Falta Docker Compose v2. Versión detectada: '$($composeVersion.Output)'."
+if ($composeVersionText -notmatch '^v?(?<major>[0-9]+)(?:\.|$)') {
+    throw "No se pudo interpretar la versión de Docker Compose: '$composeVersionText'."
+}
+
+if ([int]$Matches.major -lt 2) {
+    throw "Docker Compose 2 o superior es obligatorio. Versión detectada: '$composeVersionText'."
 }
 
 $nodeVersion = Invoke-ManualNativeCommand -FilePath 'node' -Arguments @('--version') -CaptureOutput
@@ -96,14 +100,113 @@ if ([int]$Matches.major -lt 22) {
 
 Invoke-ManualNativeCommand -FilePath 'npm' -Arguments @('--version') -CaptureOutput | Out-Null
 
-$javaVersion = Invoke-ManualNativeCommand -FilePath 'java' -Arguments @('-version') -CaptureOutput
-if ($javaVersion.Output -notmatch 'version\s+"21(?:\.|")') {
-    throw "Java 21 es obligatorio. Salida detectada: '$($javaVersion.Output)'."
+function Test-ManualJava21Executable {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path,
+
+        [Parameter(Mandatory)]
+        [ValidateSet('java', 'javac')]
+        [string]$Kind
+    )
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        return $false
+    }
+
+    $result = Invoke-ManualNativeCommand `
+        -FilePath $Path `
+        -Arguments @('-version') `
+        -CaptureOutput `
+        -AllowFailure
+
+    if ($result.ExitCode -ne 0) {
+        return $false
+    }
+
+    if ($Kind -eq 'java') {
+        return $result.Output -match 'version\s+"21(?:\.|\")'
+    }
+
+    return $result.Output -match 'javac\s+21(?:\.|$)'
 }
 
-$javacVersion = Invoke-ManualNativeCommand -FilePath 'javac' -Arguments @('-version') -CaptureOutput
-if ($javacVersion.Output -notmatch 'javac\s+21(?:\.|$)') {
-    throw "JDK 21 es obligatorio. Salida detectada: '$($javacVersion.Output)'."
+function Resolve-ManualJdk21 {
+    [CmdletBinding()]
+    param()
+
+    $isWindows = [Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT
+    $javaName = if ($isWindows) { 'java.exe' } else { 'java' }
+    $javacName = if ($isWindows) { 'javac.exe' } else { 'javac' }
+    $candidates = [Collections.Generic.List[string]]::new()
+
+    if (-not [string]::IsNullOrWhiteSpace($env:JAVA_HOME)) {
+        $candidates.Add((Join-Path $env:JAVA_HOME "bin/$javaName"))
+    }
+
+    $javacCommand = Get-Command javac -ErrorAction SilentlyContinue
+    if ($null -ne $javacCommand -and -not [string]::IsNullOrWhiteSpace($javacCommand.Source)) {
+        $candidates.Add((Join-Path (Split-Path -Parent $javacCommand.Source) $javaName))
+    }
+
+    $javaCommand = Get-Command java -ErrorAction SilentlyContinue
+    if ($null -ne $javaCommand -and -not [string]::IsNullOrWhiteSpace($javaCommand.Source)) {
+        $candidates.Add($javaCommand.Source)
+    }
+
+    $roots = if ($isWindows) {
+        @(
+            (Join-Path $env:ProgramFiles 'Java')
+            (Join-Path $env:ProgramFiles 'Amazon Corretto')
+            (Join-Path $env:ProgramFiles 'Eclipse Adoptium')
+            (Join-Path $env:USERPROFILE '.jdks')
+        )
+    }
+    else {
+        @('/usr/lib/jvm', '/opt/java', (Join-Path $HOME '.jdks'))
+    }
+
+    foreach ($root in $roots) {
+        if (-not [string]::IsNullOrWhiteSpace($root) -and (Test-Path -LiteralPath $root -PathType Container)) {
+            Get-ChildItem -LiteralPath $root -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+                $candidates.Add((Join-Path $_.FullName "bin/$javaName"))
+            }
+        }
+    }
+
+    foreach ($candidate in @($candidates | Select-Object -Unique)) {
+        if (-not (Test-ManualJava21Executable -Path $candidate -Kind java)) {
+            continue
+        }
+
+        $binDirectory = Split-Path -Parent ([IO.Path]::GetFullPath($candidate))
+        $javacPath = Join-Path $binDirectory $javacName
+        if (-not (Test-ManualJava21Executable -Path $javacPath -Kind javac)) {
+            continue
+        }
+
+        return [pscustomobject]@{
+            Home = Split-Path -Parent $binDirectory
+            Java = [IO.Path]::GetFullPath($candidate)
+            Javac = [IO.Path]::GetFullPath($javacPath)
+        }
+    }
+
+    throw 'No se encontró un JDK 21 completo. Configure JAVA_HOME o agregue el binario de JDK 21 al PATH.'
+}
+
+$jdk = Resolve-ManualJdk21
+$jdkBin = Split-Path -Parent $jdk.Java
+[Environment]::SetEnvironmentVariable('JAVA_HOME', $jdk.Home, 'Process')
+
+$pathEntries = @($env:PATH -split [IO.Path]::PathSeparator)
+if ($pathEntries -notcontains $jdkBin) {
+    [Environment]::SetEnvironmentVariable(
+        'PATH',
+        ($jdkBin + [IO.Path]::PathSeparator + $env:PATH),
+        'Process'
+    )
 }
 
 $allowExternal = $AllowNonLocalUrl -or
@@ -154,4 +257,4 @@ if (-not [string]::IsNullOrWhiteSpace($trackedArtifacts.Output)) {
     throw 'Existen artefactos generados versionados accidentalmente.'
 }
 
-Write-Host 'Preflight correcto. No se mostraron secretos.'
+Write-Host "Preflight correcto. Docker Compose $composeVersionText y JDK 21 detectados. No se mostraron secretos."
