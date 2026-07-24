@@ -1,0 +1,159 @@
+name: Manual generator static validation
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/manual/**"
+      - "docs/manual-usuarios/**"
+      - "README.md"
+      - ".gitignore"
+      - ".github/workflows/manual-generator-static.yml"
+  pull_request:
+    paths:
+      - "scripts/manual/**"
+      - "docs/manual-usuarios/**"
+      - "README.md"
+      - ".gitignore"
+      - ".github/workflows/manual-generator-static.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  static-validation:
+    runs-on: windows-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Set up Node 22
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: "22"
+
+      - name: Parse PowerShell with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Get-ChildItem '.\scripts\manual' -Filter '*.ps1' -File |
+              Sort-Object FullName |
+              ForEach-Object {
+                  $tokens = $null
+                  $errors = $null
+                  [void][System.Management.Automation.Language.Parser]::ParseFile(
+                      $_.FullName,
+                      [ref]$tokens,
+                      [ref]$errors
+                  )
+
+                  if (@($errors).Count -gt 0) {
+                      $errors | Format-List | Out-Host
+                      throw "Errores de parser en $($_.FullName)."
+                  }
+              }
+
+      - name: Parse PowerShell with PowerShell 7
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Get-ChildItem '.\scripts\manual' -Filter '*.ps1' -File |
+              Sort-Object FullName |
+              ForEach-Object {
+                  $tokens = $null
+                  $errors = $null
+                  [void][System.Management.Automation.Language.Parser]::ParseFile(
+                      $_.FullName,
+                      [ref]$tokens,
+                      [ref]$errors
+                  )
+
+                  if (@($errors).Count -gt 0) {
+                      $errors | Format-List | Out-Host
+                      throw "Errores de parser en $($_.FullName)."
+                  }
+              }
+
+      - name: Validate Node flows
+        shell: pwsh
+        run: |
+          node --check .\scripts\manual\flows\capture-manual.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'capture-manual.cjs no es válido.' }
+
+          node --check .\scripts\manual\flows\render-manual.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'render-manual.cjs no es válido.' }
+
+      - name: Validate manifest and source references
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $manifestPath = '.\docs\manual-usuarios\manifest.json'
+          $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+          $items = @($manifest.items | Sort-Object order)
+
+          if ($items.Count -lt 20) {
+              throw 'El manifest no contiene suficientes secciones.'
+          }
+
+          if (@($items.id | Sort-Object -Unique).Count -ne $items.Count) {
+              throw 'El manifest contiene IDs duplicados.'
+          }
+
+          if (@(Compare-Object (1..$items.Count) @($items.order | Sort-Object)).Count -ne 0) {
+              throw 'El orden del manifest no es contiguo.'
+          }
+
+          $screenshots = [Collections.Generic.HashSet[string]]::new(
+              [StringComparer]::OrdinalIgnoreCase
+          )
+
+          foreach ($item in $items) {
+              $contentPath = Join-Path '.\docs\manual-usuarios' $item.content
+              if (-not (Test-Path -LiteralPath $contentPath -PathType Leaf)) {
+                  throw "Falta $contentPath."
+              }
+
+              foreach ($name in @($item.screenshot) + @($item.screenshots)) {
+                  if ([string]::IsNullOrWhiteSpace([string]$name)) {
+                      continue
+                  }
+
+                  if (-not $screenshots.Add([string]$name)) {
+                      throw "Captura duplicada en manifest: $name"
+                  }
+              }
+          }
+
+          $captureSource = Get-Content `
+              '.\scripts\manual\flows\capture-manual.cjs' `
+              -Raw
+
+          foreach ($name in $screenshots) {
+              if (-not $captureSource.Contains("'$name'")) {
+                  throw "La captura $name no aparece en el flow."
+              }
+          }
+
+      - name: Validate generated-artifact ignore policy
+        shell: pwsh
+        run: |
+          $paths = @(
+              'artifacts/manual/Manual_Gestudio_Usuarios_Nuevos.pdf'
+              'artifacts/manual/manual.html'
+              'artifacts/manual/metadata.json'
+              'artifacts/manual/screenshots/01-login.png'
+              'docs/manual-usuarios/screenshots/01-login.png'
+              'docs/manual-usuarios/.tmp/probe.txt'
+              'playwright-report/index.html'
+              'test-results/probe.txt'
+          )
+
+          foreach ($path in $paths) {
+              git check-ignore --no-index -q -- $path
+              if ($LASTEXITCODE -ne 0) {
+                  throw "La ruta no está ignorada: $path"
+              }
+          }

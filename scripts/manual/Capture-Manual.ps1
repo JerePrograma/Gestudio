@@ -1,6 +1,60 @@
-param([string]$BaseUrl='http://localhost:18081',[Parameter(Mandatory)][string]$OutputDirectory,[switch]$Headed)
-Set-StrictMode -Version Latest;$ErrorActionPreference='Stop';$shots=Join-Path $OutputDirectory 'screenshots';New-Item -ItemType Directory -Force $shots|Out-Null;$js=Join-Path $env:TEMP ('gestudio-manual-'+[guid]::NewGuid()+'.mjs')
-@'
-import{chromium}from'playwright';import path from'node:path';const base=process.env.MANUAL_BASE_URL,out=process.env.MANUAL_SHOTS;const users=[['secretaria','demo-secretaria','GESTUDIO_DEMO_SECRETARIA_PASSWORD',['/','/alumnos','/inscripciones','/asistencias/alumnos','/pagos','/caja','/reportes']],['caja','demo-caja','GESTUDIO_DEMO_CAJA_PASSWORD',['/','/pagos','/caja','/metodos-pago','/stocks']],['administrador','demo-administrador','GESTUDIO_DEMO_ADMINISTRADOR_PASSWORD',['/','/disciplinas','/reportes','/usuarios','/caja']],['superadmin','demo-superadmin','GESTUDIO_DEMO_SUPERADMIN_PASSWORD',['/','/disciplinas','/usuarios','/roles','/reportes']]];const names={'/':'panel','/alumnos':'alumnos','/inscripciones':'inscripciones','/asistencias/alumnos':'asistencias','/pagos':'pagos','/caja':'caja','/reportes':'reportes','/metodos-pago':'metodos-pago','/stocks':'stock','/disciplinas':'disciplinas','/usuarios':'usuarios','/roles':'roles'};const b=await chromium.launch({headless:process.env.MANUAL_HEADED!=='1'});let n=1;{const c=await b.newContext({viewport:{width:1440,height:1000},locale:'es-AR',timezoneId:'America/Argentina/Buenos_Aires'}),p=await c.newPage();await p.goto(base+'/login');await p.screenshot({path:path.join(out,'01-login.png'),fullPage:true});await c.close()}for(const[role,user,key,routes]of users){const c=await b.newContext({viewport:{width:1440,height:1000},locale:'es-AR',timezoneId:'America/Argentina/Buenos_Aires'}),p=await c.newPage();await p.goto(base+'/login',{waitUntil:'networkidle'});await p.getByLabel(/usuario/i).first().fill(user);await p.getByLabel(/contraseña/i).first().fill(process.env[key]||'');await p.getByRole('button',{name:/ingresar/i}).click();await p.waitForLoadState('networkidle');for(const r of routes){await p.goto(base+r,{waitUntil:'networkidle'});await p.addStyleTag({content:'*,*::before,*::after{animation:none!important;transition:none!important}'});await p.screenshot({path:path.join(out,String(n++).padStart(2,'0')+'-'+role+'-'+names[r]+'.png'),fullPage:true})}await c.close()}await b.close();
-'@|Set-Content $js -Encoding utf8
-try{$env:MANUAL_BASE_URL=$BaseUrl;$env:MANUAL_SHOTS=$shots;$env:MANUAL_HEADED=if($Headed){'1'}else{'0'};Push-Location ([IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\frontend')));try{npx --yes playwright@1.54.1 install chromium;if($LASTEXITCODE-ne 0){throw 'No se pudo instalar Chromium.'};npx --yes -p playwright@1.54.1 node $js;if($LASTEXITCODE-ne 0){throw 'Falló Playwright.'}}finally{Pop-Location}}finally{Remove-Item $js -Force -ErrorAction SilentlyContinue}
+[CmdletBinding()]
+param(
+    [string]$BaseUrl = 'http://localhost:18081',
+    [Parameter(Mandatory)]
+    [string]$OutputDirectory,
+    [switch]$Headed
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+. (Join-Path $PSScriptRoot 'Manual.Common.ps1')
+
+Assert-ManualDemoCredentials
+
+$OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
+$screenshotDirectory = Join-Path $OutputDirectory 'screenshots'
+$flowPath = Join-Path $PSScriptRoot 'flows\capture-manual.cjs'
+
+if (-not (Test-Path -LiteralPath $flowPath -PathType Leaf)) {
+    throw 'No existe flows/capture-manual.cjs.'
+}
+
+New-Item -ItemType Directory -Force -Path $screenshotDirectory | Out-Null
+Get-ChildItem -LiteralPath $screenshotDirectory -Filter '*.png' -File -ErrorAction SilentlyContinue |
+    Remove-Item -Force
+
+$previousEnvironment = @{
+    MANUAL_BASE_URL = [Environment]::GetEnvironmentVariable('MANUAL_BASE_URL', 'Process')
+    MANUAL_SCREENSHOT_DIRECTORY = [Environment]::GetEnvironmentVariable('MANUAL_SCREENSHOT_DIRECTORY', 'Process')
+    MANUAL_HEADED = [Environment]::GetEnvironmentVariable('MANUAL_HEADED', 'Process')
+}
+
+try {
+    [Environment]::SetEnvironmentVariable('MANUAL_BASE_URL', $BaseUrl, 'Process')
+    [Environment]::SetEnvironmentVariable('MANUAL_SCREENSHOT_DIRECTORY', $screenshotDirectory, 'Process')
+    [Environment]::SetEnvironmentVariable('MANUAL_HEADED', $(if ($Headed) { '1' } else { '0' }), 'Process')
+
+    Write-Host 'Comprobando Chromium administrado por Playwright 1.54.1...'
+    Invoke-ManualNativeCommand `
+        -FilePath 'npx' `
+        -Arguments @('--yes', 'playwright@1.54.1', 'install', 'chromium') | Out-Null
+
+    Write-Host 'Ejecutando recorridos reales sin traces ni vídeos...'
+    Invoke-ManualNativeCommand `
+        -FilePath 'npx' `
+        -Arguments @('--yes', '-p', 'playwright@1.54.1', 'node', $flowPath) | Out-Null
+}
+finally {
+    foreach ($entry in $previousEnvironment.GetEnumerator()) {
+        [Environment]::SetEnvironmentVariable($entry.Key, $entry.Value, 'Process')
+    }
+}
+
+$screenshots = @(Get-ChildItem -LiteralPath $screenshotDirectory -Filter '*.png' -File)
+if ($screenshots.Count -lt 20) {
+    throw "La captura produjo sólo $($screenshots.Count) archivos; se esperaban al menos 20."
+}
+
+Write-Host "Capturas generadas: $($screenshots.Count)."

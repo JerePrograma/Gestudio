@@ -103,6 +103,17 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\demo-local.ps1 -Ac
 
 Guía: [Puesta en marcha y flujo de uso](docs/operations/local-runbook.md).
 
+## Manual visual de usuarios nuevos
+
+El generador captura recorridos reales de la demo local con Playwright y produce HTML, PDF y metadata sin versionar los artefactos:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File .\scripts\manual\Build-Manual.ps1
+```
+
+Arquitectura, credenciales, variantes y validación local: [docs/manual-usuarios/README.md](docs/manual-usuarios/README.md).
+
 ## Desarrollo local
 
 ```powershell
@@ -223,6 +234,7 @@ Jere Platform PR `#60` incorporó el receptor multipágina y cerró el bloqueo t
 - [Demo persistente](docs/testing/demo-local.md)
 - [Dataset demo](docs/testing/demo-seed.md)
 - [Recorridos humanos por rol](docs/testing/human-role-walkthrough.md)
+- [Manual visual de usuarios nuevos](docs/manual-usuarios/README.md)
 - [Variables de entorno](docs/development/environment-variables.md)
 - [Integración V7](docs/integrations/jere-platform-student-export-v1.md)
 - [Estrategia comercial](docs/comercial/estrategia-comercial.md)

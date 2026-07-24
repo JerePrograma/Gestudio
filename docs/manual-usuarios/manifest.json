@@ -1,1 +1,384 @@
-{"version":1,"items":[{"id":"login","order":1,"title":"Iniciar sesión","role":"ANONYMOUS","route":"/login","screenshot":"01-login.png","content":"content/05-login.html","required":true},{"id":"panel","order":2,"title":"Panel y navegación por rol","role":"SECRETARIA","route":"/","screenshot":"01-secretaria-panel.png","content":"content/06-panel.html","required":true},{"id":"alumnos","order":3,"title":"Alumnos","role":"SECRETARIA","route":"/alumnos","screenshot":"02-secretaria-alumnos.png","content":"content/08-alumnos.html","required":true},{"id":"inscripciones","order":4,"title":"Inscripciones","role":"SECRETARIA","route":"/inscripciones","screenshot":"03-secretaria-inscripciones.png","content":"content/12-inscripciones.html","required":true},{"id":"pagos","order":5,"title":"Pagos","role":"SECRETARIA","route":"/pagos","screenshot":"05-secretaria-pagos.png","content":"content/17-pagos.html","required":true},{"id":"caja","order":6,"title":"Caja","role":"CAJA","route":"/caja","screenshot":"10-caja-caja.png","content":"content/19-caja.html","required":true},{"id":"seguridad","order":7,"title":"Usuarios, roles y permisos","role":"SUPERADMIN","route":"/usuarios","screenshot":"19-superadmin-usuarios.png","content":"content/24-seguridad.html","required":true}]}
+{
+  "version": 2,
+  "generatedArtifactsRoot": "artifacts/manual",
+  "roles": [
+    "SUPERADMIN",
+    "DIRECCION",
+    "ADMINISTRADOR",
+    "SECRETARIA",
+    "CAJA"
+  ],
+  "items": [
+    {
+      "id": "portada",
+      "order": 1,
+      "title": "Manual visual de Gestudio",
+      "role": "TODOS",
+      "route": null,
+      "flow": "presentación",
+      "screenshot": null,
+      "screenshots": [],
+      "content": "content/01-portada.html",
+      "required": true
+    },
+    {
+      "id": "como-usar",
+      "order": 2,
+      "title": "Cómo usar este manual",
+      "role": "TODOS",
+      "route": null,
+      "flow": "guía de lectura",
+      "screenshot": null,
+      "screenshots": [],
+      "content": "content/02-como-usar.html",
+      "required": true
+    },
+    {
+      "id": "indice",
+      "order": 3,
+      "title": "Índice y recorrido recomendado",
+      "role": "TODOS",
+      "route": null,
+      "flow": "recorrido de capacitación",
+      "screenshot": null,
+      "screenshots": [],
+      "content": "content/03-indice.html",
+      "required": true
+    },
+    {
+      "id": "inicio-rapido",
+      "order": 4,
+      "title": "Inicio rápido",
+      "role": "TODOS",
+      "route": "/",
+      "flow": null,
+      "screenshot": "02-panel-secretaria.png",
+      "screenshots": [
+        "15-panel-caja.png",
+        "29-panel-direccion.png",
+        "31-panel-superadmin.png"
+      ],
+      "content": "content/04-inicio-rapido.html",
+      "required": true
+    },
+    {
+      "id": "login",
+      "order": 5,
+      "title": "Inicio de sesión",
+      "role": "ANONYMOUS",
+      "route": "/login",
+      "flow": null,
+      "screenshot": "01-login.png",
+      "screenshots": [],
+      "content": "content/05-login.html",
+      "required": true
+    },
+    {
+      "id": "navegacion-rol",
+      "order": 6,
+      "title": "Navegación por rol",
+      "role": "TODOS",
+      "route": "/",
+      "flow": null,
+      "screenshot": null,
+      "screenshots": [],
+      "content": "content/06-navegacion-rol.html",
+      "required": true
+    },
+    {
+      "id": "revisar-antes-guardar",
+      "order": 7,
+      "title": "Revisión antes de guardar",
+      "role": "TODOS",
+      "route": null,
+      "flow": "control previo",
+      "screenshot": null,
+      "screenshots": [],
+      "content": "content/07-revisar.html",
+      "required": true
+    },
+    {
+      "id": "alumnos",
+      "order": 8,
+      "title": "Alumnos",
+      "role": "SECRETARIA",
+      "route": "/alumnos",
+      "flow": null,
+      "screenshot": "03-alumnos-listado.png",
+      "screenshots": [
+        "04-alumnos-busqueda.png",
+        "05-alumnos-sin-resultados.png",
+        "06-alumno-formulario.png"
+      ],
+      "content": "content/08-alumnos.html",
+      "required": true
+    },
+    {
+      "id": "profesores-salones",
+      "order": 9,
+      "title": "Profesores y salones",
+      "role": "SUPERADMIN",
+      "route": "/profesores",
+      "flow": null,
+      "screenshot": "23-profesores.png",
+      "screenshots": [
+        "24-salones.png"
+      ],
+      "content": "content/09-profesores-salones.html",
+      "required": true
+    },
+    {
+      "id": "disciplinas",
+      "order": 10,
+      "title": "Disciplinas y horarios",
+      "role": "ADMINISTRADOR",
+      "route": "/disciplinas",
+      "flow": null,
+      "screenshot": "18-disciplinas.png",
+      "screenshots": [],
+      "content": "content/10-disciplinas.html",
+      "required": true
+    },
+    {
+      "id": "tarifas",
+      "order": 11,
+      "title": "Tarifas por vigencia",
+      "role": "ADMINISTRADOR",
+      "route": "/disciplinas/:id/tarifas",
+      "flow": null,
+      "screenshot": "19-tarifas.png",
+      "screenshots": [],
+      "content": "content/11-tarifas.html",
+      "required": true
+    },
+    {
+      "id": "inscripciones",
+      "order": 12,
+      "title": "Inscripciones",
+      "role": "SECRETARIA",
+      "route": "/inscripciones",
+      "flow": null,
+      "screenshot": "07-inscripciones-listado.png",
+      "screenshots": [
+        "08-inscripcion-formulario.png"
+      ],
+      "content": "content/12-inscripciones.html",
+      "required": true
+    },
+    {
+      "id": "finalizaciones-bajas",
+      "order": 13,
+      "title": "Finalizaciones y bajas",
+      "role": "SECRETARIA",
+      "route": "/inscripciones",
+      "flow": null,
+      "screenshot": null,
+      "screenshots": [],
+      "content": "content/13-finalizaciones.html",
+      "required": true
+    },
+    {
+      "id": "condiciones-economicas",
+      "order": 14,
+      "title": "Condiciones económicas",
+      "role": "SECRETARIA",
+      "route": "/inscripciones/:id/condiciones-economicas",
+      "flow": null,
+      "screenshot": null,
+      "screenshots": [],
+      "content": "content/14-condiciones-economicas.html",
+      "required": true
+    },
+    {
+      "id": "asistencias",
+      "order": 15,
+      "title": "Asistencias",
+      "role": "SECRETARIA",
+      "route": "/asistencias/alumnos",
+      "flow": null,
+      "screenshot": "09-asistencias.png",
+      "screenshots": [],
+      "content": "content/15-asistencias.html",
+      "required": true
+    },
+    {
+      "id": "cobranza",
+      "order": 16,
+      "title": "Cobranza",
+      "role": "SECRETARIA",
+      "route": "/pagos/formulario",
+      "flow": null,
+      "screenshot": "11-cobranza-formulario.png",
+      "screenshots": [],
+      "content": "content/16-cobranza.html",
+      "required": true
+    },
+    {
+      "id": "pagos-escenarios",
+      "order": 17,
+      "title": "Pagos exactos, parciales y con excedente",
+      "role": "SECRETARIA",
+      "route": "/pagos/formulario",
+      "flow": null,
+      "screenshot": null,
+      "screenshots": [],
+      "content": "content/17-pagos-escenarios.html",
+      "required": true
+    },
+    {
+      "id": "pagos-recibos",
+      "order": 18,
+      "title": "Consulta de pagos y recibos",
+      "role": "SECRETARIA",
+      "route": "/pagos",
+      "flow": null,
+      "screenshot": "10-pagos-consulta.png",
+      "screenshots": [],
+      "content": "content/18-pagos-recibos.html",
+      "required": true
+    },
+    {
+      "id": "caja",
+      "order": 19,
+      "title": "Caja",
+      "role": "SECRETARIA",
+      "route": "/caja",
+      "flow": null,
+      "screenshot": "12-caja-secretaria.png",
+      "screenshots": [],
+      "content": "content/19-caja.html",
+      "required": true
+    },
+    {
+      "id": "egresos",
+      "order": 20,
+      "title": "Egresos",
+      "role": "SUPERADMIN",
+      "route": "/egresos",
+      "flow": null,
+      "screenshot": "28-egresos.png",
+      "screenshots": [],
+      "content": "content/20-egresos.html",
+      "required": true
+    },
+    {
+      "id": "bonificaciones-recargos",
+      "order": 21,
+      "title": "Bonificaciones y recargos",
+      "role": "SUPERADMIN",
+      "route": "/bonificaciones",
+      "flow": null,
+      "screenshot": "25-bonificaciones.png",
+      "screenshots": [
+        "26-recargos.png"
+      ],
+      "content": "content/21-bonificaciones-recargos.html",
+      "required": true
+    },
+    {
+      "id": "metodos-conceptos-stock",
+      "order": 22,
+      "title": "Métodos, conceptos y stock",
+      "role": "CAJA",
+      "route": "/metodos-pago",
+      "flow": null,
+      "screenshot": "16-metodos-pago.png",
+      "screenshots": [
+        "17-stock.png",
+        "27-conceptos.png"
+      ],
+      "content": "content/22-metodos-conceptos-stock.html",
+      "required": true
+    },
+    {
+      "id": "reportes",
+      "order": 23,
+      "title": "Reportes",
+      "role": "SECRETARIA",
+      "route": "/alumnos-por-disciplina",
+      "flow": null,
+      "screenshot": "13-reporte-disciplina.png",
+      "screenshots": [],
+      "content": "content/23-reportes.html",
+      "required": true
+    },
+    {
+      "id": "usuarios-roles",
+      "order": 24,
+      "title": "Usuarios, roles y permisos",
+      "role": "SUPERADMIN",
+      "route": "/usuarios",
+      "flow": null,
+      "screenshot": "20-usuarios.png",
+      "screenshots": [
+        "22-roles.png"
+      ],
+      "content": "content/24-usuarios-roles.html",
+      "required": true
+    },
+    {
+      "id": "errores",
+      "order": 25,
+      "title": "Errores frecuentes y acceso no autorizado",
+      "role": "TODOS",
+      "route": "/unauthorized",
+      "flow": null,
+      "screenshot": "14-no-autorizado-secretaria.png",
+      "screenshots": [
+        "21-no-autorizado-administrador.png",
+        "30-no-autorizado-direccion.png",
+        "32-no-autorizado-caja.png"
+      ],
+      "content": "content/25-errores.html",
+      "required": true
+    },
+    {
+      "id": "soporte",
+      "order": 26,
+      "title": "Cómo pedir soporte",
+      "role": "TODOS",
+      "route": null,
+      "flow": "reporte de incidente",
+      "screenshot": null,
+      "screenshots": [],
+      "content": "content/26-soporte.html",
+      "required": true
+    },
+    {
+      "id": "checklists",
+      "order": 27,
+      "title": "Checklists operativos",
+      "role": "TODOS",
+      "route": null,
+      "flow": "control diario",
+      "screenshot": null,
+      "screenshots": [],
+      "content": "content/27-checklists.html",
+      "required": true
+    },
+    {
+      "id": "glosario",
+      "order": 28,
+      "title": "Glosario",
+      "role": "TODOS",
+      "route": null,
+      "flow": "referencia",
+      "screenshot": null,
+      "screenshots": [],
+      "content": "content/28-glosario.html",
+      "required": true
+    },
+    {
+      "id": "preparacion-final",
+      "order": 29,
+      "title": "Preparación final del usuario nuevo",
+      "role": "TODOS",
+      "route": null,
+      "flow": "cierre de capacitación",
+      "screenshot": null,
+      "screenshots": [],
+      "content": "content/29-preparacion-final.html",
+      "required": true
+    }
+  ]
+}
