@@ -241,7 +241,7 @@ function Assert-PortAvailable {
     param([Parameter(Mandatory)][int] $Port)
 
     $containers = Invoke-Docker -Arguments @(
-        "ps", "--filter", "publish=$Port", "--format", "{{.ID}}|{{.Names}}|{{.Label `"com.docker.compose.project`"}}"
+        "ps", "--filter", "publish=$Port", "--format", '{{.ID}}|{{.Names}}|{{.Label "com.docker.compose.project"}}'
     ) -Capture
     $foreign = @($containers -split "`r?`n" | Where-Object {
         -not [string]::IsNullOrWhiteSpace($_) -and $_.Split("|")[-1] -ne $script:project
