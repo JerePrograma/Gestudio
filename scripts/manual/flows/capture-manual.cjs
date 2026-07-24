@@ -240,7 +240,7 @@ try {
 
     const studentSearch = page.getByLabel('Buscar', { exact: true });
     await studentSearch.fill('Sofía');
-    await page.getByText('Sofía Benítez', { exact: true }).waitFor({ state: 'visible' });
+    await page.getByText('Sofía Benítez', { exact: true }).first().waitFor({ state: 'visible' });
     await screenshot(page, '04-alumnos-busqueda.png');
 
     await studentSearch.fill('zz-manual-sin-resultados-zz');
@@ -281,7 +281,7 @@ try {
     const disciplineSearch = page.getByLabel(/Selecciona la disciplina/i);
     await disciplineSearch.fill('Ballet Inicial');
     await page.getByText('Ballet Inicial (4 a 6 años)', { exact: true }).click();
-    await page.getByText('Sofía Benítez', { exact: true }).waitFor({ state: 'visible', timeout: 20000 });
+    await page.getByText('Sofía Benítez', { exact: true }).first().waitFor({ state: 'visible', timeout: 20000 });
     await screenshot(page, '13-reporte-disciplina.png');
 
     await assertUnauthorized(page, '/usuarios', '14-no-autorizado-secretaria.png');
