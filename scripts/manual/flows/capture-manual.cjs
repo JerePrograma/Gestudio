@@ -8,6 +8,7 @@ async function main() {
 const baseUrl = process.env.MANUAL_BASE_URL;
 const screenshotDirectory = process.env.MANUAL_SCREENSHOT_DIRECTORY;
 const headed = process.env.MANUAL_HEADED === '1';
+const resumeFrom = process.env.MANUAL_RESUME_FROM || '';
 
 if (!baseUrl || !screenshotDirectory) {
   throw new Error('MANUAL_BASE_URL y MANUAL_SCREENSHOT_DIRECTORY son obligatorias.');
@@ -84,6 +85,11 @@ const expectedFiles = [
   '31-panel-superadmin.png',
 ];
 
+const resumeIndex = resumeFrom ? expectedFiles.indexOf(resumeFrom) : 0;
+if (resumeFrom && resumeIndex < 0) {
+  throw new Error(`La captura de reanudación no pertenece al recorrido: ${resumeFrom}.`);
+}
+
 const browser = await chromium.launch({
   headless: !headed,
 });
@@ -140,9 +146,22 @@ async function settle(page) {
 }
 
 async function screenshot(page, fileName) {
+  const fileIndex = expectedFiles.indexOf(fileName);
+  if (fileIndex < 0) {
+    throw new Error(`La captura no pertenece al recorrido esperado: ${fileName}.`);
+  }
+
+  const targetPath = path.join(screenshotDirectory, fileName);
+  if (fileIndex < resumeIndex) {
+    if (!fs.existsSync(targetPath)) {
+      throw new Error(`No existe la captura previa requerida para reanudar: ${fileName}.`);
+    }
+    return;
+  }
+
   await settle(page);
   await page.screenshot({
-    path: path.join(screenshotDirectory, fileName),
+    path: targetPath,
     fullPage: true,
     animations: 'disabled',
   });
