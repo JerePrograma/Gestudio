@@ -26,18 +26,17 @@ Integrado y probado sobre el árbol de release:
 - demo persistente con fecha comercial diaria separada del ancla estable, detección de imágenes obsoletas y Flyway derivado del manifiesto local;
 - dependencia vulnerable `brace-expansion` actualizada en el lockfile sin cambios mayores;
 - recorrido real de navegador de los cinco roles demo, en escritorio y móvil;
-- imágenes backend y frontend no-root, rutas SPA y headers de seguridad.
+- imágenes backend y frontend no-root, rutas SPA y headers de seguridad;
+- contrato paginado estable con `PageResponse<T>` sin exponer `PageImpl` como respuesta pública.
 
 Quedan fuera del alcance de un repositorio y requieren un ambiente autorizado:
 
-- transporte y smoke desplegado Gestudio → Jere Platform;
+- staging, TLS, DNS, CORS, cookies y secretos productivos: [#23](https://github.com/JerePrograma/Gestudio/issues/23);
+- servidor externo de métricas, dashboards, alertas, retención de logs y responsables: [#24](https://github.com/JerePrograma/Gestudio/issues/24);
+- transporte y smoke desplegado Gestudio → Jere Platform: [#25](https://github.com/JerePrograma/Gestudio/issues/25);
 - coordinador Jere Platform `#51`, incluidos Scalaris y requisitos productivos;
-- servidor externo de métricas, dashboards, alertas, retención de logs y responsables;
-- transporte real y pruebas desplegadas Gestudio → Jere Platform;
-- políticas organizacionales de retención de backups, artefactos y secretos;
-- TLS/CORS/cookies en ambiente real;
-- staging;
-- despliegue productivo y su aprobación operativa.
+- políticas organizacionales de retención de backups, artefactos y secretos: [#23](https://github.com/JerePrograma/Gestudio/issues/23);
+- despliegue productivo y su aprobación operativa: [#23](https://github.com/JerePrograma/Gestudio/issues/23).
 
 La demo local está habilitada. Staging y producción no se declaran desplegados:
 el código falla de forma segura si faltan secretos productivos, y la promoción
@@ -223,7 +222,7 @@ Mensualidades y matrículas resuelven tarifas históricas y condiciones efectiva
 
 V7 incorpora un emisor administrativo `GESTUDIO_STUDENT` con ID, nombre visible y activo. Está apagado por defecto, requiere tenant y secreto independiente y no realiza push automático.
 
-Jere Platform PR `#60` incorporó el receptor multipágina y cerró el bloqueo técnico `#59`. El issue coordinador `#51` permanece abierto porque abarca además Scalaris y la operación productiva. La conexión desplegada Gestudio → Jere Platform todavía no fue ejecutada ni autorizada; no debe describirse como un bloqueo `#59` abierto.
+Jere Platform PR `#60` incorporó el receptor multipágina y cerró el bloqueo técnico `#59`. El issue coordinador `#51` permanece abierto porque abarca además Scalaris y la operación productiva. La conexión desplegada Gestudio → Jere Platform todavía no fue ejecutada ni autorizada; su seguimiento está en [Gestudio #25](https://github.com/JerePrograma/Gestudio/issues/25) y no debe describirse como un bloqueo `#59` abierto.
 
 ## Documentación
 
