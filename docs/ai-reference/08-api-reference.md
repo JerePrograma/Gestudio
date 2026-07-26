@@ -1,7 +1,7 @@
 # Referencia API
 
 > Estado: CONFIRMADO  
-> Última revisión: 2026-07-24  
+> Última revisión: 2026-07-26  
 > Fuentes principales: controladores, `SecurityConfigurations`, `SecurityHttpIntegrationTest`
 
 ## Contrato general
@@ -53,7 +53,15 @@ Para la matriz completa, ver [25-rbac-and-route-matrix.md](25-rbac-and-route-mat
 
 ## Paginación
 
-Endpoints modernos usan `PageResponse` con límites frecuentes `1..200`. Algunos endpoints devuelven directamente `Page`, cuya forma JSON depende de Spring Data. No cambiarla sin versionar o adaptar consumidores.
+Todas las respuestas paginadas públicas usan `PageResponse<T>` con el contrato:
+
+```text
+content, totalElements, totalPages, size, number, first, last
+```
+
+`Page` y `PageImpl` se mantienen únicamente como tipos internos de Spring Data.
+El frontend comparte la misma forma estructural y no depende de metadata interna
+de Spring.
 
 ## Errores
 
@@ -72,7 +80,6 @@ Códigos derivados de constraints y negocio incluyen duplicados, idempotencia, s
 - Conceptos aceptan selector de subconcepto por ID o descripción.
 - Métodos de pago exponen dos rutas de baja.
 - Algunas creaciones devuelven 200 en lugar de 201.
-- `PageImpl` aparece en contratos antiguos.
 
 No “uniformar” estos casos dentro de otra tarea sin inventario de consumidores y estrategia de versión.
 
