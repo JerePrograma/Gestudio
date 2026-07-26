@@ -43,7 +43,7 @@ Pruebas: Spring Boot Test, Spring Security Test, JUnit, Mockito, Testcontainers 
 - `PagoServicio`, `CargoServicio`, `CreditoServicio`, `CajaServicio`, `EgresoServicio`, `StockServicio`.
 - `MensualidadServicio`, `MatriculaServicio`, `LiquidacionCargoServicio`.
 - `TarifaDisciplinaServicio`, `CondicionEconomicaServicio`.
-- `AutenticacionService`, `TokenService`, servicios de usuario/rol/permiso`.
+- `AutenticacionService`, `TokenService`, servicios de usuario/rol/permiso.
 - `ReciboStorageService`, `PdfService`, `IEmailService`.
 - `StudentSourceExportService`.
 - `ScheduledTasks`.
