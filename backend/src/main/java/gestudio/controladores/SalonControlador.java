@@ -1,10 +1,10 @@
 package gestudio.controladores;
 
+import gestudio.dto.PageResponse;
 import gestudio.dto.salon.request.SalonModificacionRequest;
 import gestudio.dto.salon.request.SalonRegistroRequest;
 import gestudio.dto.salon.response.SalonResponse;
 import gestudio.servicios.salon.SalonServicio;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -29,9 +29,8 @@ public class SalonControlador {
     }
 
     @GetMapping
-    public ResponseEntity<Page<SalonResponse>> listarSalones(Pageable pageable) {
-        Page<SalonResponse> salones = salonServicio.listarSalones(pageable);
-        return ResponseEntity.ok(salones);
+    public ResponseEntity<PageResponse<SalonResponse>> listarSalones(Pageable pageable) {
+        return ResponseEntity.ok(PageResponse.from(salonServicio.listarSalones(pageable)));
     }
 
     @GetMapping("/{id}")
@@ -52,4 +51,3 @@ public class SalonControlador {
         return ResponseEntity.noContent().build();
     }
 }
-
