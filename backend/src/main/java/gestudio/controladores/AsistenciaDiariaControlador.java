@@ -1,10 +1,10 @@
 package gestudio.controladores;
 
+import gestudio.dto.PageResponse;
 import gestudio.dto.asistencia.request.AsistenciaDiariaRegistroRequest;
 import gestudio.dto.asistencia.request.AsistenciaDiariaModificacionRequest;
 import gestudio.dto.asistencia.response.AsistenciaDiariaDetalleResponse;
 import gestudio.servicios.asistencia.AsistenciaDiariaServicio;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -56,11 +56,11 @@ public class AsistenciaDiariaControlador {
     }
 
     @GetMapping("/por-disciplina-y-fecha")
-    public ResponseEntity<Page<AsistenciaDiariaDetalleResponse>> obtenerAsistenciasPorDisciplinaYFecha(
+    public ResponseEntity<PageResponse<AsistenciaDiariaDetalleResponse>> obtenerAsistenciasPorDisciplinaYFecha(
             @RequestParam Long disciplinaId, @RequestParam String fecha, Pageable pageable) {
         LocalDate fechaParsed = LocalDate.parse(fecha);
         log.info("Obteniendo asistencias para disciplinaId={} en fecha={}", disciplinaId, fechaParsed);
-        return ResponseEntity.ok(asistenciaDiariaServicio.obtenerAsistenciasPorDisciplinaYFecha(disciplinaId, fechaParsed, pageable));
+        return ResponseEntity.ok(PageResponse.from(
+                asistenciaDiariaServicio.obtenerAsistenciasPorDisciplinaYFecha(disciplinaId, fechaParsed, pageable)));
     }
-
 }
