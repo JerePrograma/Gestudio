@@ -1,6 +1,6 @@
 # Estado vigente y riesgos controlados
 
-Corte: 2026-07-22, `America/Argentina/Buenos_Aires`.
+Corte: 2026-07-26, `America/Argentina/Buenos_Aires`.
 
 ## Cerrado en el árbol de release
 
@@ -14,16 +14,17 @@ Corte: 2026-07-22, `America/Argentina/Buenos_Aires`.
 - Backup/restore 12/12 y rollback 8/8 en PS 7 y PS 5.1.
 - Recorrido real de navegador de los cinco roles.
 - CI sobre `main` con acciones fijadas y gates críticos sin tolerancia de error.
+- Contrato paginado estable mediante `PageResponse<T>`; los controladores ya no exponen `PageImpl` directamente.
 
 ## Riesgos residuales explícitos
 
-| ID | Alcance | Condición exacta | Tratamiento soportado |
-|---|---|---|---|
-| API-PAGE-001 | API | algunas respuestas serializan `PageImpl` directamente | mantener contrato actual; versionar la respuesta antes de migrarla |
-| OPS-ENV-001 | Producción | TLS, DNS, secret manager, storage, SMTP y alertas dependen del ambiente | validar con el runbook antes de promover |
-| ROLLBACK-DB-001 | Base | Flyway no ofrece down migrations | restaurar un backup compatible; no simular rollback automático |
-| INT-001 | Integración | transporte real a Jere Platform está deshabilitado | habilitar sólo con tenant/secreto y smoke autorizado |
-| DEP-MAJOR-001 | Frontend | `npm outdated` informa majors incompatibles | migración separada con regresión completa; no forzar en este release |
+| ID | Alcance | Condición exacta | Tratamiento soportado | Seguimiento |
+|---|---|---|---|---|
+| OPS-ENV-001 | Producción | TLS, DNS, secret manager, storage, SMTP y recuperación dependen del ambiente | validar con el runbook antes de promover | [#23](https://github.com/JerePrograma/Gestudio/issues/23) |
+| OPS-OBS-001 | Operación | métricas, dashboards, alertas, retención y responsables externos no están acreditados | desplegar y probar observabilidad operativa | [#24](https://github.com/JerePrograma/Gestudio/issues/24) |
+| ROLLBACK-DB-001 | Base | Flyway no ofrece down migrations | restaurar un backup compatible; no simular rollback automático | límite estructural documentado |
+| INT-001 | Integración | transporte real a Jere Platform está deshabilitado | habilitar sólo con tenant/secreto y smoke autorizado | [#25](https://github.com/JerePrograma/Gestudio/issues/25) |
+| DEP-MAJOR-001 | Frontend | `npm outdated` informa majors incompatibles | migración separada con regresión completa; no forzar en este release | [#26](https://github.com/JerePrograma/Gestudio/issues/26) |
 
 Estos puntos no son marcadores: describen límites concretos del producto o del
 ambiente. Ninguno reduce los gates ejecutados del release.
@@ -32,8 +33,10 @@ ambiente. Ninguno reduce los gates ejecutados del release.
 
 - Desarrollo: apto.
 - Demo local: apta.
-- CI: configurado; el SHA publicado debe terminar verde.
+- CI: configurado; cada SHA publicado debe terminar verde.
 - Backup/restore: apto para el formato documentado.
 - Rollback de aplicación: apto si la imagen anterior comprende el esquema.
 - Producción: el repositorio está preparado, pero la autorización depende de
-  completar la validación del ambiente real indicada en `docs/operations/`.
+  completar [#23](https://github.com/JerePrograma/Gestudio/issues/23),
+  [#24](https://github.com/JerePrograma/Gestudio/issues/24) y, para la integración,
+  [#25](https://github.com/JerePrograma/Gestudio/issues/25).
