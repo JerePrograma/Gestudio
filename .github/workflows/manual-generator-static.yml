@@ -77,6 +77,48 @@ jobs:
                   }
               }
 
+      - name: Reject writes to PowerShell platform variables
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $reserved = [Collections.Generic.HashSet[string]]::new(
+              [StringComparer]::OrdinalIgnoreCase
+          )
+          foreach ($name in @('IsWindows', 'IsLinux', 'IsMacOS')) {
+              [void]$reserved.Add($name)
+          }
+
+          Get-ChildItem '.\scripts\manual' -Filter '*.ps1' -File |
+              Sort-Object FullName |
+              ForEach-Object {
+                  $tokens = $null
+                  $errors = $null
+                  $ast = [System.Management.Automation.Language.Parser]::ParseFile(
+                      $_.FullName,
+                      [ref]$tokens,
+                      [ref]$errors
+                  )
+
+                  $writes = @($ast.FindAll({
+                      param($node)
+
+                      if ($node -isnot [System.Management.Automation.Language.AssignmentStatementAst]) {
+                          return $false
+                      }
+
+                      $left = $node.Left
+                      return $left -is [System.Management.Automation.Language.VariableExpressionAst] -and
+                          $reserved.Contains($left.VariablePath.UserPath)
+                  }, $true))
+
+                  if ($writes.Count -gt 0) {
+                      $locations = $writes | ForEach-Object {
+                          "$($_.Extent.StartLineNumber): $($_.Extent.Text)"
+                      }
+                      throw "Escritura a variable automática en $($_.FullName): $($locations -join '; ')"
+                  }
+              }
+
       - name: Validate Node flows
         shell: pwsh
         run: |
