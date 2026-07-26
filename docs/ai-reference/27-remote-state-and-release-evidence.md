@@ -1,31 +1,46 @@
 # Estado remoto y evidencia de release
 
 > Estado: CONFIRMADO  
-> Última revisión: 2026-07-24  
-> Fuentes principales: GitHub remoto, historial, PRs y `../project-status-and-handoff.md`
+> Última revisión: 2026-07-26  
+> Fuentes principales: GitHub remoto, historial, issues, PRs y `../project-status-and-handoff.md`
 
 ## Repositorio
 
 - Repositorio: `JerePrograma/Gestudio`.
 - Rama predeterminada y de publicación: `main`.
 - Permisos disponibles durante la inspección: lectura y escritura.
-- Repositorio no archivado.
-- HEAD remoto inspeccionado antes de esta actualización: `af099c880b1f18db018111e8720fb5c2bcd9280a`.
-- Commit anterior funcional: `0c96c8e55b3af891f78641cd449997e64a3adcc4`.
+- Repositorio público y no archivado.
+- HEAD remoto inspeccionado antes de esta actualización: `90a68b6c96660ea58facbcbc558d856029bb1d98`.
+- No se creó ninguna rama ni se reescribió historial.
 
-## Unificación
+## Trabajo remoto gestionado
 
-No había pull requests abiertos. Los PRs de implementación/release relevantes estaban cerrados y mayormente fusionados; un PR documental antiguo (`#17`) estaba cerrado sin merge y no se incorporó porque no representa trabajo abierto ni revisado contra el HEAD actual.
+No hay pull requests abiertos. `main` se mantiene como fuente única de publicación.
 
-No se mezclaron ramas por nombre ni se reescribió historial. `main` se trató como fuente única. El conector de búsqueda de ramas no devolvió un inventario fiable, por lo que no se afirma que no existan refs remotas secundarias; sí se confirma que no había PRs abiertos hacia `main`.
+Issues abiertos y asignados:
+
+- `#23`: staging y promoción productiva (`P0`, `OPS-ENV-001`).
+- `#24`: observabilidad operativa y alertas (`P1`).
+- `#25`: smoke desplegado Gestudio → Jere Platform (`P1`, `INT-001`).
+- `#26`: dependencias mayores del frontend (`P3`, `DEP-MAJOR-001`).
+
+## Cambios remotos del 26-07-2026
+
+- `SalonControlador` y `AsistenciaDiariaControlador` pasaron a `PageResponse<T>`.
+- Se añadió `PageResponseTest` para el contrato estable y el caso vacío.
+- `API-PAGE-001` quedó cerrado en las fuentes vigentes.
+- README, handoff, backlog y referencias de IA quedaron sincronizados con los issues `#23`–`#26`.
 
 ## Estado de CI del HEAD base
 
-La consulta de status checks y workflow runs asociada a `af099c...` no devolvió ejecuciones. Por tanto:
+La consulta de status checks no devolvió estados para `90a68b6c...` y la acción
+disponible para workflow runs sólo expone ejecuciones asociadas a pull requests.
+Por tanto:
 
 - el commit existe en remoto;
-- no se puede afirmar CI verde para ese commit documental;
-- la evidencia funcional vigente proviene del release validado y de los tests/config inspeccionados.
+- el workflow `ci.yml` está configurado para `push` a `main`;
+- no se puede afirmar desde este conector que el HEAD haya terminado verde;
+- tampoco existe evidencia de fallo en la consulta disponible.
 
 ## Evidencia de release 22-07-2026
 
@@ -46,7 +61,7 @@ Resultados documentados:
 
 ## Cambios posteriores al SHA validado
 
-El historial posterior incluye certificación API, correcciones de conceptos/subconceptos, launcher/demo remota, generador de manual y reanudación de capturas. Esta documentación se basa en el HEAD remoto actual, pero no convierte la evidencia del SHA de release en validación automática de cada commit posterior.
+El historial posterior incluye certificación API, correcciones de conceptos/subconceptos, launcher/demo remota, generador de manual, reanudación de capturas y la normalización paginada de 2026-07-26. La documentación se basa en el HEAD remoto actual, pero no convierte la evidencia del SHA de release en validación automática de cada commit posterior.
 
 ## Auto-referencia Git
 
@@ -54,4 +69,4 @@ El SHA del commit que contiene este documento se informa fuera del propio commit
 
 ## Próximo criterio de release
 
-Ejecutar CI y certificación integral sobre el nuevo HEAD; luego registrar runs, resultados y SHA en un informe externo o commit posterior.
+Confirmar el resultado de GitHub Actions para el HEAD final y, después, ejecutar los criterios externos de `#23`, `#24` y `#25` en ambientes autorizados.
