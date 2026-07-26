@@ -2,16 +2,20 @@
 
 Fecha de validación local: 2026-07-22
 
+Última actualización de backlog: 2026-07-26
+
 Zona de negocio: `America/Argentina/Buenos_Aires`
 
 Rama de publicación: `main`
 
-SHA de código validado: `c1f88c7a2e3118bbbd7f770135815056dc6fcebb`.
+SHA de código validado localmente: `c1f88c7a2e3118bbbd7f770135815056dc6fcebb`.
 
 Este documento describe el árbol de release. El SHA documental final, su enlace
 y las ejecuciones de GitHub Actions se registran fuera del propio commit, en el
 informe de cierre que acompaña la publicación. Incluir el SHA de un commit dentro
-de ese mismo commit produciría una auto-referencia imposible.
+de ese mismo commit produciría una auto-referencia imposible. Los cambios de
+mantenimiento posteriores al corte local deben acreditarse mediante el CI de su
+propio SHA y no se incorporan retroactivamente a la evidencia fechada de 2026-07-22.
 
 ## Alcance cerrado
 
@@ -33,6 +37,8 @@ de ese mismo commit produciría una auto-referencia imposible.
 - Readiness/liveness, Prometheus protegido, `X-Request-ID` y logs sanitizados.
 - Workflows con permisos mínimos, acciones fijadas a SHA, timeouts y artefactos
   de evidencia con retención limitada.
+- Contrato paginado estable mediante `PageResponse<T>` en todos los controladores
+  paginados; no se serializa `PageImpl` como respuesta pública.
 
 ## Evidencia local del árbol de release
 
@@ -93,9 +99,13 @@ Capturas y trazas se conservaron fuera del repositorio y no se versionaron.
 - El repositorio está preparado para despliegue, pero no acredita por sí solo
   TLS, DNS, secret manager, almacenamiento persistente, retención, alertas ni
   restauración en infraestructura productiva.
-- Spring Data aún advierte que algunas respuestas serializan `PageImpl`
-  directamente. El contrato actual se preservó para no introducir una ruptura
-  de API en este cierre; debe versionarse antes de cambiar esa forma JSON.
+
+## Seguimiento remoto vigente
+
+- [#23 — staging y promoción productiva](https://github.com/JerePrograma/Gestudio/issues/23).
+- [#24 — observabilidad operativa y alertas](https://github.com/JerePrograma/Gestudio/issues/24).
+- [#25 — smoke Gestudio → Jere Platform](https://github.com/JerePrograma/Gestudio/issues/25).
+- [#26 — actualización de dependencias mayores del frontend](https://github.com/JerePrograma/Gestudio/issues/26).
 
 ## Documentación operativa
 
