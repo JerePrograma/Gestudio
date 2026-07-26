@@ -1,8 +1,8 @@
 # Contexto compacto para IA
 
 > Estado: CONFIRMADO  
-> Última revisión: 2026-07-24  
-> Fuentes principales: síntesis de la base documental
+> Última revisión: 2026-07-26  
+> Fuentes principales: síntesis de la base documental, código e issues vigentes
 
 ## Sistema
 
@@ -40,6 +40,7 @@ Gestudio es un monorepo y monolito modular para academia: alumnos, profesores, d
 - No borrar historia: usar baja/anulación/reversión.
 - Tarifas/condiciones por vigencia y snapshot de cargo.
 - Frontend no calcula la verdad financiera.
+- Respuestas paginadas públicas mediante `PageResponse<T>`; no exponer `PageImpl`.
 - Jere exporta sólo ID/nombre/activo, sin push automático.
 
 ## Comandos
@@ -57,7 +58,7 @@ No `-SkipTests`, reset hard, clean destructivo, force push ni secretos.
 
 ## Riesgos inmediatos
 
-Producción no acreditada; PageImpl legacy; observaciones denegadas; cron cumpleaños comentario/valor inconsistente; GET notificaciones con side effect; SMTP/IMAP no atómico; permisos reservados; respuestas legacy.
+Producción no acreditada ([#23](https://github.com/JerePrograma/Gestudio/issues/23)); observabilidad externa pendiente ([#24](https://github.com/JerePrograma/Gestudio/issues/24)); transporte Jere no desplegado ([#25](https://github.com/JerePrograma/Gestudio/issues/25)); majors frontend diferidos ([#26](https://github.com/JerePrograma/Gestudio/issues/26)); observaciones denegadas; cron cumpleaños comentario/valor inconsistente; GET notificaciones con side effect; SMTP/IMAP no atómico; permisos reservados; respuestas legacy no paginadas.
 
 ## Consulta por tarea
 
