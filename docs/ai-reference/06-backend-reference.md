@@ -1,7 +1,7 @@
 # Referencia backend
 
 > Estado: CONFIRMADO  
-> Última revisión: 2026-07-24  
+> Última revisión: 2026-07-26  
 > Fuentes principales: `../../backend/pom.xml`, paquetes bajo `backend/src/main/java/gestudio`
 
 ## Stack
@@ -43,14 +43,14 @@ Pruebas: Spring Boot Test, Spring Security Test, JUnit, Mockito, Testcontainers 
 - `PagoServicio`, `CargoServicio`, `CreditoServicio`, `CajaServicio`, `EgresoServicio`, `StockServicio`.
 - `MensualidadServicio`, `MatriculaServicio`, `LiquidacionCargoServicio`.
 - `TarifaDisciplinaServicio`, `CondicionEconomicaServicio`.
-- `AutenticacionService`, `TokenService`, servicios de usuario/rol/permiso.
+- `AutenticacionService`, `TokenService`, servicios de usuario/rol/permiso`.
 - `ReciboStorageService`, `PdfService`, `IEmailService`.
 - `StudentSourceExportService`.
 - `ScheduledTasks`.
 
 ## DTO y mapeo
 
-Los controladores nuevos/actualizados deben exponer DTO explícitos; no entidades JPA. Se prefieren records inmutables. `PageResponse` es el wrapper estable usado en varios endpoints, pero aún existen respuestas `Page`/`PageImpl` legacy.
+Los controladores nuevos/actualizados deben exponer DTO explícitos; no entidades JPA. Se prefieren records inmutables. Todas las respuestas paginadas públicas usan `PageResponse<T>`; `Page` y `PageImpl` quedan como detalles internos de Spring Data.
 
 ## Validación y errores
 
