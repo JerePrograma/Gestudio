@@ -136,9 +136,9 @@ function Resolve-ManualJdk21 {
     [CmdletBinding()]
     param()
 
-    $isWindows = [Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT
-    $javaName = if ($isWindows) { 'java.exe' } else { 'java' }
-    $javacName = if ($isWindows) { 'javac.exe' } else { 'javac' }
+    $runningOnWindows = [Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT
+    $javaName = if ($runningOnWindows) { 'java.exe' } else { 'java' }
+    $javacName = if ($runningOnWindows) { 'javac.exe' } else { 'javac' }
     $candidates = [Collections.Generic.List[string]]::new()
 
     if (-not [string]::IsNullOrWhiteSpace($env:JAVA_HOME)) {
@@ -155,7 +155,7 @@ function Resolve-ManualJdk21 {
         $candidates.Add($javaCommand.Source)
     }
 
-    $roots = if ($isWindows) {
+    $roots = if ($runningOnWindows) {
         @(
             (Join-Path $env:ProgramFiles 'Java')
             (Join-Path $env:ProgramFiles 'Amazon Corretto')
