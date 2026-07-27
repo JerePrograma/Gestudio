@@ -70,6 +70,7 @@ $script:nodePathBefore = [Environment]::GetEnvironmentVariable('NODE_PATH', 'Pro
 $script:playwrightRuntimePrepared = $false
 $playwrightRuntimeDirectory = Join-Path $OutputDirectory '.playwright-runtime'
 $playwrightNodeModules = Join-Path $playwrightRuntimeDirectory 'node_modules'
+$incompleteMarkerPath = Join-Path $OutputDirectory '.last-build-incomplete'
 $completed = $false
 $locationPushed = $false
 
@@ -110,6 +111,23 @@ function Clear-ManualPlaywrightRuntime {
     }
 }
 
+function Write-IncompleteManualMarker {
+    [CmdletBinding()]
+    param()
+
+    New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
+    $state = [ordered]@{
+        status = 'INCOMPLETE'
+        recordedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
+        sourceCommit = (Invoke-ManualNativeCommand `
+            -FilePath 'git' `
+            -Arguments @('-C', $repoRoot, 'rev-parse', 'HEAD') `
+            -CaptureOutput).Output.Trim()
+    }
+    $state | ConvertTo-Json -Depth 3 |
+        Set-Content -LiteralPath $incompleteMarkerPath -Encoding UTF8
+}
+
 try {
     Push-Location -LiteralPath $repoRoot
     $locationPushed = $true
@@ -117,6 +135,7 @@ try {
     Set-MissingManualDemoCredentials
     Assert-ManualDemoCredentials
     New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
+    Write-IncompleteManualMarker
 
     Invoke-ManualStage -Name '1/7 Preflight' -Action {
         & (Join-Path $PSScriptRoot 'Preflight-Manual.ps1') `
@@ -196,6 +215,10 @@ try {
 
     Clear-ManualPlaywrightRuntime
 
+    if (Test-Path -LiteralPath $incompleteMarkerPath) {
+        Remove-Item -LiteralPath $incompleteMarkerPath -Force
+    }
+
     Invoke-ManualStage -Name '7/7 Validación estructural' -Action {
         & (Join-Path $PSScriptRoot 'Validate-Manual.ps1') `
             -OutputDirectory $OutputDirectory
@@ -246,6 +269,12 @@ finally {
     }
 
     if (-not $completed) {
+        try {
+            Write-IncompleteManualMarker
+        }
+        catch {
+            Write-Warning "No se pudo registrar el estado incompleto del manual: $($_.Exception.Message)"
+        }
         Write-Host 'La generación no se completó. No se afirma que el PDF sea válido.' -ForegroundColor Yellow
     }
 }
