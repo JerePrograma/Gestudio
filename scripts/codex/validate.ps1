@@ -109,9 +109,23 @@ if ($Scope -in "All", "Frontend") {
     }
 
     Invoke-Step "frontend build" {
+        $previousApiBaseUrl = [Environment]::GetEnvironmentVariable("VITE_API_BASE_URL", "Process")
+        $previousTimeZone = [Environment]::GetEnvironmentVariable("VITE_APP_TIME_ZONE", "Process")
         Push-Location (Join-Path $repoRoot "frontend")
-        try { & npm run build }
-        finally { Pop-Location }
+        try {
+            if ([string]::IsNullOrWhiteSpace($env:VITE_API_BASE_URL)) {
+                $env:VITE_API_BASE_URL = "https://example.invalid/api"
+            }
+            if ([string]::IsNullOrWhiteSpace($env:VITE_APP_TIME_ZONE)) {
+                $env:VITE_APP_TIME_ZONE = "America/Argentina/Buenos_Aires"
+            }
+            & npm run build
+        }
+        finally {
+            [Environment]::SetEnvironmentVariable("VITE_API_BASE_URL", $previousApiBaseUrl, "Process")
+            [Environment]::SetEnvironmentVariable("VITE_APP_TIME_ZONE", $previousTimeZone, "Process")
+            Pop-Location
+        }
     }
 }
 
