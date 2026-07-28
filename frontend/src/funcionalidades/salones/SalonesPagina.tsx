@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate } from "react-router"
 import Tabla from "../../componentes/comunes/Tabla"
 import salonesApi from "../../api/salonesApi"
 import Boton from "../../componentes/comunes/Boton"

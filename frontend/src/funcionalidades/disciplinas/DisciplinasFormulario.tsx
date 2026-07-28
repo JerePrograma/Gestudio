@@ -1,5 +1,5 @@
 import { type FormEvent, useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router";
 import { toast } from "react-toastify";
 import disciplinasApi from "../../api/disciplinasApi";
 import profesoresApi from "../../api/profesoresApi";

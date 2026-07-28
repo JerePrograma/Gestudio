@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useTheme } from "next-themes";
 import { useSidebar } from "../hooks/context/useSidebar";
 import { Bell, Menu, Moon, Sun } from "lucide-react";
-import { useLocation } from "react-router-dom";
+import { useLocation } from "react-router";
 import { cn } from "../lib/utils";
 import NotificacionesModal from "./NotificacionesModal";
 import { useAuth } from "../hooks/context/useAuth";

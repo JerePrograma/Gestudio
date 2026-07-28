@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { BadgePercent, Pencil, PlusCircle } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import inscripcionesApi from "../../api/inscripcionesApi";
 import Boton from "../../componentes/comunes/Boton";
 import ErrorState from "../../componentes/comunes/ErrorState";

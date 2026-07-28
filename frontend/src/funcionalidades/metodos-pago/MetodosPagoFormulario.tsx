@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useEffect, useState, useCallback } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router";
 import { Formik, Form, Field, ErrorMessage } from "formik";
 import { metodoPagoEsquema } from "../../validaciones/metodoPagoEsquema";
 import api from "../../api/axiosConfig";

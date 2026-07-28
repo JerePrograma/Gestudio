@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router";
 import { ErrorMessage, Field, Form, Formik } from "formik";
 import { toast } from "react-toastify";
 import permisosApi from "../../api/permisosApi";

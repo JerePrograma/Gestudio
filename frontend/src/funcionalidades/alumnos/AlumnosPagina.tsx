@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CreditCard, Pencil, PlusCircle, Trash2 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { toast } from "react-toastify";
 import alumnosApi from "../../api/alumnosApi";
 import { getApiErrorMessage } from "../../api/apiError";

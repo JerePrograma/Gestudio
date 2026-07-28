@@ -1,6 +1,6 @@
 import type React from "react";
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router";
 import { Formik, Form, Field, ErrorMessage } from "formik";
 import { salonEsquema } from "../../validaciones/salonEsquema";
 import salonesApi from "../../api/salonesApi";

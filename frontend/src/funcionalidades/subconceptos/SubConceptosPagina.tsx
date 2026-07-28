@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import Tabla from "../../componentes/comunes/Tabla";
 import subConceptosApi from "../../api/subConceptosApi";
 import Boton from "../../componentes/comunes/Boton";

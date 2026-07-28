@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { useAuth } from "../hooks/context/useAuth";
 import Boton from "../componentes/comunes/Boton";
 import { Form, Formik, Field, ErrorMessage } from "formik";

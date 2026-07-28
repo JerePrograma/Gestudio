@@ -1,5 +1,5 @@
 import React, { useEffect, useState, type ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import api, { clearAuthStorage } from "../../api/axiosConfig";
 import {
   getAuthSession,

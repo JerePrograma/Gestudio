@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { PlusCircle, Pencil, Trash2 } from "lucide-react";
 import { toast } from "react-toastify";
 import Tabla from "../../componentes/comunes/Tabla";

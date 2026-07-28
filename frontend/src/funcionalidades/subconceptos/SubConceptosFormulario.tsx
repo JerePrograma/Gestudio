@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router";
 import { Formik, Form, Field, ErrorMessage } from "formik";
 import { subConceptoEsquema } from "../../validaciones/subConceptoEsquema";
 import subConceptosApi from "../../api/subConceptosApi";

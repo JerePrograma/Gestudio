@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { useSidebar } from "../hooks/context/useSidebar";
 import { ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
 import { cn } from "../lib/utils";

@@ -1,4 +1,4 @@
-import { Navigate, Outlet } from "react-router-dom";
+import { Navigate, Outlet } from "react-router";
 import LoadingState from "../componentes/comunes/LoadingState";
 import { useAuth } from "../hooks/context/useAuth";
 import type { ReactNode } from "react";

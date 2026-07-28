@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router";
 import LoadingState from "../componentes/comunes/LoadingState";
 import MainLayout from "../componentes/layout/MainLayout";
 import ProtectedRoute from "./ProtectedRoute";

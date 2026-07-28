@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Form, Formik, type FormikHelpers } from "formik";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router";
 import { toast } from "react-toastify";
 import alumnosApi from "../../api/alumnosApi";
 import { getApiErrorMessage, getFieldErrors } from "../../api/apiError";

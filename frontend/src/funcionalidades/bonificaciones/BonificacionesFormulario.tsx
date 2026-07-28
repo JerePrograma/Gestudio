@@ -1,6 +1,6 @@
 import type React from "react";
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router";
 import Boton from "../../componentes/comunes/Boton";
 import { ErrorMessage, Field, Form, Formik, type FormikHelpers } from "formik";
 import { bonificacionEsquema } from "../../validaciones/bonificacionEsquema";

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { Pencil, PlusCircle, Trash2 } from "lucide-react";
 import { toast } from "react-toastify";
 import rolesApi from "../../api/rolesApi";
