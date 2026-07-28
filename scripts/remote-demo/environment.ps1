@@ -1,4 +1,4 @@
-function Read-EnvironmentFile {
+﻿function Read-EnvironmentFile {
     if (-not (Test-Path -LiteralPath $script:envPath -PathType Leaf)) {
         throw "Falta $($script:envPath). Copie .env.remote-demo.example y complete los valores locales."
     }

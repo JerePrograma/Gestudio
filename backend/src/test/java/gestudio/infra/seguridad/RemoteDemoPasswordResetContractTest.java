@@ -21,7 +21,7 @@ class RemoteDemoPasswordResetContractTest {
 
         assertThat(launcher)
                 .contains(
-                        "ValidateSet(\"Start\", \"Status\", \"Stop\", \"Reset\", \"ResetPassword\")",
+                        "ValidateSet(\"Start\", \"Status\", \"Stop\", \"Reset\", \"ResetPassword\", \"RepairPricing\")",
                         "[string] $Username = \"\"",
                         "ResetPassword exige -Username",
                         "Reset-DemoPassword -Username"

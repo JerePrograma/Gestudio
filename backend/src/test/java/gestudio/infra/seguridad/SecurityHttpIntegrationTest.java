@@ -166,6 +166,7 @@ class SecurityHttpIntegrationTest {
         when(cargoServicio.listarPendientes(anyLong(), any())).thenReturn(Page.empty());
         when(pagoServicio.listarPagosPorAlumno(anyLong(), any())).thenReturn(Page.empty());
         when(stockServicio.listarStocks(any())).thenReturn(Page.empty());
+        when(salonServicio.listarSalones(any())).thenReturn(Page.empty());
         var exportPage = new gestudio.integraciones.jereplatform.application.SignedStudentSourceExportPage(
                 UUID.fromString("00000000-0000-0000-0000-000000000001"),
                 1,

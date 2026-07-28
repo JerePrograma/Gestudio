@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string]$BaseUrl = 'http://localhost:18081',
     [Parameter(Mandatory)]

@@ -72,7 +72,9 @@ class RuntimeProfilesTest {
 
     @Test
     void perfilAusenteFallaCerrado() {
-        runner.run(context -> {
+        runner
+                .withPropertyValues("spring.profiles.active=")
+                .run(context -> {
             assertThat(context).hasFailed();
             assertThat(context.getStartupFailure())
                     .hasRootCauseMessage(
