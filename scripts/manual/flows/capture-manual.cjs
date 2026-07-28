@@ -3,6 +3,11 @@
 const { chromium } = require('playwright');
 const path = require('node:path');
 const fs = require('node:fs');
+const {
+  classifyDiagnosticEvent,
+  formatDiagnosticEvent,
+  getUnexpectedConsoleEvents,
+} = require('./manual-diagnostics.cjs');
 
 async function main() {
 const baseUrl = process.env.MANUAL_BASE_URL;
@@ -94,18 +99,59 @@ const browser = await chromium.launch({
   headless: !headed,
 });
 
-const consoleProblems = [];
-const requestProblems = [];
+const consoleEvents = [];
+const responseEvents = [];
+const pageErrorEvents = [];
+const requestFailureEvents = [];
 
-function attachDiagnostics(page, scope) {
+function diagnosticSnapshot(diagnostics) {
+  return {
+    scope: diagnostics.scope,
+    phase: diagnostics.phase,
+    authenticated: diagnostics.authenticated,
+  };
+}
+
+function attachDiagnostics(page, diagnostics) {
   page.on('console', (message) => {
-    if (message.type() === 'error') {
-      consoleProblems.push(`${scope}: ${message.text()}`);
-    }
+    consoleEvents.push({
+      kind: 'console',
+      ...diagnosticSnapshot(diagnostics),
+      type: message.type(),
+      text: message.text(),
+    });
+  });
+
+  page.on('pageerror', (error) => {
+    pageErrorEvents.push({
+      kind: 'pageerror',
+      ...diagnosticSnapshot(diagnostics),
+      message: error instanceof Error ? error.message : String(error),
+    });
   });
 
   page.on('requestfailed', (request) => {
-    requestProblems.push(`${scope}: ${request.method()} ${request.url()} - ${request.failure()?.errorText || 'falló'}`);
+    requestFailureEvents.push({
+      kind: 'requestfailed',
+      ...diagnosticSnapshot(diagnostics),
+      method: request.method(),
+      url: request.url(),
+      failure: request.failure()?.errorText || 'falló',
+    });
+  });
+
+  page.on('response', (response) => {
+    if (response.status() < 400) {
+      return;
+    }
+
+    responseEvents.push({
+      kind: 'response',
+      ...diagnosticSnapshot(diagnostics),
+      method: response.request().method(),
+      pathname: new URL(response.url()).pathname,
+      status: response.status(),
+    });
   });
 }
 
@@ -119,9 +165,14 @@ async function makeContext(scope) {
     serviceWorkers: 'block',
   });
 
+  const diagnostics = {
+    scope,
+    phase: 'before-login',
+    authenticated: false,
+  };
   const page = await context.newPage();
-  attachDiagnostics(page, scope);
-  return { context, page };
+  attachDiagnostics(page, diagnostics);
+  return { context, page, diagnostics };
 }
 
 async function settle(page) {
@@ -191,10 +242,11 @@ async function closeBlockingModal(page) {
   }
 }
 
-async function login(page, account) {
+async function login(context, page, diagnostics, account) {
   await goto(page, '/login', 'Iniciar sesión');
   await page.getByLabel(/Nombre de Usuario/i).fill(account.username);
   await page.getByLabel(/Contraseña/i).fill(process.env[account.passwordVariable]);
+  diagnostics.phase = 'login-submit';
   await page.getByRole('button', { name: 'Ingresar', exact: true }).click();
 
   await page.getByRole('heading', { name: 'Panel de control', exact: true }).waitFor({
@@ -202,6 +254,13 @@ async function login(page, account) {
     timeout: 25000,
   });
 
+  const cookies = await context.cookies(new URL('/api/login/refresh', baseUrl).toString());
+  if (!cookies.some((cookie) => cookie.name === 'gestudio_demo_refresh')) {
+    throw new Error(`El login de ${account.username} no estableció gestudio_demo_refresh.`);
+  }
+
+  diagnostics.authenticated = true;
+  diagnostics.phase = 'authenticated';
   await closeBlockingModal(page);
   await page.getByText(account.username, { exact: true }).last().waitFor({ state: 'visible' });
   await page.getByText(account.role, { exact: true }).last().waitFor({ state: 'visible' });
@@ -250,8 +309,8 @@ try {
   }
 
   {
-    const { context, page } = await makeContext('secretaria');
-    await login(page, users.secretaria);
+    const { context, page, diagnostics } = await makeContext('secretaria');
+    await login(context, page, diagnostics, users.secretaria);
     await screenshot(page, '02-panel-secretaria.png');
 
     await goto(page, '/alumnos', 'Alumnos');
@@ -309,8 +368,8 @@ try {
   }
 
   {
-    const { context, page } = await makeContext('caja');
-    await login(page, users.caja);
+    const { context, page, diagnostics } = await makeContext('caja');
+    await login(context, page, diagnostics, users.caja);
     await screenshot(page, '15-panel-caja.png');
 
     await goto(page, '/metodos-pago');
@@ -328,8 +387,8 @@ try {
   }
 
   {
-    const { context, page } = await makeContext('administrador');
-    await login(page, users.administrador);
+    const { context, page, diagnostics } = await makeContext('administrador');
+    await login(context, page, diagnostics, users.administrador);
 
     await goto(page, '/disciplinas', 'Disciplinas');
     await screenshot(page, '18-disciplinas.png');
@@ -352,8 +411,8 @@ try {
   }
 
   {
-    const { context, page } = await makeContext('superadmin');
-    await login(page, users.superadmin);
+    const { context, page, diagnostics } = await makeContext('superadmin');
+    await login(context, page, diagnostics, users.superadmin);
     await screenshot(page, '31-panel-superadmin.png');
 
     await goto(page, '/disciplinas', 'Disciplinas');
@@ -392,8 +451,8 @@ try {
   }
 
   {
-    const { context, page } = await makeContext('direccion');
-    await login(page, users.direccion);
+    const { context, page, diagnostics } = await makeContext('direccion');
+    await login(context, page, diagnostics, users.direccion);
     await screenshot(page, '29-panel-direccion.png');
     await goto(page, '/disciplinas', 'Disciplinas');
     await goto(page, '/alumnos-por-disciplina', 'Alumnos por Disciplina');
@@ -412,15 +471,34 @@ if (missing.length > 0) {
   throw new Error(`Faltan capturas esperadas: ${missing.join(', ')}`);
 }
 
-const unexpectedConsole = consoleProblems.filter((line) => !line.includes('/api/login/refresh'));
-if (unexpectedConsole.length > 0) {
-  throw new Error(`Errores de consola inesperados:\n${unexpectedConsole.join('\n')}`);
+const responseClassifications = responseEvents.map((event) => ({
+  event,
+  classification: classifyDiagnosticEvent(event),
+}));
+const expectedProbeEvents = responseClassifications.filter(
+  ({ classification }) => classification?.category === 'expected-anonymous-session-probe',
+);
+if (expectedProbeEvents.length !== 6) {
+  throw new Error(
+    `Se esperaban 6 probes anónimos POST /api/login/refresh y se observaron ${expectedProbeEvents.length}.`,
+  );
 }
 
-if (requestProblems.length > 0) {
-  throw new Error(`Solicitudes de red fallidas:\n${requestProblems.join('\n')}`);
-}
+const responseProblems = responseClassifications
+  .filter(({ classification }) => classification?.fatal)
+  .map(({ event }) => event);
+const unexpectedConsoleEvents = getUnexpectedConsoleEvents(consoleEvents, responseEvents);
+const browserProblems = [
+  ...responseProblems,
+  ...pageErrorEvents,
+  ...requestFailureEvents,
+  ...unexpectedConsoleEvents,
+];
 
+if (browserProblems.length > 0) {
+  throw new Error(`Errores de navegador inesperados:
+${browserProblems.map(formatDiagnosticEvent).join('\n')}`);
+}
 console.log(`Capturas reales completadas: ${expectedFiles.length}.`);
 
 }
