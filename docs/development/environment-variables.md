@@ -18,15 +18,29 @@ Los archivos versionados `.env.example` y `.env.local.example` contienen plantil
 | `JWT_ISSUER` | todos | prod: sí | `gestudio-local` |
 | `JWT_ACCESS_TOKEN_TTL` | todos | prod: sí | duración ISO-8601; local `PT15M` |
 | `JWT_REFRESH_TOKEN_TTL` | todos | prod: sí | duración ISO-8601; local `P7D` |
-| `SPRING_MAIL_HOST` | prod | sí | sin fallback |
-| `SPRING_MAIL_PORT` | prod | sí | `587` habitual |
-| `SPRING_MAIL_USERNAME` | prod | sí | sin fallback |
-| `SPRING_MAIL_PASSWORD` | prod | sí, secreta | sin fallback |
-| `SPRING_MAIL_IMAP_HOST` | prod | sí | sin fallback |
-| `SPRING_MAIL_IMAP_PORT` | prod | sí | `993` habitual |
-| `SPRING_MAIL_IMAP_USERNAME` | prod | sí | sin fallback |
-| `SPRING_MAIL_IMAP_PASSWORD` | prod | sí, secreta | sin fallback |
-| `SPRING_MAIL_IMAP_SENT_FOLDER` | prod | no | `INBOX.Sent` |
+| `APP_EMAIL_ENABLED` | todos | no | `false`; una de las cinco guardas Gmail |
+| `APP_EMAIL_PROVIDER` | todos | no | `NOOP`; admite `FAKE` y `GMAIL_SMTP` explícitos |
+| `APP_EMAIL_DRY_RUN` | todos | no | `true`; bloquea SMTP real |
+| `APP_EMAIL_REAL_NETWORK_ALLOWED` | todos | no | `false`; política explícita de red |
+| `APP_EMAIL_KILL_SWITCH` | todos | no | `true`; corte operativo dominante |
+| `APP_EMAIL_FROM_ADDRESS` | Gmail real | sí | sender validado; debe coincidir con el usuario SMTP actual |
+| `APP_EMAIL_FROM_NAME` | todos | no | `Gestudio`; máximo 100 caracteres, sin CR/LF |
+| `APP_EMAIL_SENT_COPY_MODE` | todos | no | `DISABLED`; `BEST_EFFORT` opcional, `REQUIRED` rechazado |
+| `APP_EMAIL_FAKE_OUTCOME` | FAKE | no | `SUCCESS`, `TEMPORARY_FAILURE` o `PERMANENT_FAILURE` |
+| `APP_EMAIL_GMAIL_HOST` | Gmail real | sí | sin fallback real; no se versiona un destino |
+| `APP_EMAIL_GMAIL_PORT` | Gmail real | sí | `587` por defecto |
+| `APP_EMAIL_GMAIL_USERNAME` | Gmail real | sí | cuenta sender válida |
+| `APP_EMAIL_GMAIL_APP_PASSWORD` | Gmail real transitorio | sí, secreta | sólo secret manager; nunca `.env` versionado |
+| `APP_EMAIL_SMTP_CONNECTION_TIMEOUT_MS` | Gmail real | no | `5000`; debe ser positivo |
+| `APP_EMAIL_SMTP_READ_TIMEOUT_MS` | Gmail real | no | `5000`; debe ser positivo |
+| `APP_EMAIL_SMTP_WRITE_TIMEOUT_MS` | Gmail real | no | `5000`; debe ser positivo |
+| `APP_EMAIL_SENT_COPY_HOST` | Sent `BEST_EFFORT` | sí | host IMAPS externo |
+| `APP_EMAIL_SENT_COPY_PORT` | Sent `BEST_EFFORT` | sí | `993` por defecto |
+| `APP_EMAIL_SENT_COPY_USERNAME` | Sent `BEST_EFFORT` | sí | dirección válida |
+| `APP_EMAIL_SENT_COPY_APP_PASSWORD` | Sent `BEST_EFFORT` | sí, secreta | sólo secret manager |
+| `APP_EMAIL_SENT_COPY_FOLDER` | Sent `BEST_EFFORT` | sí | nombre exacto verificado con la cuenta |
+| `APP_EMAIL_SENT_COPY_CONNECTION_TIMEOUT_MS` | Sent `BEST_EFFORT` | no | `5000`; debe ser positivo |
+| `APP_EMAIL_SENT_COPY_READ_TIMEOUT_MS` | Sent `BEST_EFFORT` | no | `5000`; debe ser positivo |
 | `APP_TIME_ZONE` | todos | prod: sí | `America/Argentina/Buenos_Aires` |
 | `APP_RECEIPTS_PATH` | todos | prod: sí | directorio escribible y persistente |
 | `APP_CORS_ALLOWED_ORIGINS` | todos | prod: sí | lista separada por comas; HTTPS en prod |
@@ -93,6 +107,12 @@ La interfaz de Codex debe usar valores de desarrollo, nunca secretos productivos
 | `APP_RECEIPTS_PATH` | subdirectorio local no versionado bajo la raíz del repositorio |
 | `APP_CORS_ALLOWED_ORIGINS` | `http://localhost:5173,http://localhost:8081` |
 | `APP_SCHEDULING_ENABLED` | `false` |
+| `APP_EMAIL_ENABLED` | `false` |
+| `APP_EMAIL_PROVIDER` | `NOOP` |
+| `APP_EMAIL_DRY_RUN` | `true` |
+| `APP_EMAIL_REAL_NETWORK_ALLOWED` | `false` |
+| `APP_EMAIL_KILL_SWITCH` | `true` |
+| `APP_EMAIL_SENT_COPY_MODE` | `DISABLED` |
 | `GESTUDIO_HOME` | raíz del checkout actual |
 | `VITE_API_BASE_URL` | `http://localhost:8080/api` |
 
@@ -107,7 +127,9 @@ se recomienda el override de JVM para producción.
 | `BACKEND_PORT` | `8080` |
 | `FRONTEND_PORT` | `8081` |
 
-No configures SMTP/IMAP en Codex: el perfil `dev` usa email no-op.
+No configures SMTP/IMAP en Codex. El proveedor, no el perfil, selecciona el
+adaptador; estos valores mantienen NOOP incluso si se ejecuta `prod`. La guía
+completa está en `docs/integrations/gmail-email-delivery.md`.
 
 El secreto de exportación no aparece en `.env.example` ni en esta tabla como
 valor de ejemplo. No debe reutilizar JWT, credenciales de base ni otros secretos.

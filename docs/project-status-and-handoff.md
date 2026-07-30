@@ -4,6 +4,8 @@ Fecha de validación local: 2026-07-22
 
 Última actualización de backlog: 2026-07-26
 
+Última actualización de integración email: 2026-07-30
+
 Zona de negocio: `America/Argentina/Buenos_Aires`
 
 Rama de publicación: `main`
@@ -22,6 +24,9 @@ propio SHA y no se incorporan retroactivamente a la evidencia fechada de 2026-07
 - Cumpleaños del día civil de Buenos Aires, con `anchor_date` y
   `business_date` separados, personas activas y regla de 29 de febrero.
 - Notificación única mediante inserción atómica y efecto posterior al commit.
+- Frontera de email tipada y fail-closed: `NOOP` y `FAKE` sin red,
+  `GMAIL_SMTP` detrás de enabled/dry-run/kill switch/política de red y sender
+  configurado. SMTP real permanece no conectado.
 - Manifiesto Flyway dinámico y contiguo; la cadena actual es V1-V7 sin
   constantes ejecutables que fijen siete migraciones.
 - Seed demo idempotente de 914 filas, cinco usuarios, cinco logins y matriz RBAC.
@@ -94,8 +99,11 @@ Capturas y trazas se conservaron fuera del repositorio y no se versionaron.
 - Flyway es forward-only. El rollback probado cambia la imagen de aplicación
   sólo si la imagen anterior entiende el esquema actual. Recuperar la base exige
   el procedimiento de backup/restore.
-- No se probó entrega real SMTP ni transporte a Jere Platform; ambos permanecen
-  desconectados salvo configuración explícita del ambiente.
+- La entrega Gmail real no se probó ni desplegó. El adaptador está validado con
+  dobles; OAuth2 no está implementado y la habilitación exige autorización,
+  credenciales externas y apertura simultánea de todas las guardas.
+- El transporte a Jere Platform permanece desconectado salvo configuración
+  explícita del ambiente.
 - El repositorio está preparado para despliegue, pero no acredita por sí solo
   TLS, DNS, secret manager, almacenamiento persistente, retención, alertas ni
   restauración en infraestructura productiva.
@@ -113,6 +121,7 @@ Capturas y trazas se conservaron fuera del repositorio y no se versionaron.
 - [Variables de entorno](development/environment-variables.md)
 - [Runbook](operations/local-runbook.md)
 - [Observabilidad](operations/observability.md)
+- [Email controlado](integrations/gmail-email-delivery.md)
 - [Backup y restore](operations/backup-restore.md)
 - [Rollback](operations/rollback.md)
 - [Demo persistente](testing/demo-local.md)

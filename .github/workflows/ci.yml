@@ -80,14 +80,12 @@ jobs:
           JWT_ISSUER: gestudio-ci
           JWT_ACCESS_TOKEN_TTL: PT15M
           JWT_REFRESH_TOKEN_TTL: P7D
-          SPRING_MAIL_HOST: smtp.example.invalid
-          SPRING_MAIL_PORT: "587"
-          SPRING_MAIL_USERNAME: ci
-          SPRING_MAIL_PASSWORD: ci-not-a-production-secret
-          SPRING_MAIL_IMAP_HOST: imap.example.invalid
-          SPRING_MAIL_IMAP_PORT: "993"
-          SPRING_MAIL_IMAP_USERNAME: ci
-          SPRING_MAIL_IMAP_PASSWORD: ci-not-a-production-secret
+          APP_EMAIL_ENABLED: "false"
+          APP_EMAIL_PROVIDER: NOOP
+          APP_EMAIL_DRY_RUN: "true"
+          APP_EMAIL_REAL_NETWORK_ALLOWED: "false"
+          APP_EMAIL_KILL_SWITCH: "true"
+          APP_EMAIL_SENT_COPY_MODE: DISABLED
           APP_TIME_ZONE: America/Argentina/Buenos_Aires
           APP_CORS_ALLOWED_ORIGINS: https://app.example.invalid
           APP_OBSERVABILITY_METRICS_TOKEN: ci-only-independent-metrics-token

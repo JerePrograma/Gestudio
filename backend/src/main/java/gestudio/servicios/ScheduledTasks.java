@@ -11,7 +11,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import java.io.IOException;
 import java.util.List;
 
 @Component
@@ -76,15 +75,15 @@ public class ScheduledTasks {
 
     /**
      * Genera y envia las notificaciones de cumpleaños del dia
-     * Todos los dias a las 8:00AM.
+     * Todos los dias a las 10:00AM.
      */
     @Scheduled(cron = "0 0 10 * * *", zone = "${app.time-zone}")
     public void enviarNotificacionesCumpleanios() {
         try {
             List<String> mensajes = notificacionService.generarYObtenerCumpleanerosDelDia();
             log.info("Notificaciones de cumpleaños procesadas cantidad={}", mensajes.size());
-        } catch (IOException e) {
-            log.error("Falló el proceso de notificaciones de cumpleaños", e);
+        } catch (RuntimeException e) {
+            log.error("Falló el proceso de notificaciones de cumpleaños type={}", e.getClass().getSimpleName());
         }
     }
 }

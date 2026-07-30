@@ -156,6 +156,8 @@ Editar como mínimo:
 - `JWT_SECRET`;
 - `JWT_ISSUER`, `JWT_ACCESS_TOKEN_TTL` y `JWT_REFRESH_TOKEN_TTL`;
 - `APP_OBSERVABILITY_METRICS_TOKEN` para consultar Prometheus;
+- email en `NOOP`, disabled, dry-run, red bloqueada, kill switch activo y Sent
+  copy deshabilitado salvo habilitación externa expresamente aprobada;
 - bootstrap inicial si la base no tiene usuarios;
 - puertos si `5432`, `8080` o `8081` están ocupados.
 
@@ -486,6 +488,28 @@ El bloqueo técnico `#59` no está pendiente. La ausencia de transporte
 desplegado es una condición operativa distinta y el issue coordinador `#51`
 permanece abierto.
 
+## 10.1 Email controlado
+
+`dev`, `test`, `remote-demo` y `prod` usan `NOOP` por defecto. Para ejercitar el
+contrato local sin red puede seleccionarse `FAKE` y un outcome sintético:
+
+```powershell
+$env:APP_EMAIL_PROVIDER = 'FAKE'
+$env:APP_EMAIL_FAKE_OUTCOME = 'SUCCESS'
+```
+
+FAKE no representa entrega externa. No configures destinos ni credenciales
+Gmail en desarrollo. Activar el scheduler de cumpleaños o la outbox de recibos
+no abre red: ambos pasan por la misma política.
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass `
+  -File .\scripts\ops\verify-email-delivery.ps1
+```
+
+Arquitectura, guardas, retry, corte y habilitación futura:
+`docs/integrations/gmail-email-delivery.md`.
+
 # 11. Backup
 
 Antes de migraciones, despliegues o rollback:
@@ -552,6 +576,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\validate-demo-seed
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\ops\verify-backup-restore.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\ops\verify-application-rollback.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\ops\verify-observability.ps1
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\ops\verify-email-delivery.ps1
 ```
 
 Los drills usan stacks descartables y no deben compartir datos reales.
@@ -607,7 +632,7 @@ Para staging faltan:
 - recorridos humanos GATE-2;
 - smoke desplegado Gestudio → Jere Platform.
 
-También siguen abiertos rate limiting/fuerza bruta, correo real, revisión de
+También siguen abiertos rate limiting/fuerza bruta, conexión/autorización Gmail real, revisión de
 IDs técnicos remanentes, accesibilidad, imágenes no-root y controles de supply
 chain/CI de seguridad. La evidencia histórica de rollback u observabilidad no
 se debe presentar como una ejecución nueva de este ciclo.

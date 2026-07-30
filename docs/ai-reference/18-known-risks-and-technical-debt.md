@@ -1,7 +1,7 @@
 # Riesgos conocidos y deuda técnica
 
 > Estado: CONFIRMADO  
-> Última revisión: 2026-07-26  
+> Última revisión: 2026-07-30
 > Fuentes principales: código, pruebas, handoff, configuración e issues de GitHub
 
 ## Registro priorizado
@@ -10,11 +10,10 @@
 |---|---|---|---|---|
 | Alta | Producción no acreditada | handoff / [#23](https://github.com/JerePrograma/Gestudio/issues/23) | seguridad/operación | validar TLS, secretos, storage, monitorización y restore |
 | Alta | Transporte Jere no desplegado | integración v1 / [#25](https://github.com/JerePrograma/Gestudio/issues/25) | integración | smoke autorizado y runbook operativo |
-| Alta | SMTP real no probado | handoff / `EmailService` / [#23](https://github.com/JerePrograma/Gestudio/issues/23) | comunicación | prueba controlada y observabilidad |
+| Alta | Gmail real no conectado ni desplegado | handoff / runbook email / [#23](https://github.com/JerePrograma/Gestudio/issues/23) | comunicación | OAuth2/credenciales autorizadas, staging, DNS y prueba controlada |
 | Alta | Controller de observaciones existe pero está denegado | Security config | superficie dormante | decidir retirar o habilitar con diseño/pruebas |
 | Media | GET cumpleaños genera estado/efecto | `NotificacionControlador` | semántica/idempotencia | separar comando/consulta o documentar explícito |
-| Media | Job cumpleaños comenta 08:00 pero cron ejecuta 10:00 | `ScheduledTasks` | operación | corregir comentario o cron tras decisión |
-| Media | SMTP y append IMAPS no son atómicos | `EmailService` | duplicado/estado Sent | definir semántica y reintento del append |
+| Media | Cumpleaños deduplica el disparo pero no posee outbox propia | `NotificacionService` | pérdida entre commit y executor | aceptar garantía o diseñar outbox sólo ante requisito operativo |
 | Media | Respuestas y status HTTP heterogéneos | controladores legacy | consumidores | inventario y versión gradual |
 | Media | Dos rutas de baja de método de pago | `MetodoPagoControlador` | ambigüedad | deprecar una con compatibilidad |
 | Media | Selector de subconcepto por ID o descripción | `ConceptoControlador` | ambigüedad | mantener test y plan de deprecación |
@@ -32,6 +31,11 @@
 `API-PAGE-001` quedó cerrado: los controladores paginados exponen `PageResponse<T>`
 y el adaptador común tiene prueba unitaria. `PageImpl` permanece como detalle
 interno de Spring Data, no como contrato JSON público.
+
+Desde 2026-07-30 quedó cerrada la activación implícita de correo por perfil
+`prod`: NOOP es el default, FAKE no abre red, Gmail exige guardas simultáneas y
+un append Sent fallido no dispara un segundo SMTP. También se alineó el
+comentario del cron de cumpleaños con su ejecución real a las 10:00.
 
 ## Vulnerabilidades
 

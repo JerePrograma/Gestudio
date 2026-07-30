@@ -19,7 +19,7 @@ flowchart LR
     APP --> FILES[(Recibos)]
     JOBS[ScheduledTasks] --> APP
     API -. snapshot firmado .-> JP[Jere Platform]
-    APP --> MAIL[SMTP/IMAPS prod]
+    APP --> MAIL[NOOP / FAKE / Gmail SMTP controlado]
     OBS[Actuator/Prometheus] --> SEC
 ```
 
@@ -54,7 +54,9 @@ Los límites son de paquete y responsabilidad, no procesos desplegables separado
 - Backend ↔ PostgreSQL: síncrona mediante JPA/SQL.
 - Jobs: invocación interna programada, sin broker.
 - Jere Platform: endpoint pull/administrativo; Gestudio no hace push.
-- Email: SMTP y posterior append IMAPS sólo en perfil `prod`.
+- Email: `IEmailService` selecciona por `app.email.provider`, con `NOOP` seguro
+  en cualquier perfil. Gmail SMTP requiere guardas explícitas; la copia IMAPS
+  opcional ocurre después de SMTP y nunca se trata como atómica.
 - Observabilidad: endpoints Actuator; Prometheus protegido por token separado.
 
 ## Límites transaccionales

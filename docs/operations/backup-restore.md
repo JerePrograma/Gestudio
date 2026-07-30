@@ -10,6 +10,11 @@ El paquete de backup puede incluir:
 - el volumen lógico de recibos de `/app/data/receipts`;
 - un `manifest.json` con SHA-256, tamaños, HEAD Git y versión Flyway.
 
+La configuración y los secretos de email no forman parte del backup. Deben
+restaurarse desde el secret manager y conservarse en `NOOP`/kill switch hasta
+validar la aplicación recuperada. La frontera no agrega migraciones ni tablas;
+la outbox de recibos incluida en PostgreSQL conserva sus estados existentes.
+
 No constituye por sí solo autorización para operar producción. La retención, cifrado externo, custodia, RPO/RTO y permisos del repositorio de backups deben definirse antes de staging o producción.
 
 ## Requisitos
@@ -211,6 +216,7 @@ separados:
 
 - rollback de código y configuración;
 - observabilidad;
+- configuración externa de email, credenciales, OAuth y política DNS;
 - staging;
 - autorización de producción;
 - RPO/RTO contractuales.

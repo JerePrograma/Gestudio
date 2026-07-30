@@ -5,15 +5,11 @@ import gestudio.repositorios.AlumnoRepositorio;
 import gestudio.repositorios.NotificacionRepositorio;
 import gestudio.repositorios.ProfesorRepositorio;
 import gestudio.servicios.email.EmailAsyncService;
-import org.springframework.core.env.Environment;
-import org.springframework.core.env.Profiles;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-import java.io.IOException;
-import java.io.InputStream;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -25,39 +21,33 @@ public class NotificacionService {
     private final AlumnoRepositorio alumnos;
     private final ProfesorRepositorio profesores;
     private final NotificacionRepositorio notificaciones;
-    private final Environment environment;
     private final EmailAsyncService email;
     private final Clock clock;
 
     public NotificacionService(AlumnoRepositorio alumnos,
                                ProfesorRepositorio profesores,
                                NotificacionRepositorio notificaciones,
-                               Environment environment,
                                EmailAsyncService email,
                                Clock clock) {
         this.alumnos = alumnos;
         this.profesores = profesores;
         this.notificaciones = notificaciones;
-        this.environment = environment;
         this.email = email;
         this.clock = clock;
     }
 
     @Transactional
-    public List<String> generarYObtenerCumpleanerosDelDia() throws IOException {
+    public List<String> generarYObtenerCumpleanerosDelDia() {
         LocalDate hoy = LocalDate.now(clock);
         List<String> mensajes = new ArrayList<>();
         List<Runnable> efectos = new ArrayList<>();
-        boolean prod = environment.acceptsProfiles(Profiles.of("prod"));
-        byte[] firma = prod ? firma() : new byte[0];
-
         for (Alumno alumno : alumnos.findByActivoTrue()) {
             if (cumpleHoy(alumno.getFechaNacimiento(), hoy)) {
                 String mensaje = "Alumno: " + alumno.getNombre() + " " + alumno.getApellido();
                 mensajes.add(mensaje);
                 if (guardar("alumno:" + alumno.getId() + ":" + hoy, mensaje, hoy)
-                        && prod && alumno.getEmail() != null && !alumno.getEmail().isBlank()) {
-                    efectos.add(() -> email.enviarMailCumple(alumno, firma));
+                        && alumno.getEmail() != null && !alumno.getEmail().isBlank()) {
+                    efectos.add(() -> email.enviarMailCumple(alumno));
                 }
             }
         }
@@ -92,14 +82,5 @@ public class NotificacionService {
         }
         return !hoy.isLeapYear() && nacimiento.getMonthValue() == 2 && nacimiento.getDayOfMonth() == 29
                 && hoy.getMonthValue() == 2 && hoy.getDayOfMonth() == 28;
-    }
-
-    private byte[] firma() throws IOException {
-        try (InputStream entrada = getClass().getResourceAsStream("/firma_mesa-de-trabajo-1.png")) {
-            if (entrada == null) {
-                throw new IOException("Firma no disponible");
-            }
-            return entrada.readAllBytes();
-        }
     }
 }

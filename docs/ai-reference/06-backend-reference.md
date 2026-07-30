@@ -1,7 +1,7 @@
 # Referencia backend
 
 > Estado: CONFIRMADO  
-> Última revisión: 2026-07-26  
+> Última revisión: 2026-07-30
 > Fuentes principales: `../../backend/pom.xml`, paquetes bajo `backend/src/main/java/gestudio`
 
 ## Stack
@@ -25,6 +25,7 @@ Pruebas: Spring Boot Test, Spring Security Test, JUnit, Mockito, Testcontainers 
 | `gestudio.tarifas` | tarifas y condiciones por vigencia |
 | `gestudio.cuotas` | liquidación |
 | `gestudio.integraciones.jereplatform` | exportación firmada |
+| `gestudio.servicios.email` | política, adaptadores y resultados de entrega de email |
 
 ## Controladores por capacidad
 
@@ -44,9 +45,13 @@ Pruebas: Spring Boot Test, Spring Security Test, JUnit, Mockito, Testcontainers 
 - `MensualidadServicio`, `MatriculaServicio`, `LiquidacionCargoServicio`.
 - `TarifaDisciplinaServicio`, `CondicionEconomicaServicio`.
 - `AutenticacionService`, `TokenService`, servicios de usuario/rol/permiso.
-- `ReciboStorageService`, `PdfService`, `IEmailService`.
+- `ReciboStorageService`, `PdfService`, `IEmailService`, `EmailDeliveryPolicy`.
 - `StudentSourceExportService`.
 - `ScheduledTasks`.
+
+`IEmailService` devuelve `EmailDeliveryResult`: NOOP, simulación, bloqueos,
+aceptación y fallos transitorios/permanentes no se confunden. Los proveedores
+son `NOOP`, `FAKE` y `GMAIL_SMTP`; el perfil `prod` no selecciona Gmail.
 
 ## DTO y mapeo
 

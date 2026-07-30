@@ -1,7 +1,7 @@
 # Integraciones
 
 > Estado: CONFIRMADO  
-> Última revisión: 2026-07-24  
+> Última revisión: 2026-07-30
 > Fuentes principales: exportador Jere Platform, correo, observabilidad y almacenamiento
 
 ## Jere Platform
@@ -43,15 +43,20 @@ La creación es atómica. Páginas son append-only e inmutables. Reintentar GET 
 
 ## Email
 
-`IEmailService` es la frontera. En `prod`, `EmailService`:
+`IEmailService` es la frontera única para cumpleaños y recibos. La selección por
+`APP_EMAIL_PROVIDER` ofrece `NOOP`, `FAKE` y `GMAIL_SMTP`; el default de todos
+los perfiles, incluido `prod`, es `NOOP`.
 
-1. construye MIME UTF-8;
-2. envía por SMTP;
-3. intenta guardar el mensaje en carpeta Sent por IMAPS.
+Gmail SMTP sólo alcanza `JavaMailSender` cuando enabled, dry-run, kill switch y
+política de red lo permiten y la configuración completa es válida. El sender
+sale de configuración, MIME/adjuntos tienen límites, TLS y timeouts son
+explícitos. La copia Sent está deshabilitada por defecto; `BEST_EFFORT` distingue
+un append fallido de un SMTP aceptado y no reenvía. `REQUIRED` se rechaza porque
+SMTP e IMAP no son atómicos.
 
-Si falla el append IMAPS, registra error después de que SMTP pudo haber enviado. En perfiles no productivos existe `NoOpEmailService`.
-
-No se confirmaron reintentos ni timeouts explícitos en esta inspección.
+NOOP y FAKE se ejecutan sin red. Gmail SMTP fue probado con dobles, no con una
+cuenta real. OAuth2 no está implementado y la producción no está desplegada.
+Contrato y runbook: [entrega de email controlada](../integrations/gmail-email-delivery.md).
 
 ## Observabilidad
 
@@ -69,5 +74,6 @@ La documentación contiene contratos para Cloudflare Pages y demo remota. Es inf
 
 - Contrato Jere copiado a test con procedencia y hash.
 - Testcontainers para snapshots/páginas.
-- Perfil dev/test usa email no-op.
+- Selección de beans, política, MIME, SMTP/IMAP simulado, recibos y cumpleaños
+  tienen regresiones sin red; `verify-email-delivery.ps1` las agrupa.
 - Workflows verifican observabilidad, rollback y backup/restore.

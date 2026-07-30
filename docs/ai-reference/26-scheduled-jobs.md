@@ -24,9 +24,7 @@ Variable externa: `APP_SCHEDULING_ENABLED`. Dev/test la mantienen apagada; produ
 | `0 0 2 * * *` | `crearAsistenciasParaInscripcionesActivas` | `AsistenciaMensualServicio` | diario, 02:00 |
 | `0 0 10 * * *` | `enviarNotificacionesCumpleanios` | `NotificacionService` | diario, 10:00 |
 
-## Inconsistencia confirmada
-
-El comentario del job de cumpleaños dice 08:00, pero el cron ejecuta 10:00. El código es la verdad operativa hasta que se decida y corrija.
+El comentario y el cron del job de cumpleaños están alineados a las 10:00.
 
 ## Solapamiento con endpoints manuales
 
@@ -47,4 +45,8 @@ Los servicios deben ser idempotentes porque job y operación manual pueden coinc
 
 ## Riesgos
 
-El job de cumpleaños atrapa `IOException` y registra error; revisar semántica de otros fallos. No se confirmó un lock distribuido; una producción con múltiples réplicas debe resolver ejecución única o idempotencia fuerte.
+El job de cumpleaños contiene fallos del adaptador y registra sólo tipo/resultado
+sanitizado. La deduplicación PostgreSQL evita dos disparos por persona/fecha,
+pero no existe lock distribuido ni outbox de cumpleaños; una producción con
+múltiples réplicas debe conservar esa garantía o reforzarla según el SLA. Activar
+el scheduler nunca habilita email: la política de proveedor se evalúa aparte.

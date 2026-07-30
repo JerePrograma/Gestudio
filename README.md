@@ -23,6 +23,7 @@ Integrado y probado sobre el árbol de release:
 - restore protegido en base alternativa y activa, validado en PowerShell 7 y Windows PowerShell 5.1;
 - rollback backend forward-compatible con backup previo y retorno al artefacto actual;
 - observabilidad mínima con readiness, Prometheus protegido, correlación y logs sanitizados;
+- email controlado con `NOOP` predeterminado, `FAKE` sin red y adaptador Gmail SMTP fail-closed no conectado;
 - demo persistente con fecha comercial diaria separada del ancla estable, detección de imágenes obsoletas y Flyway derivado del manifiesto local;
 - dependencia vulnerable `brace-expansion` actualizada en el lockfile sin cambios mayores;
 - recorrido real de navegador de los cinco roles demo, en escritorio y móvil;
@@ -150,6 +151,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\validate-demo-seed
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\ops\verify-backup-restore.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\ops\verify-application-rollback.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\ops\verify-observability.ps1
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\ops\verify-email-delivery.ps1
 ```
 
 No usar `-SkipTests`.
@@ -224,6 +226,14 @@ V7 incorpora un emisor administrativo `GESTUDIO_STUDENT` con ID, nombre visible 
 
 Jere Platform PR `#60` incorporó el receptor multipágina y cerró el bloqueo técnico `#59`. El issue coordinador `#51` permanece abierto porque abarca además Scalaris y la operación productiva. La conexión desplegada Gestudio → Jere Platform todavía no fue ejecutada ni autorizada; su seguimiento está en [Gestudio #25](https://github.com/JerePrograma/Gestudio/issues/25) y no debe describirse como un bloqueo `#59` abierto.
 
+## Email controlado
+
+`IEmailService` selecciona `NOOP`, `FAKE` o `GMAIL_SMTP` por configuración, no
+por el perfil `prod`. El default no abre red ni exige credenciales; Gmail SMTP
+permanece implementado pero no conectado y requiere `prod` más cinco guardas simultáneas.
+El gate local usa únicamente dobles y configuración sintética. Véase
+[Entrega de email controlada](docs/integrations/gmail-email-delivery.md).
+
 ## Documentación
 
 - [Puesta en marcha y flujo de uso](docs/operations/local-runbook.md)
@@ -236,6 +246,7 @@ Jere Platform PR `#60` incorporó el receptor multipágina y cerró el bloqueo t
 - [Manual visual de usuarios nuevos](docs/manual-usuarios/README.md)
 - [Variables de entorno](docs/development/environment-variables.md)
 - [Integración V7](docs/integrations/jere-platform-student-export-v1.md)
+- [Email Gmail controlado](docs/integrations/gmail-email-delivery.md)
 - [Estrategia comercial](docs/comercial/estrategia-comercial.md)
 - [Release hardening](docs/codex/gestudio-release-hardening/00_INDEX.md)
 - [Cierre técnico 2026-07-22](docs/codex/gestudio-release-hardening/23_CIERRE_RELEASE_2026-07-22.md)

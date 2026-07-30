@@ -11,6 +11,25 @@ spring:
     enabled: ${SPRING_FLYWAY_ENABLED:true}
     baseline-on-migrate: ${SPRING_FLYWAY_BASELINE_ON_MIGRATE:false}
     baseline-version: ${SPRING_FLYWAY_BASELINE_VERSION:1}
+  mail:
+    protocol: smtp
+    host: ${APP_EMAIL_GMAIL_HOST:}
+    port: ${APP_EMAIL_GMAIL_PORT:587}
+    username: ${APP_EMAIL_GMAIL_USERNAME:}
+    password: ${APP_EMAIL_GMAIL_APP_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          ssl:
+            protocols: TLSv1.2 TLSv1.3
+          connectiontimeout: ${APP_EMAIL_SMTP_CONNECTION_TIMEOUT_MS:5000}
+          timeout: ${APP_EMAIL_SMTP_READ_TIMEOUT_MS:5000}
+          writetimeout: ${APP_EMAIL_SMTP_WRITE_TIMEOUT_MS:5000}
+        debug: false
   jackson:
     time-zone: ${APP_TIME_ZONE:America/Argentina/Buenos_Aires}
   data:
@@ -72,6 +91,24 @@ app:
   time-zone: ${APP_TIME_ZONE:America/Argentina/Buenos_Aires}
   cors-allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:8080}
   scheduling-enabled: ${APP_SCHEDULING_ENABLED:false}
+  email:
+    enabled: ${APP_EMAIL_ENABLED:false}
+    provider: ${APP_EMAIL_PROVIDER:NOOP}
+    dry-run: ${APP_EMAIL_DRY_RUN:true}
+    real-network-allowed: ${APP_EMAIL_REAL_NETWORK_ALLOWED:false}
+    kill-switch: ${APP_EMAIL_KILL_SWITCH:true}
+    from-address: ${APP_EMAIL_FROM_ADDRESS:}
+    from-name: ${APP_EMAIL_FROM_NAME:Gestudio}
+    sent-copy-mode: ${APP_EMAIL_SENT_COPY_MODE:DISABLED}
+    fake-outcome: ${APP_EMAIL_FAKE_OUTCOME:SUCCESS}
+    sent-copy:
+      host: ${APP_EMAIL_SENT_COPY_HOST:}
+      port: ${APP_EMAIL_SENT_COPY_PORT:993}
+      username: ${APP_EMAIL_SENT_COPY_USERNAME:}
+      app-password: ${APP_EMAIL_SENT_COPY_APP_PASSWORD:}
+      folder: ${APP_EMAIL_SENT_COPY_FOLDER:}
+      connection-timeout-ms: ${APP_EMAIL_SENT_COPY_CONNECTION_TIMEOUT_MS:5000}
+      read-timeout-ms: ${APP_EMAIL_SENT_COPY_READ_TIMEOUT_MS:5000}
   observability:
     metrics-token: ${APP_OBSERVABILITY_METRICS_TOKEN:}
   security:

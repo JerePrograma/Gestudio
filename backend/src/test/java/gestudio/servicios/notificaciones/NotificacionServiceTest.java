@@ -12,8 +12,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.core.env.Environment;
-import org.springframework.core.env.Profiles;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionSynchronizationUtils;
 
@@ -42,7 +40,6 @@ class NotificacionServiceTest {
     @Mock private AlumnoRepositorio alumnos;
     @Mock private ProfesorRepositorio profesores;
     @Mock private NotificacionRepositorio notificaciones;
-    @Mock private Environment environment;
     @Mock private EmailAsyncService email;
     private final Set<String> guardadas = new HashSet<>();
 
@@ -118,19 +115,18 @@ class NotificacionServiceTest {
         Alumno cumpleanero = alumno(1L, "Correo", LocalDate.of(2010, 7, 21), true);
         cumpleanero.setEmail("cumpleanero@example.test");
         personasActivas(cumpleanero);
-        when(environment.acceptsProfiles(any(Profiles.class))).thenReturn(true);
         NotificacionService service = servicioEn("2026-07-21T15:00:00Z");
 
         service.generarYObtenerCumpleanerosDelDia();
         service.generarYObtenerCumpleanerosDelDia();
 
-        verify(email, never()).enviarMailCumple(any(Alumno.class), any(byte[].class));
+        verify(email, never()).enviarMailCumple(any(Alumno.class));
         TransactionSynchronizationUtils.triggerAfterCommit();
-        verify(email, times(1)).enviarMailCumple(same(cumpleanero), any(byte[].class));
+        verify(email, times(1)).enviarMailCumple(same(cumpleanero));
     }
 
     private NotificacionService servicioEn(String instant) {
-        return new NotificacionService(alumnos, profesores, notificaciones, environment, email,
+        return new NotificacionService(alumnos, profesores, notificaciones, email,
                 Clock.fixed(Instant.parse(instant), BUENOS_AIRES));
     }
 

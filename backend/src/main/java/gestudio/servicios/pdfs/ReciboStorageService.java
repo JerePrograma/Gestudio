@@ -9,6 +9,7 @@ import gestudio.repositorios.AplicacionPagoRepositorio;
 import gestudio.repositorios.ReciboPendienteRepositorio;
 import gestudio.repositorios.ReciboRepositorio;
 import gestudio.servicios.email.IEmailService;
+import gestudio.servicios.email.EmailDeliveryResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -109,25 +110,34 @@ public class ReciboStorageService {
             }
 
             String destinatario = trabajo.pago().getAlumno().getEmail();
+            boolean enviado = trabajo.enviadoAt() != null;
             if (trabajo.enviadoAt() == null && destinatario != null && !destinatario.isBlank()) {
                 if (!renovarLease(claim)) {
                     return;
                 }
-                email.sendEmailWithAttachmentAndInlineImage(
-                        "administracion@gestudio.com.ar",
+                EmailDeliveryResult delivery = email.sendEmailWithAttachmentAndInlineImage(
                         destinatario,
                         "Recibo de pago",
                         cuerpo(trabajo),
                         bytes,
                         nombre,
+                        "application/pdf",
                         firma(),
                         "signature",
                         "image/png");
-                transactions.executeWithoutResult(status -> confirmarEnviado(claim));
+                if (delivery.providerAccepted()) {
+                    transactions.executeWithoutResult(status -> confirmarEnviado(claim));
+                    enviado = true;
+                } else if (delivery.retryable()) {
+                    throw new RetryableEmailDeliveryException(delivery);
+                } else if (delivery.terminalFailure()) {
+                    transactions.executeWithoutResult(status -> fallarPermanente(claim, delivery));
+                    return;
+                }
+                log.info("receipt_email pagoId={} result={}", trabajo.pago().getId(), delivery.status());
             }
             transactions.executeWithoutResult(status -> completar(claim));
-            log.info("Recibo procesado pagoId={} enviado={}", trabajo.pago().getId(),
-                    trabajo.enviadoAt() != null || destinatario != null && !destinatario.isBlank());
+            log.info("Recibo procesado pagoId={} enviado={}", trabajo.pago().getId(), enviado);
         } catch (Exception e) {
             transactions.executeWithoutResult(status -> fallar(claim, e));
         }
@@ -186,7 +196,9 @@ public class ReciboStorageService {
 
     private void fallar(Claim claim, Exception e) {
         pendientes.findByIdAndClaimToken(claim.id(), claim.token()).ifPresent(trabajo -> {
-            String error = e.getClass().getSimpleName();
+            String error = e instanceof RetryableEmailDeliveryException delivery
+                    ? delivery.result().status().name()
+                    : e.getClass().getSimpleName();
             trabajo.setUltimoError(error);
             if (trabajo.getIntentos() >= MAX_INTENTOS) {
                 trabajo.setEstado(EstadoReciboPendiente.ERROR);
@@ -198,6 +210,17 @@ public class ReciboStorageService {
             liberar(trabajo);
             log.warn("Falló efecto de recibo pagoId={} intento={} error={}",
                     trabajo.getPago().getId(), trabajo.getIntentos(), error);
+        });
+    }
+
+    private void fallarPermanente(Claim claim, EmailDeliveryResult delivery) {
+        pendientes.findByIdAndClaimToken(claim.id(), claim.token()).ifPresent(trabajo -> {
+            trabajo.setUltimoError(delivery.status().name());
+            trabajo.setEstado(EstadoReciboPendiente.ERROR);
+            trabajo.setProcessedAt(clock.instant());
+            liberar(trabajo);
+            log.warn("Falló efecto de recibo pagoId={} intento={} error={}",
+                    trabajo.getPago().getId(), trabajo.getIntentos(), delivery.status());
         });
     }
 
@@ -250,5 +273,18 @@ public class ReciboStorageService {
     }
 
     private record Trabajo(Pago pago, String storageKey, Instant enviadoAt) {
+    }
+
+    private static final class RetryableEmailDeliveryException extends RuntimeException {
+        private final EmailDeliveryResult result;
+
+        private RetryableEmailDeliveryException(EmailDeliveryResult result) {
+            super(result.status().name());
+            this.result = result;
+        }
+
+        private EmailDeliveryResult result() {
+            return result;
+        }
     }
 }

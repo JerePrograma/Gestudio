@@ -7,6 +7,7 @@ Este runbook cubre la observabilidad técnica integrada en Gestudio. No reemplaz
 Incluye:
 
 - liveness y readiness de Spring Boot Actuator;
+- métricas de la frontera de email sin PII;
 - readiness vinculada a PostgreSQL y espacio en disco;
 - métricas Prometheus protegidas por token externo;
 - correlación `X-Request-ID`;
@@ -140,6 +141,26 @@ No se registran deliberadamente:
 - datos personales enviados en formularios.
 
 Saltos de línea y tabulaciones se sustituyen para impedir inyección de líneas de log.
+
+## Métricas de email
+
+La frontera controlada publica estos contadores Prometheus:
+
+```text
+gestudio_email_attempts_total
+gestudio_email_blocked_total
+gestudio_email_simulated_total
+gestudio_email_provider_failures_total
+gestudio_email_sent_copy_failures_total
+```
+
+Los tags son únicamente `provider`, `result` y `message_type`. No se usan
+destinatario, IDs, subject ni excepción arbitraria como labels. Los logs tampoco
+incluyen email completo, HTML, PDF, adjuntos o secretos. Gmail no participa en
+liveness/readiness; un bloqueo externo no baja la salud general.
+
+`pwsh -NoProfile -File .\scripts\ops\verify-email-delivery.ps1` valida métricas y
+sanitización sin red Gmail y deja evidencia fuera del repositorio.
 
 ## Comandos Docker
 

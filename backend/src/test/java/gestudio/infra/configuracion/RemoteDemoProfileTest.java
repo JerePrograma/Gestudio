@@ -2,7 +2,8 @@ package gestudio.infra.configuracion;
 
 import gestudio.infra.seguridad.RemoteDemoProxyTokenFilter;
 import gestudio.infra.seguridad.SecurityProperties;
-import gestudio.servicios.email.EmailService;
+import gestudio.servicios.email.EmailDeliveryMetrics;
+import gestudio.servicios.email.EmailDeliveryProperties;
 import gestudio.servicios.email.IEmailService;
 import gestudio.servicios.email.NoOpEmailService;
 import org.junit.jupiter.api.Test;
@@ -17,6 +18,13 @@ import org.springframework.core.io.ClassPathResource;
 
 import java.io.IOException;
 import java.util.List;
+
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import org.springframework.context.annotation.Bean;
+import org.springframework.boot.autoconfigure.mail.MailProperties;
+import gestudio.servicios.email.EmailDeliveryConfigurationGuard;
+import gestudio.servicios.email.EmailDeliveryPolicy;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -58,14 +66,6 @@ class RemoteDemoProfileTest {
         Profile proxyProfile = RemoteDemoProxyTokenFilter.class.getAnnotation(Profile.class);
         assertThat(proxyProfile).isNotNull();
         assertThat(proxyProfile.value()).containsExactly("remote-demo");
-
-        Profile noOpProfile = NoOpEmailService.class.getAnnotation(Profile.class);
-        assertThat(noOpProfile).isNotNull();
-        assertThat(noOpProfile.value()).contains("!prod");
-
-        Profile emailProfile = EmailService.class.getAnnotation(Profile.class);
-        assertThat(emailProfile).isNotNull();
-        assertThat(emailProfile.value()).containsExactly("prod");
     }
 
     @Test
@@ -103,8 +103,7 @@ class RemoteDemoProfileTest {
                 .isEqualTo("${APP_SECURITY_REFRESH_COOKIE_SECURE:true}");
         assertThat(source.getProperty("app.observability.metrics-token"))
                 .isEqualTo("${APP_OBSERVABILITY_METRICS_TOKEN}");
-        assertThat(source.getProperty("spring.mail.host")).isNull();
-        assertThat(source.getProperty("spring.mail.imap.host")).isNull();
+        assertThat(source.getProperty("app.email.provider")).isNull();
     }
 
     private void assertStartupFailure(ApplicationContextRunner runner, String expectedMessage) {
@@ -124,12 +123,24 @@ class RemoteDemoProfileTest {
     }
 
     @Configuration(proxyBeanMethods = false)
-    @EnableConfigurationProperties({AppProperties.class, SecurityProperties.class})
+    @EnableConfigurationProperties({AppProperties.class, SecurityProperties.class, EmailDeliveryProperties.class})
     @Import({
             ProductionConfigurationGuard.class,
             RemoteDemoProxyTokenFilter.class,
-            NoOpEmailService.class
+            NoOpEmailService.class,
+            EmailDeliveryMetrics.class,
+            EmailDeliveryConfigurationGuard.class,
+            EmailDeliveryPolicy.class
     })
     static class RemoteDemoTestConfiguration {
+        @Bean
+        MeterRegistry meterRegistry() {
+            return new SimpleMeterRegistry();
+        }
+
+        @Bean
+        MailProperties mailProperties() {
+            return new MailProperties();
+        }
     }
 }

@@ -34,7 +34,7 @@
 | Entidades | 04, 09 | clases `@Entity` | PARCIAL |
 | Flyway | 09 | migration dir, `AGENTS.md` | CONFIRMADO |
 | Jere Platform | 11 | controller, service, integración v1, issue `#25` | CONFIRMADO |
-| Email | 11 | `EmailService`, `NoOpEmailService`, issue `#23` | CONFIRMADO |
+| Email | 11 | adaptadores bajo `servicios/email`, gate y runbook Gmail | CONFIRMADO_LOCAL_SIN_RED |
 | CI | 13, 14 | `.github/workflows/*.yml` | CONFIRMADO |
 | Release evidence | 13, 27 | `project-status-and-handoff.md` | CONFIRMADO |
 | Demo/manual | 28 | scripts y docs | CONFIRMADO |
@@ -42,4 +42,6 @@
 
 ## Fecha y alcance
 
-Todas las filas se revisaron el 26-07-2026 contra el `main` remoto. El índice no sustituye una búsqueda de usos antes de editar ni acredita por sí solo el resultado de CI de cada SHA.
+Las fuentes de email se revisaron el 30-07-2026; las demás filas conservan la
+revisión del 26-07-2026. El índice no sustituye una búsqueda de usos antes de
+editar ni acredita por sí solo el resultado de CI de cada SHA.

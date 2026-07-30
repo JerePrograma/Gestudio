@@ -10,10 +10,13 @@ import gestudio.repositorios.AplicacionPagoRepositorio;
 import gestudio.repositorios.ReciboPendienteRepositorio;
 import gestudio.repositorios.ReciboRepositorio;
 import gestudio.servicios.email.IEmailService;
+import gestudio.servicios.email.EmailDeliveryResult;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -71,6 +74,9 @@ class ReciboStorageServiceTest {
         when(recibos.findByPagoId(7L)).thenReturn(Optional.of(recibo));
         when(aplicaciones.findByPagoIdOrderById(7L)).thenReturn(List.of());
         when(pdf.generarReciboPdf(pago)).thenReturn(bytes);
+        when(email.sendEmailWithAttachmentAndInlineImage(
+                any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(EmailDeliveryResult.of(EmailDeliveryResult.Status.PROVIDER_ACCEPTED));
 
         service().procesarPendientes();
         service().procesarPendientes();
@@ -83,6 +89,99 @@ class ReciboStorageServiceTest {
         assertThat(recibo.getEnviadoAt()).isEqualTo(NOW);
         assertThat(Files.readAllBytes(receiptsPath.resolve("recibo_7.pdf"))).isEqualTo(bytes);
         verify(pdf, times(1)).generarReciboPdf(pago);
+        verify(email, times(1)).sendEmailWithAttachmentAndInlineImage(
+                any(), any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = EmailDeliveryResult.Status.class,
+            names = {"NOOP", "SIMULATED", "BLOCKED_BY_DRY_RUN", "BLOCKED_BY_NETWORK_POLICY"})
+    void noopSimulacionYBloqueosCompletanSinMarcarEnvioNiReintentar(EmailDeliveryResult.Status status) throws Exception {
+        Pago pago = pago("alumno@example.test");
+        Recibo recibo = recibo(pago);
+        ReciboPendiente trabajo = trabajo(pago, 0);
+        when(pendientes.findClaimableForUpdate(any(Instant.class), eq(10))).thenReturn(List.of(trabajo));
+        when(pendientes.findByIdAndClaimToken(eq(1L), any(UUID.class))).thenReturn(Optional.of(trabajo));
+        when(recibos.findByPagoId(7L)).thenReturn(Optional.of(recibo));
+        when(aplicaciones.findByPagoIdOrderById(7L)).thenReturn(List.of());
+        when(pdf.generarReciboPdf(pago)).thenReturn("pdf-test".getBytes());
+        when(email.sendEmailWithAttachmentAndInlineImage(
+                any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(EmailDeliveryResult.of(status));
+
+        service().procesarPendientes();
+
+        assertThat(trabajo.getEstado()).isEqualTo(EstadoReciboPendiente.COMPLETADO);
+        assertThat(trabajo.getIntentos()).isOne();
+        assertThat(trabajo.getNextAttemptAt()).isEqualTo(NOW);
+        assertThat(recibo.getEnviadoAt()).isNull();
+    }
+
+    @Test
+    void falloTransitorioDeEmailReintentaSinMarcarEnvio() throws Exception {
+        Pago pago = pago("alumno@example.test");
+        Recibo recibo = recibo(pago);
+        ReciboPendiente trabajo = trabajo(pago, 0);
+        when(pendientes.findClaimableForUpdate(any(Instant.class), eq(10))).thenReturn(List.of(trabajo));
+        when(pendientes.findByIdAndClaimToken(eq(1L), any(UUID.class))).thenReturn(Optional.of(trabajo));
+        when(recibos.findByPagoId(7L)).thenReturn(Optional.of(recibo));
+        when(aplicaciones.findByPagoIdOrderById(7L)).thenReturn(List.of());
+        when(pdf.generarReciboPdf(pago)).thenReturn("pdf-test".getBytes());
+        when(email.sendEmailWithAttachmentAndInlineImage(
+                any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(EmailDeliveryResult.of(EmailDeliveryResult.Status.PROVIDER_TEMPORARY_FAILURE));
+
+        service().procesarPendientes();
+
+        assertThat(trabajo.getEstado()).isEqualTo(EstadoReciboPendiente.PENDIENTE);
+        assertThat(trabajo.getNextAttemptAt()).isEqualTo(NOW.plusSeconds(300));
+        assertThat(trabajo.getUltimoError()).isEqualTo("PROVIDER_TEMPORARY_FAILURE");
+        assertThat(recibo.getEnviadoAt()).isNull();
+    }
+
+    @Test
+    void falloPermanenteDeEmailFinalizaEnElPrimerIntento() throws Exception {
+        Pago pago = pago("alumno@example.test");
+        Recibo recibo = recibo(pago);
+        ReciboPendiente trabajo = trabajo(pago, 0);
+        when(pendientes.findClaimableForUpdate(any(Instant.class), eq(10))).thenReturn(List.of(trabajo));
+        when(pendientes.findByIdAndClaimToken(eq(1L), any(UUID.class))).thenReturn(Optional.of(trabajo));
+        when(recibos.findByPagoId(7L)).thenReturn(Optional.of(recibo));
+        when(aplicaciones.findByPagoIdOrderById(7L)).thenReturn(List.of());
+        when(pdf.generarReciboPdf(pago)).thenReturn("pdf-test".getBytes());
+        when(email.sendEmailWithAttachmentAndInlineImage(
+                any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(EmailDeliveryResult.of(EmailDeliveryResult.Status.PROVIDER_PERMANENT_FAILURE));
+
+        service().procesarPendientes();
+
+        assertThat(trabajo.getEstado()).isEqualTo(EstadoReciboPendiente.ERROR);
+        assertThat(trabajo.getIntentos()).isOne();
+        assertThat(trabajo.getUltimoError()).isEqualTo("PROVIDER_PERMANENT_FAILURE");
+        assertThat(recibo.getEnviadoAt()).isNull();
+    }
+
+    @Test
+    void appendSentFallidoConfirmaSmtpYNoDuplicaEntrega() throws Exception {
+        Pago pago = pago("alumno@example.test");
+        Recibo recibo = recibo(pago);
+        ReciboPendiente trabajo = trabajo(pago, 0);
+        when(pendientes.findClaimableForUpdate(any(Instant.class), eq(10)))
+                .thenReturn(List.of(trabajo)).thenReturn(List.of());
+        when(pendientes.findByIdAndClaimToken(eq(1L), any(UUID.class))).thenReturn(Optional.of(trabajo));
+        when(recibos.findByPagoId(7L)).thenReturn(Optional.of(recibo));
+        when(aplicaciones.findByPagoIdOrderById(7L)).thenReturn(List.of());
+        when(pdf.generarReciboPdf(pago)).thenReturn("pdf-test".getBytes());
+        when(email.sendEmailWithAttachmentAndInlineImage(
+                any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(EmailDeliveryResult.of(EmailDeliveryResult.Status.SENT_COPY_FAILED));
+
+        ReciboStorageService service = service();
+        service.procesarPendientes();
+        service.procesarPendientes();
+
+        assertThat(recibo.getEnviadoAt()).isEqualTo(NOW);
+        assertThat(trabajo.getEstado()).isEqualTo(EstadoReciboPendiente.COMPLETADO);
         verify(email, times(1)).sendEmailWithAttachmentAndInlineImage(
                 any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
