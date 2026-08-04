@@ -1,7 +1,9 @@
 package gestudio.servicios.email;
 
-import gestudio.entidades.Alumno;
+import gestudio.servicios.email.EmailAsyncService.BirthdayEmail;
 import org.junit.jupiter.api.Test;
+
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
@@ -18,7 +20,7 @@ class EmailAsyncServiceTest {
         when(email.sendEmailWithInlineImage(any(), any(), any(), any(), any(), any()))
                 .thenReturn(EmailDeliveryResult.of(EmailDeliveryResult.Status.NOOP));
 
-        new EmailAsyncService(email).enviarMailCumple(alumno());
+        new EmailAsyncService(email).enviarMailCumple(command());
 
         verify(email).sendEmailWithInlineImage(
                 eq("birthday@example.test"), eq("¡Feliz Cumpleaños, Ana!"), any(),
@@ -31,14 +33,13 @@ class EmailAsyncServiceTest {
         when(email.sendEmailWithInlineImage(any(), any(), any(), any(), any(), any()))
                 .thenThrow(new IllegalStateException("synthetic"));
 
-        assertThatCode(() -> new EmailAsyncService(email).enviarMailCumple(alumno()))
+        assertThatCode(() -> new EmailAsyncService(email).enviarMailCumple(command()))
                 .doesNotThrowAnyException();
     }
 
-    private static Alumno alumno() {
-        Alumno alumno = new Alumno();
-        alumno.setNombre("Ana");
-        alumno.setEmail("birthday@example.test");
-        return alumno;
+    private static BirthdayEmail command() {
+        return new BirthdayEmail(
+                UUID.fromString("10000000-0000-0000-0000-000000000001"),
+                "birthday@example.test", "Ana");
     }
 }

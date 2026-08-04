@@ -83,14 +83,15 @@ class NotificacionIdempotenciaPostgreSqlTest extends PostgreSqlIntegrationTest {
             throw new IllegalStateException("Timeout esperando inicio concurrente");
         }
 
-        Integer resultado = new TransactionTemplate(transactionManager).execute(status ->
-                notificaciones.insertarSiAusente(
-                        "CUMPLEANOS",
-                        "Alumno: Concurrente Prueba",
-                        Instant.parse("2026-07-21T15:00:00Z"),
-                        LocalDate.of(2026, 7, 21),
-                        dedupKey
-                ));
+        Integer resultado = withTenant(() ->
+                new TransactionTemplate(transactionManager).execute(status ->
+                        notificaciones.insertarSiAusente(
+                                "CUMPLEANOS",
+                                "Alumno: Concurrente Prueba",
+                                Instant.parse("2026-07-21T15:00:00Z"),
+                                LocalDate.of(2026, 7, 21),
+                                dedupKey
+                        )));
         if (resultado == null) {
             throw new IllegalStateException("La inserción concurrente no devolvió resultado");
         }

@@ -10,6 +10,12 @@ commit publicado y las ejecuciones remotas se consultan en el informe de cierre
 externo asociado al release; no se incrusta el SHA del propio commit dentro del
 commit.
 
+El desarrollo multitenancy posterior incorpora Flyway V8-V11, autenticación
+ligada a tenant/membership y RLS shared-schema. Ese cierre sólo se considera
+validado después de ejecutar PostgreSQL/Testcontainers y `clean verify` sobre el
+SHA definitivo. La demo estable remota permanece deliberadamente en V7 y no
+debe recibir V8-V11.
+
 Integrado y probado sobre el árbol de release:
 
 - seguridad y RBAC fail-closed;
@@ -46,6 +52,8 @@ el ambiente real.
 
 Fuentes vigentes:
 
+- [ADR shared-schema multitenancy](docs/architecture/adr-0008-shared-schema-multitenancy.md)
+- [Gobierno y salud multitenancy](docs/architecture/multitenancy-governance-and-health.md)
 - [Estado de release y traspaso](docs/project-status-and-handoff.md)
 - [Estado y backlog](docs/codex/gestudio-release-hardening/12_ESTADO_ACTUAL_Y_BACKLOG.md)
 - [Checklist](docs/codex/gestudio-release-hardening/11_CHECKLIST_RELEASE.md)
@@ -64,7 +72,9 @@ Fuentes vigentes:
 - Operación: PowerShell, Docker y Docker Compose v2.
 - Observabilidad: Spring Boot Actuator, Micrometer y formato Prometheus.
 
-V1-V7 son migraciones forward-only e inmutables.
+El árbol de desarrollo contiene V1-V11, todas forward-only. V1-V7 ya están
+publicadas y son inmutables; cualquier corrección posterior a V11 debe usar una
+nueva migración. La demo estable protegida continúa en V7.
 
 ## Inicio recomendado: demo persistente
 

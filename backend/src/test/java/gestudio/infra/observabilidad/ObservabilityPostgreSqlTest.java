@@ -1,12 +1,16 @@
 package gestudio.infra.observabilidad;
 
 import gestudio.infra.persistencia.PostgreSqlIntegrationTest;
+import gestudio.tenancy.TenantStructuralHealthIndicator;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.test.autoconfigure.actuate.observability.AutoConfigureObservability;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.env.Environment;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -16,6 +20,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.mockito.Mockito.when;
 
 @SpringBootTest(properties = {
         "app.observability.metrics-token=test-metrics-token",
@@ -25,8 +30,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureObservability(metrics = true, tracing = false)
 class ObservabilityPostgreSqlTest extends PostgreSqlIntegrationTest {
 
+    @MockitoBean
+    private TenantStructuralHealthIndicator multitenancyHealthIndicator;
+
     @Autowired
     private MockMvc mockMvc;
+
+    @BeforeEach
+    void readinessEstructuralDeterminista() {
+        when(multitenancyHealthIndicator.health()).thenReturn(Health.up().build());
+    }
 
     @Autowired
     private Environment environment;

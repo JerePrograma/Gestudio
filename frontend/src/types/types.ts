@@ -388,6 +388,17 @@ export interface UsuarioResponse {
   roles: string[];
   permisos: string[];
   activo: boolean;
+  tenantActivo: TenantSummary | null;
+  tenantsDisponibles: TenantSummary[];
+}
+
+export type TenantStatus = "ACTIVE" | "SUSPENDED" | "ARCHIVED";
+
+export interface TenantSummary {
+  id: string;
+  codigo: string;
+  nombre: string;
+  estado: TenantStatus;
 }
 
 export interface RolRegistroRequest {

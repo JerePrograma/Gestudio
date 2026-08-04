@@ -1,9 +1,9 @@
 # Gobierno, estado y health del multitenancy
 
 > **Documento normativo vivo**  
-> Estado actual: `NOT_IMPLEMENTED`  
+> Estado técnico local: `EXECUTED_PASS`
 > Rama de referencia: `main`  
-> Última revisión estructural: 2026-07-30  
+> Última revisión estructural: 2026-08-04
 > Repositorio: `JerePrograma/Gestudio`
 
 ## 1. Propósito
@@ -25,35 +25,30 @@ Una modificación de código relacionada con tenants que no actualice este docum
 
 ## 2. Veredicto actual
 
-Gestudio es actualmente **single-tenant por deployment**.
+La implementación shared-schema está integrada localmente: control plane,
+memberships, contexto, claims ligados a tenant/membership, backfill, claves
+compuestas, RLS forzado, jobs, archivos, integración Jere y selector frontend.
+La identidad inicial consulta sólo `usuarios`; roles y permisos se cargan
+después de abrir el tenant. Runtime y Flyway usan roles PostgreSQL separados.
 
-No existe todavía:
+El cierre técnico local está en `EXECUTED_PASS`: PostgreSQL 15 real validó
+V1-V11, V7-V11, Hibernate, RLS con rol runtime no propietario y reutilización
+de conexión; `clean verify` pasó 282 tests y el frontend pasó 166 tests, lint y
+build. Esto no equivale todavía a la certificación absoluta de la sección 18:
+backup/restore multitenant y publicación siguen separados. La demo estable
+sigue en V7 y quedó fuera de estas pruebas.
 
-- entidad de negocio `Tenant`, `Organization`, `Academia` o equivalente;
-- tenant activo asociado a la sesión autenticada;
-- `TenantContext` request-scoped;
-- tenant claim validado en JWT o sesión refresh;
-- pertenencia usuario-tenant;
-- permisos acotados por tenant;
-- `tenant_id` en el modelo transaccional general;
-- filtros obligatorios de tenant en repositorios;
-- aislamiento por PostgreSQL Row Level Security;
-- unicidad compuesta por tenant;
-- selección o conmutación de academia en frontend;
-- provisioning, suspensión, archivado o eliminación de tenants;
-- migración de datos single-tenant a un tenant inicial;
-- backup, restore, observabilidad y jobs con alcance tenant-aware;
-- suite de pruebas de fuga cruzada entre tenants.
+El `tenantId` histórico de `integraciones/jereplatform` continúa siendo una
+identidad externa. La autoridad interna es el UUID de `Tenant` resuelto desde
+una membership; ambos identificadores se conservan separados.
 
-El `tenantId` presente en `integraciones/jereplatform` **no implementa multitenancy interno**. Es un mapping externo estático definido por configuración del deployment para etiquetar snapshots exportados a Jere Platform. No puede elegirse por request ni por usuario.
-
-## 3. Evidencia auditada en `main`
+## 3. Baseline histórica auditada en `main`
 
 SHA observado al crear este documento:
 
 `ec5cee0773baa2b8c50f2b5c6768e424e08c7efe`
 
-Evidencia confirmada:
+La siguiente tabla describe el baseline anterior a V8, no el código actual:
 
 | Área | Estado observado | Conclusión |
 |---|---|---|
@@ -167,6 +162,104 @@ Antes de migrar, cada tabla y agregado debe clasificarse:
 
 Debe existir un inventario exhaustivo de tablas, entidades, repositorios, endpoints, jobs, archivos y métricas antes de la primera migración destructiva.
 
+### 6.1 Inventario local previo a V8
+
+Inventario cerrado sobre `main` en `1d8ad314abdb3efa0ab9704395c2505b98087672`.
+Se relevaron 43 tablas de negocio/operación, 35 entidades JPA, 35
+`JpaRepository`, 45 `@Query` (8 nativas), siete componentes JDBC, seis tareas
+planificadas y un flujo `@Async`. Todos los repositorios tenant-owned heredaban
+`findAll`, `findById`, `deleteById`, `count` y `existsById` sin una frontera de
+tenant. No existían `TenantContext`, membership, discriminator interno, RLS ni
+pruebas de dos tenants.
+
+Leyenda de consumidores: `A` académico (`/api/alumnos`, disciplinas,
+inscripciones y asistencias); `E` economía (`/api/cargos`, pagos, crédito,
+caja, egresos y reportes); `O` operación (`/api/stocks`, ventas,
+notificaciones y recibos); `S` seguridad (`/api/login`, usuarios, roles y
+permisos); `J` exportación `/api/integraciones/jere-platform/student-source`.
+`JPA` indica el repositorio homónimo; `SQL` un store/servicio JDBC explícito.
+
+| Tabla / agregado | Entidad / acceso | Consumidores | Clase | Tenant requerido | Constraint actual relevante | Objetivo y migración | Prueba requerida |
+|---|---|---|---|---|---|---|---|
+| `usuarios` | `Usuario` / `UsuarioRepositorio` | S, A/E actor | `SECURITY_GLOBAL` | No en identidad | usuario normalizado global, rol legacy | identidad global; memberships V8; actor conserva FK simple | login multi-tenant, revocación |
+| `permisos` | `Permiso` / JPA | S | `GLOBAL` | No | código único | catálogo inmutable compartido | catálogo igual entre tenants |
+| `roles` | `Rol` / `RolRepositorio` | S | `TENANT_OWNED` | Sí | código único global | V9 `tenant_id`; unique `(tenant_id,codigo)`; RLS | rol de A invisible en B |
+| `rol_permisos` | colección `Rol.permisos` | S | `TENANT_OWNED` | Por rol | PK rol/permiso | tenant por rol + FK compuesta; RLS vía rol | asignación cruzada bloqueada |
+| `usuario_roles` | colección legacy | S | `SECURITY_GLOBAL` | No, compatibilidad | PK usuario/rol | backfill a membership roles; no autoridad runtime | legacy no concede acceso |
+| `refresh_sessions` | `RefreshSession` / JPA | S | `OPERATIONAL` | Sí | hash único; usuario FK | V8 tenant+membership+versiones; RLS | refresh A/B, replay, suspensión |
+| `bootstrap_ejecuciones` | `BootstrapService` / SQL | S | `OPERATIONAL` | No | singleton de bootstrap | control plane explícito; sin acceso de dominio | bootstrap idempotente |
+| `auditoria_eventos` | `AuditService` / JDBC | todas | `OPERATIONAL` | Cuando deriva de tenant | append-only, idempotency global | tenant nullable sólo para identidad/control plane; índice tenant | auditoría A/B y admin explícito |
+| `alumnos` | `Alumno` / JPA | A, J, cumpleaños | `TENANT_OWNED` | Sí | documento único global | backfill V9; unique tenant/documento; FK compuestas; RLS | mismo documento A/B, CRUD/lista |
+| `salones` | `Salon` / JPA | A | `TENANT_OWNED` | Sí | sin unique funcional | tenant+id; RLS | mismo nombre A/B |
+| `profesores` | `Profesor` / JPA | A, reportes | `TENANT_OWNED` | Sí | email sin scope | tenant+id; índices tenant; RLS | búsqueda y reporte A/B |
+| `observaciones_profesores` | `ObservacionProfesor` / JPA | A, reportes | `TENANT_OWNED` | Sí | FK profesor simple | FK `(tenant_id,profesor_id)`; RLS | FK cruzada y reporte |
+| `bonificaciones` | `Bonificacion` / JPA | A/E | `TENANT_OWNED` | Sí | nombre global implícito | unique/index tenant cuando aplica; RLS | catálogo A/B |
+| `recargos` | `Recargo` / JPA | E, job recargos | `TENANT_OWNED` | Sí | sin scope | tenant+id; RLS | job separado A/B |
+| `metodo_pagos` | `MetodoPago` / JPA | E | `TENANT_OWNED` | Sí | nombre global | unique `(tenant_id,nombre)`; RLS | método homónimo A/B |
+| `sub_conceptos` | `SubConcepto` / JPA | E | `TENANT_OWNED` | Sí | descripción global implícita | tenant+id; índices tenant; RLS | búsqueda A/B |
+| `conceptos` | `Concepto` / JPA | E | `TENANT_OWNED` | Sí | FK sub-concepto simple | FKs compuestas; RLS | referencia cruzada bloqueada |
+| `stocks` | `Stock` / JPA | O, reportes | `TENANT_OWNED` | Sí | código de barras único global | unique `(tenant_id,codigo_barras)`; RLS | stock/código A/B |
+| `disciplinas` | `Disciplina` / JPA | A/E | `TENANT_OWNED` | Sí | FKs salón/profesor simples | FKs compuestas; índices tenant; RLS | referencias y listado A/B |
+| `disciplina_horarios` | `DisciplinaHorario` / JPA | A | `TENANT_OWNED` | Sí | FK disciplina simple | FK compuesta; RLS | horario ajeno bloqueado |
+| `inscripciones` | `Inscripcion` / JPA | A/E, jobs | `TENANT_OWNED` | Sí | unique activa alumno/disciplina | unique y FKs con tenant; RLS | alta cruzada, pagina/conteo |
+| `mensualidades` | `Mensualidad` / JPA | E, jobs/reportes | `TENANT_OWNED` | Sí | FKs simples | FKs compuestas; índices tenant; RLS | liquidación/reporte A/B |
+| `matriculas` | `Matricula` / JPA | A/E, job anual | `TENANT_OWNED` | Sí | alumno/fecha sin scope | FKs/índices tenant; RLS | job y CRUD A/B |
+| `asistencias_mensuales` | `AsistenciaMensual` / JPA | A, job mensual | `TENANT_OWNED` | Sí | disciplina/año/mes | unique/FK con tenant; RLS | job y listado A/B |
+| `asistencias_alumno_mensual` | `AsistenciaAlumnoMensual` / JPA | A | `TENANT_OWNED` | Sí | FKs asistencia/inscripción | FKs compuestas; RLS | relación cruzada bloqueada |
+| `asistencias_diarias` | `AsistenciaDiaria` / JPA | A, reportes | `TENANT_OWNED` | Sí | FK mensual simple | FK compuesta; RLS | escritura/reporte A/B |
+| `ventas_stock` | `VentaStock` / JPA | O/E | `TENANT_OWNED` | Sí | FKs alumno/stock/usuario | FKs de negocio compuestas; RLS | venta cruzada, caja/stock |
+| `cargos` | `Cargo` / JPA | E, jobs/reportes | `TENANT_OWNED` | Sí | FKs simples e idempotencia global | FKs/uniques tenant; RLS | pago/reporte/job A/B |
+| `pagos` | `Pago` / JPA | E, recibos | `TENANT_OWNED` | Sí | FKs alumno/método/usuario | FKs negocio compuestas; RLS | pago ajeno 404; overpay intacto |
+| `aplicaciones_pago` | `AplicacionPago` / JPA | E | `TENANT_OWNED` | Sí | FKs pago/cargo simples | FKs compuestas; RLS | pago-cargo cruzado bloqueado |
+| `egresos` | `Egreso` / JPA | E | `TENANT_OWNED` | Sí | método/usuario simples | FKs e índices tenant; RLS | anulación/lista A/B |
+| `movimientos_caja` | `MovimientoCaja` / JPA | E, reportes | `TENANT_OWNED` | Sí | pago/egreso/método simples | FKs compuestas; RLS | caja y sumas separadas |
+| `movimientos_credito` | `MovimientoCredito` / JPA | E | `TENANT_OWNED` | Sí | alumno/pago/cargo simples | FKs compuestas; RLS | crédito cruzado bloqueado |
+| `movimientos_stock` | `MovimientoStock` / JPA | O | `TENANT_OWNED` | Sí | stock/venta simples | FKs compuestas; RLS | reversión A/B |
+| `recibos` | `Recibo` / JPA + filesystem | E/O | `OPERATIONAL` | Sí | pago único global | tenant+FK compuesta; path namespaced; RLS | descarga/reimpresión/IDOR |
+| `recibos_pendientes` | `ReciboPendiente` / native JPA | worker recibos | `OPERATIONAL` | Sí | pago único; SKIP LOCKED global | tenant en outbox; claim por tenant; RLS | retry/claim A/B |
+| `notificaciones` | `Notificacion` / native JPA | O, cumpleaños | `OPERATIONAL` | Sí | dedup global | dedup y RLS por tenant | job/dedup A/B |
+| `disciplina_tarifas` | `TarifaDisciplina` / JPA | E | `TENANT_OWNED` | Sí | vigencia por disciplina | FKs/ventanas tenant; RLS | tarifa vigente A/B |
+| `inscripcion_condiciones_economicas` | `CondicionEconomicaInscripcion` / JPA | E | `TENANT_OWNED` | Sí | vigencia por inscripción | FKs/ventanas tenant; RLS | condición A/B |
+| `cargo_liquidaciones` | `LiquidacionCargoServicio` / JDBC | E, reportes | `TENANT_OWNED` | Sí | FKs simples | FKs compuestas; RLS | cálculo/reporte A/B |
+| `cargo_eventos` | `CargoEventoServicio` / JDBC | E, auditoría | `OPERATIONAL` | Sí | append-only; idempotencia global | tenant; idempotencia tenant; RLS | evento/replay A/B |
+| `jere_platform_student_export_snapshots` | `StudentSourceExportStore` / JDBC | J | `INTEGRATION_MAPPING` | Sí | mapping externo inmutable | internal tenant + FK mapping; unique tenant/checkpoint; RLS | snapshot histórico A/B |
+| `jere_platform_student_export_pages` | `StudentSourceExportStore` / JDBC | J | `OPERATIONAL` | Sí | FK snapshot, página única | tenant+FK compuesta; RLS | páginas/firma A/B |
+
+Objetos adicionales: `v_cuotas_seguimiento` es una proyección tenant-owned y se
+recreará con joins por tenant y `security_invoker`; los triggers append-only de
+auditoría y cargos permanecen globales en definición, pero protegen filas con
+tenant. Flyway schema history es `GLOBAL` operacional y no pertenece al
+dominio. Los PDFs/recibos en filesystem son `OPERATIONAL`; pasan de nombre
+global por pago a namespace `<tenant-id>/recibos/` y toda lectura valida
+tenant+permiso. No se encontró cache backend de negocio; el `QueryClient`
+frontend global sí requiere cancelación y borrado al cambiar sesión/tenant.
+
+### 6.2 Inventario de consultas, endpoints y procesos
+
+- Persistencia: 45 `@Query`, incluidas ocho nativas, más JDBC en auditoría,
+  liquidaciones/eventos y Jere Platform. Todas las consultas de dominio quedan
+  cubiertas por RLS; las nativas además forman parte del scanner con allowlist
+  explícita de control plane.
+- API: los controllers bajo `/api/**` consumen agregados tenant-owned salvo
+  health, login inicial y endpoints globales de plataforma documentados. La
+  frontera backend resuelve membership antes de ejecutar controller.
+- Jobs: cumpleaños, matrícula anual, mensualidades, asistencias, recargos y el
+  worker de recibos eran globales; cada ejecución deberá enumerar tenants
+  activos, establecer contexto con `try/finally` y abrir una transacción por
+  tenant.
+- Async: email recibía una entidad en otro thread; transportará snapshot
+  inmutable con tenant y reconstruirá contexto.
+- Archivos: `ReciboStorageService` usaba `recibo_<pagoId>.pdf`; se reutiliza
+  `ReciboPathResolver` y se agrega namespace técnico tenant.
+- Frontend: access/profile viven en memoria y refresh en cookie HttpOnly, pero
+  el `QueryClient` era global y no se limpiaba en login/logout. La shell deberá
+  mostrar tenant, cancelar requests y vaciar caches al cambiarlo.
+- Operación: backup/restore preservaba una única academia; las verificaciones
+  se amplían a tenants, memberships, constraints y namespaces. El rollback a
+  imagen single-tenant deja de ser compatible cuando RLS se vuelve obligatorio.
+
+ADR aceptado: [`adr-0008-shared-schema-multitenancy.md`](adr-0008-shared-schema-multitenancy.md).
+
 ## 7. Invariantes no negociables
 
 ### 7.1 Datos
@@ -207,7 +300,7 @@ Debe existir un inventario exhaustivo de tablas, entidades, repositorios, endpoi
 
 ### Fase 0 — Auditoría e inventario
 
-Estado: `PENDING`
+Estado: `EXECUTED_PASS`
 
 Entregables:
 
@@ -222,9 +315,11 @@ Entregables:
 
 Gate: no se modifica el esquema hasta aprobar el inventario.
 
+Evidencia: secciones 6.1/6.2, ADR-0008 y bitácora local del 2026-07-30.
+
 ### Fase 1 — Control plane de tenant
 
-Estado: `PENDING`
+Estado: `EXECUTED_PASS`
 
 Entregables:
 
@@ -237,7 +332,7 @@ Entregables:
 
 ### Fase 2 — Identidad, sesión y API
 
-Estado: `PENDING`
+Estado: `EXECUTED_PASS`
 
 Entregables:
 
@@ -250,7 +345,7 @@ Entregables:
 
 ### Fase 3 — Migración de datos y persistencia
 
-Estado: `PENDING`
+Estado: `EXECUTED_PASS`
 
 Entregables:
 
@@ -264,7 +359,7 @@ Entregables:
 
 ### Fase 4 — Servicios funcionales
 
-Estado: `PENDING`
+Estado: `EXECUTED_PASS`
 
 Cobertura obligatoria:
 
@@ -281,7 +376,7 @@ Cobertura obligatoria:
 
 ### Fase 5 — Jobs, archivos e integraciones
 
-Estado: `PENDING`
+Estado: `EXECUTED_PASS`
 
 Entregables:
 
@@ -294,7 +389,7 @@ Entregables:
 
 ### Fase 6 — Frontend
 
-Estado: `PENDING`
+Estado: `EXECUTED_PASS`
 
 Entregables:
 
@@ -307,7 +402,7 @@ Entregables:
 
 ### Fase 7 — Operación y certificación
 
-Estado: `PENDING`
+Estado: `IMPLEMENTED_UNVERIFIED`
 
 Entregables:
 
@@ -326,24 +421,24 @@ Actualizar esta tabla en cada intervención.
 
 | Capacidad | Estado | Evidencia | Riesgo pendiente |
 |---|---|---|---|
-| Modelo de tenant | `ABSENT` | No existe entidad interna | Crítico |
-| Membership | `ABSENT` | RBAC global | Crítico |
-| Resolución por request | `ABSENT` | Mapping externo global | Crítico |
-| Contexto backend | `ABSENT` | Sin `TenantContext` | Crítico |
-| Esquema tenant-aware | `ABSENT` | Modelo monoacademia | Crítico |
-| Constraints cross-tenant | `ABSENT` | Sin tenant interno | Crítico |
-| RLS | `ABSENT` | Sin políticas | Alto |
-| Autenticación tenant-bound | `ABSENT` | Sesión global | Crítico |
-| Frontend tenant-aware | `ABSENT` | Sin selector | Alto |
-| Jobs tenant-aware | `ABSENT` | Ejecución global | Crítico |
-| Archivos tenant-aware | `ABSENT` | Storage global | Crítico |
-| Jere Platform por tenant | `PARTIAL_EXTERNAL_ONLY` | Mapping por deployment | Alto |
-| Auditoría tenant-aware | `ABSENT` | Metadata parcial en exportación | Alto |
-| Métricas tenant-safe | `ABSENT` | Sin dimensión interna | Medio |
-| Pruebas de aislamiento | `ABSENT` | Sin suite de dos tenants | Crítico |
-| Migración de datos | `ABSENT` | Sin tenant inicial | Crítico |
-| Backup/restore tenant-aware | `ABSENT` | Backup global | Alto |
-| Runbook | `THIS_DOCUMENT_ONLY` | Contrato inicial | Alto |
+| Modelo de tenant | `EXECUTED_PASS` | V8, paquete `gestudio.tenancy`, PostgreSQL y `clean verify` | Sin riesgo técnico abierto en el gate local |
+| Membership | `EXECUTED_PASS` | V8, servicios, login multitenant y rol runtime real | Sin riesgo técnico abierto en el gate local |
+| Resolución por request | `EXECUTED_PASS` | `SecurityFilter` revalida tenant/membership/versiones | Sin riesgo técnico abierto en el gate local |
+| Contexto backend | `EXECUTED_PASS` | Mismo `pg_backend_pid` reutilizado sin fuga | Sin riesgo técnico abierto en el gate local |
+| Esquema tenant-aware | `EXECUTED_PASS` | V1-V11 limpio y V7-V11 incremental | Sin riesgo técnico abierto en el gate local |
+| Constraints cross-tenant | `EXECUTED_PASS` | FKs compuestas, checks e índices verificados | Sin riesgo técnico abierto en el gate local |
+| RLS | `EXECUTED_PASS` | `FORCE RLS`, policies, grants y rol no owner reales | Sin riesgo técnico abierto en el gate local |
+| Autenticación tenant-bound | `EXECUTED_PASS` | login, selección, refresh, filtro y revocación reales | Sin riesgo técnico abierto en el gate local |
+| Frontend tenant-aware | `EXECUTED_PASS` | selector, cambio de scope, 166 tests, lint y build | Revalidar si cambia el contrato |
+| Jobs tenant-aware | `EXECUTED_PASS` | `TenantExecutionService`, callers y suite completa | Sin riesgo técnico abierto en el gate local |
+| Archivos tenant-aware | `EXECUTED_PASS` | namespace, migrador y pruebas filesystem/PostgreSQL | Backup/restore multitenant separado |
+| Jere Platform por tenant | `EXECUTED_PASS` | mapping, export y upgrade V7 probados | Sin riesgo técnico abierto en el gate local |
+| Auditoría tenant-aware | `EXECUTED_PASS` | auditoría global/tenant bajo rol runtime y suite completa | Sin riesgo técnico abierto en el gate local |
+| Métricas tenant-safe | `EXECUTED_PASS` | health estructural GREEN y pruebas | Observación en despliegue real pendiente |
+| Pruebas de aislamiento | `EXECUTED_PASS` | Testcontainers PostgreSQL 15 con dos tenants | Sin riesgo técnico abierto en el gate local |
+| Migración de datos | `EXECUTED_PASS` | V1-V11 y estado V7 representativo hasta V11 | Reconciliación productiva depende de datos reales |
+| Backup/restore tenant-aware | `ABSENT` | El gate heredado no certifica namespaces multitenant | Alto |
+| Runbook | `DESIGNED` | Este documento y ADR-0008 | Certificación post-push pendiente |
 
 Estados permitidos:
 
@@ -367,7 +462,12 @@ No usar `DONE` ni porcentajes subjetivos.
 - `AMBER`: fronteras implementadas, pero faltan pruebas o migración completa;
 - `GREEN`: todos los gates pasan sobre el SHA publicado.
 
-Estado actual: `RED`.
+Estado actual: `AMBER`.
+
+Motivo: el health estructural de base devuelve `GREEN` y el gate técnico local
+pasó, pero la definición absoluta exige además backup/restore multitenant y SHA
+publicado. `AMBER` evita confundir cierre técnico local con certificación
+operacional completa.
 
 ### 10.2 Indicadores operativos futuros
 
@@ -424,11 +524,25 @@ Las pruebas de aislamiento, constraints, locks, RLS, migración y outbox deben e
 
 ## 12. Gate reproducible requerido
 
-Debe crearse un script equivalente a:
+No existe un wrapper específico y no se agrega uno mientras los comandos del
+repositorio cubran el gate. Con Java 21, desde `backend/`:
 
-`scripts/ops/verify-multitenancy.ps1`
+```powershell
+.\mvnw.cmd '-Dtest=ApplicationRoleAuthenticationPostgreSqlTest,PostgreSqlSchemaValidationTest' test
+.\mvnw.cmd clean verify
+```
 
-Debe ejecutar y registrar, sin secretos:
+Desde `frontend/`:
+
+```powershell
+npm ci
+npm test
+npm run lint
+$env:VITE_API_BASE_URL = 'https://example.invalid/api'
+npm run build
+```
+
+El gate debe ejecutar y registrar, sin secretos:
 
 1. inventario actualizado;
 2. migración desde base single-tenant;
@@ -478,13 +592,16 @@ No borrar historia útil. Las decisiones reemplazadas deben quedar en la bitáco
 
 | ID | Decisión | Estado | Motivo |
 |---|---|---|---|
-| MT-001 | Gestudio actual es single-tenant por deployment | `CONFIRMED` | Documentación y código remoto |
+| MT-001 | El baseline anterior a V8 era single-tenant por deployment | `SUPERSEDED` | Inventario de la sección 6 y cierre técnico V8-V11 |
 | MT-002 | El tenant externo de Jere Platform no acredita multitenancy interno | `CONFIRMED` | Mapping global por configuración |
-| MT-003 | Estrategia inicial recomendada: shared schema + discriminator | `PROVISIONAL` | Menor cambio compatible con monolito |
+| MT-003 | Estrategia: shared database + shared schema + discriminator + RLS | `ACCEPTED` | ADR-0008; preserva el monolito y cubre JDBC/jobs |
 | MT-004 | Defensa en profundidad; filtros JPA solos no bastan | `REQUIRED` | Riesgo de queries nativas/jobs |
 | MT-005 | Migraciones publicadas no se editan | `REQUIRED` | Contrato Flyway existente |
 | MT-006 | Debe existir tenant inicial para backfill | `REQUIRED` | Compatibilidad de datos actuales |
 | MT-007 | Superadmin cross-tenant requiere capacidad explícita | `REQUIRED` | Evitar bypass accidental |
+| MT-008 | Roles tenant-owned; permisos globales; usuario global | `ACCEPTED` | La edición de roles es local y la identidad no se duplica |
+| MT-009 | Rol DB de aplicación separado del rol Flyway/operativo | `ACCEPTED` | RLS no protege al dueño/superuser por defecto |
+| MT-010 | Rollback single-tenant termina al activar RLS obligatorio | `ACCEPTED` | Una imagen vieja no establece contexto y debe fallar cerrado |
 
 ## 15. Registro de riesgos
 
@@ -503,6 +620,31 @@ No borrar historia útil. Las decisiones reemplazadas deben quedar en la bitáco
 
 ## 16. Bitácora de ejecución
 
+### 2026-07-30 — Preflight, baseline e inventario local
+
+- Repositorio: `JerePrograma/Gestudio`; rama `main`.
+- SHA normativo confirmado y sincronizado: `1d8ad314abdb3efa0ab9704395c2505b98087672`.
+- Árbol inicial/final de baseline: limpio; `HEAD == origin/main`.
+- Comando: `pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\validate-local-full.ps1`.
+- Resultado: `PASS`, exit code `0`, duración acumulada de gates
+  `00:12:40.7477356`.
+- Gates: setup `00:00:35.1252576`; validate-all `00:02:36.5458250`;
+  smoke `00:01:46.4022922`; demo seed `00:03:15.7461975`; backup/restore
+  `00:01:42.6688699`; rollback `00:02:12.2379429`; observabilidad
+  `00:00:32.0213502`.
+- Pruebas: backend 261 (0 fallos, 2 omitidas por symlink); contratos Node 9;
+  frontend Vitest 149; smoke 20/20; backup 12/12; rollback 8/8;
+  observabilidad 8/8.
+- Warnings: host Node 24/npm 11 difiere de CI Node 22/npm 10; npm omitió
+  scripts no permitidos de `esbuild`; sin vulnerabilidades npm.
+- Evidencia externa a Git:
+  `C:\Users\Jerem\AppData\Local\Temp\GestudioValidation\20260730-095320-1d8ad314abdb`.
+- Auditoría: 43 tablas, 35 entidades, 35 repositorios, 45 consultas declaradas,
+  8 nativas, 7 componentes JDBC, 6 schedulers y 1 flujo async; multitenancy
+  interno confirmado ausente antes de esta implementación.
+- Decisión: ADR-0008 aceptado; Fase 0 `EXECUTED_PASS`. Ninguna migración V1-V7
+  fue modificada.
+
 ### 2026-07-30 — Auditoría remota inicial
 
 - SHA base: `ec5cee0773baa2b8c50f2b5c6768e424e08c7efe`.
@@ -512,6 +654,23 @@ No borrar historia útil. Las decisiones reemplazadas deben quedar en la bitáco
 - Confirmado: tenant externo sólo en exportación Jere Platform.
 - No ejecutado: build, tests, migraciones, Compose ni runtime local.
 - Decisión: crear este contrato antes de cualquier implementación.
+
+### 2026-08-04 — Validación PostgreSQL y cierre técnico local
+
+- Base Git verificada: `main`, `HEAD == origin/main == 1d8ad314abdb3efa0ab9704395c2505b98087672`
+  antes de publicar; una sola worktree, staging y conflictos vacíos.
+- Docker Engine 29.3.1 disponible sin intervención de Codex; Testcontainers
+  1.21.4 usó PostgreSQL 15.18 y puertos host aleatorios.
+- Focalizados: 13 tests, 0 fallos, 0 errores y 0 skips; V1-V11, V7-V11,
+  Hibernate, rol runtime, RLS y conexión reutilizada pasaron.
+- Backend: `.\mvnw.cmd clean verify` PASS; 282 tests, 0 fallos, 0 errores,
+  2 skips de symlink por limitación del host; JaCoCo y JAR completados.
+- Frontend: `npm ci`, 166 tests, lint y build PASS con URL ficticia; lockfile
+  sin cambios y sin dependencias nuevas.
+- Demo estable V7: sólo lectura; ningún contenedor, volumen, puerto, archivo de
+  estado o deployment fue modificado.
+- Estado: cierre técnico local `EXECUTED_PASS`; certificación absoluta y
+  publicación se registran por separado.
 
 ## 17. Formato obligatorio del informe de cada intervención
 

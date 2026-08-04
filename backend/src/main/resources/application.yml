@@ -67,6 +67,11 @@ management:
       probes:
         enabled: true
       show-details: never
+      group:
+        readiness:
+          include: readinessState,multitenancy
+        liveness:
+          include: livenessState
     prometheus:
       enabled: true
   health:
@@ -88,6 +93,8 @@ jwt:
   refresh-token-ttl: ${JWT_REFRESH_TOKEN_TTL:P7D}
 
 app:
+  multitenancy:
+    required: ${APP_MULTITENANCY_REQUIRED:true}
   time-zone: ${APP_TIME_ZONE:America/Argentina/Buenos_Aires}
   cors-allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:8080}
   scheduling-enabled: ${APP_SCHEDULING_ENABLED:false}
@@ -129,8 +136,6 @@ app:
     password: ${APP_LOCAL_ADMIN_PASSWORD_RESET_PASSWORD:}
   jere-platform-student-export:
     enabled: ${APP_JERE_PLATFORM_STUDENT_EXPORT_ENABLED:false}
-    organization-id: ${APP_JERE_PLATFORM_STUDENT_EXPORT_ORGANIZATION_ID:}
-    tenant-id: ${APP_JERE_PLATFORM_STUDENT_EXPORT_TENANT_ID:}
     current-secret: ${APP_JERE_PLATFORM_STUDENT_EXPORT_CURRENT_SECRET:}
     page-size: ${APP_JERE_PLATFORM_STUDENT_EXPORT_PAGE_SIZE:1000}
 

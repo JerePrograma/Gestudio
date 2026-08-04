@@ -6,6 +6,8 @@ import { Form, Formik, Field, ErrorMessage } from "formik";
 import * as yup from "yup";
 import { prefetch } from "../rutas/routes";
 import { Sparkles } from "lucide-react";
+import type { TenantSummary } from "../types/types";
+import { getApiErrorMessage } from "../api/apiError";
 
 const loginSchema = yup.object().shape({
   nombreUsuario: yup.string().required("Nombre de Usuario es requerido"),
@@ -16,6 +18,7 @@ const Login: React.FC = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [error, setError] = useState("");
+  const [tenantOptions, setTenantOptions] = useState<TenantSummary[]>([]);
 
   useEffect(() => {
     const id = window.requestIdleCallback
@@ -34,15 +37,45 @@ const Login: React.FC = () => {
   const handleLogin = async (values: {
     nombreUsuario: string;
     contrasena: string;
+    tenantId: string;
   }) => {
+    if (tenantOptions.length > 0 && !values.tenantId) {
+      setError("Seleccioná una organización para continuar.");
+      return;
+    }
+
     try {
-      await login(values.nombreUsuario, values.contrasena);
+      setError("");
+      const result = await login(
+        values.nombreUsuario,
+        values.contrasena,
+        values.tenantId || undefined,
+      );
+
+      if (result?.selectionRequired) {
+        const activeTenants = result.tenants.filter(
+          (tenant) => tenant.estado === "ACTIVE",
+        );
+
+        if (activeTenants.length === 0) {
+          setError("No tenés una organización activa disponible.");
+          return;
+        }
+
+        setTenantOptions(activeTenants);
+        return;
+      }
+
       navigate("/");
-    } catch {
-      setError("Credenciales incorrectas. Intenta nuevamente.");
+    } catch (loginError) {
+      const message = getApiErrorMessage(
+        loginError,
+        "No se pudo iniciar sesión. Revisá tus credenciales y acceso a la organización.",
+      );
+      setError(message);
 
       const { toast } = await import("react-toastify");
-      toast.error("Error al iniciar sesión.");
+      toast.error(message);
     }
   };
 
@@ -81,7 +114,7 @@ const Login: React.FC = () => {
           </p>
 
           <Formik
-            initialValues={{ nombreUsuario: "", contrasena: "" }}
+            initialValues={{ nombreUsuario: "", contrasena: "", tenantId: "" }}
             validationSchema={loginSchema}
             validateOnBlur={false}
             validateOnMount={false}
@@ -103,6 +136,31 @@ const Login: React.FC = () => {
 
                   <ErrorMessage name="nombreUsuario" component="div" className="auth-error" />
                 </div>
+
+                {tenantOptions.length > 0 && (
+                  <div className="field-group">
+                    <label htmlFor="tenantId">Organización:</label>
+
+                    <Field
+                      as="select"
+                      id="tenantId"
+                      name="tenantId"
+                      className="form-input"
+                      autoFocus
+                    >
+                      <option value="">Seleccioná una organización</option>
+                      {tenantOptions.map((tenant) => (
+                        <option key={tenant.id} value={tenant.id}>
+                          {tenant.nombre}
+                        </option>
+                      ))}
+                    </Field>
+
+                    <p className="text-xs text-muted-foreground">
+                      Tu sesión y permisos quedarán ligados a esta organización.
+                    </p>
+                  </div>
+                )}
 
                 <div className="field-group">
                   <label htmlFor="contrasena">Contraseña:</label>
@@ -129,7 +187,11 @@ const Login: React.FC = () => {
                 )}
 
                 <Boton type="submit" disabled={isSubmitting} className="page-button w-full">
-                  {isSubmitting ? "Ingresando…" : "Ingresar"}
+                  {isSubmitting
+                    ? "Ingresando…"
+                    : tenantOptions.length > 0
+                      ? "Ingresar a la organización"
+                      : "Ingresar"}
                 </Boton>
               </Form>
             )}

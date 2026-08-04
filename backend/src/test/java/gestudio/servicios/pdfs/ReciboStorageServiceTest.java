@@ -11,6 +11,8 @@ import gestudio.repositorios.ReciboPendienteRepositorio;
 import gestudio.repositorios.ReciboRepositorio;
 import gestudio.servicios.email.IEmailService;
 import gestudio.servicios.email.EmailDeliveryResult;
+import gestudio.tenancy.TenantContext;
+import gestudio.tenancy.TenantExecutionService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -40,11 +42,13 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doAnswer;
 
 @ExtendWith(MockitoExtension.class)
 class ReciboStorageServiceTest {
 
     private static final Instant NOW = Instant.parse("2026-06-30T15:00:00Z");
+    private static final UUID TENANT_ID = UUID.fromString("10000000-0000-0000-0000-000000000001");
 
     @Mock private PdfService pdf;
     @Mock private IEmailService email;
@@ -53,11 +57,20 @@ class ReciboStorageServiceTest {
     @Mock private AplicacionPagoRepositorio aplicaciones;
     @Mock private PlatformTransactionManager transactionManager;
     @Mock private TransactionStatus transactionStatus;
+    @Mock private TenantExecutionService tenants;
     @TempDir Path receiptsPath;
 
     @BeforeEach
     void transactions() {
         when(transactionManager.getTransaction(any(TransactionDefinition.class))).thenReturn(transactionStatus);
+        doAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            java.util.function.Consumer<UUID> work = invocation.getArgument(1);
+            try (TenantContext.Scope ignored = TenantContext.open(TENANT_ID, null)) {
+                work.accept(TENANT_ID);
+            }
+            return null;
+        }).when(tenants).forEachActiveTenant(eq("receipts"), any());
     }
 
     @Test
@@ -84,10 +97,10 @@ class ReciboStorageServiceTest {
         assertThat(trabajo.getEstado()).isEqualTo(EstadoReciboPendiente.COMPLETADO);
         assertThat(trabajo.getIntentos()).isOne();
         assertThat(trabajo.getProcessedAt()).isEqualTo(NOW);
-        assertThat(recibo.getStorageKey()).isEqualTo("recibo_7.pdf");
+        assertThat(recibo.getStorageKey()).isEqualTo(TENANT_ID + "/recibos/recibo_7.pdf");
         assertThat(recibo.getGeneradoAt()).isEqualTo(NOW);
         assertThat(recibo.getEnviadoAt()).isEqualTo(NOW);
-        assertThat(Files.readAllBytes(receiptsPath.resolve("recibo_7.pdf"))).isEqualTo(bytes);
+        assertThat(Files.readAllBytes(receiptsPath.resolve(TENANT_ID + "/recibos/recibo_7.pdf"))).isEqualTo(bytes);
         verify(pdf, times(1)).generarReciboPdf(pago);
         verify(email, times(1)).sendEmailWithAttachmentAndInlineImage(
                 any(), any(), any(), any(), any(), any(), any(), any(), any());
@@ -251,7 +264,7 @@ class ReciboStorageServiceTest {
     private ReciboStorageService service() {
         return new ReciboStorageService(pdf, email,
                 new AppProperties(ZoneOffset.UTC, receiptsPath, List.of("https://example.test")),
-                pendientes, recibos, aplicaciones, Clock.fixed(NOW, ZoneOffset.UTC), transactionManager);
+                pendientes, recibos, aplicaciones, Clock.fixed(NOW, ZoneOffset.UTC), transactionManager, tenants);
     }
 
     private Pago pago(String email) {

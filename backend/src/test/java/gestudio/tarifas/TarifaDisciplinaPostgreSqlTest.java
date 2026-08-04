@@ -82,6 +82,7 @@ class TarifaDisciplinaPostgreSqlTest extends PostgreSqlIntegrationTest {
                 "Ajuste futuro verificado"
         );
 
+        selectMembership(fixture.gestorMembershipId());
         var created = tarifas.crear(fixture.disciplinaId(), request, fixture.gestor());
 
         assertThat(created.valorCuota()).isEqualTo("150.00");
@@ -107,6 +108,7 @@ class TarifaDisciplinaPostgreSqlTest extends PostgreSqlIntegrationTest {
                 .isInstanceOf(AccessDeniedException.class)
                 .hasMessageContaining(PERM_TARIFAS_HISTORICAS);
 
+        selectMembership(fixture.superadminMembershipId());
         assertThat(tarifas.crear(fixture.disciplinaId(), historical, fixture.superadmin()).valorCuota())
                 .isEqualTo("90.00");
     }
@@ -127,6 +129,12 @@ class TarifaDisciplinaPostgreSqlTest extends PostgreSqlIntegrationTest {
 
         Long superId = usuario("root-" + suffix, superRole);
         Long gestorId = usuarioConPermiso("gestor-" + suffix, PERM_TARIFAS_ADMIN);
+        UUID superadminMembershipId = createActiveMembership(jdbc, superId, superRole);
+        UUID gestorMembershipId = createActiveMembership(
+                jdbc,
+                gestorId,
+                jdbc.queryForObject("SELECT rol_id FROM usuarios WHERE id = ?", Long.class, gestorId)
+        );
 
         Long profesorId = jdbc.queryForObject("""
                 INSERT INTO profesores(nombre, apellido, activo)
@@ -151,7 +159,9 @@ class TarifaDisciplinaPostgreSqlTest extends PostgreSqlIntegrationTest {
         return new Fixture(
                 disciplinaId,
                 usuarios.findByIdConRolesYPermisos(superId).orElseThrow(),
-                usuarios.findByIdConRolesYPermisos(gestorId).orElseThrow()
+                usuarios.findByIdConRolesYPermisos(gestorId).orElseThrow(),
+                superadminMembershipId,
+                gestorMembershipId
         );
     }
 
@@ -226,6 +236,10 @@ class TarifaDisciplinaPostgreSqlTest extends PostgreSqlIntegrationTest {
                 """, disciplinaId, desde, new BigDecimal(valor), usuarioId);
     }
 
-    private record Fixture(Long disciplinaId, Usuario superadmin, Usuario gestor) {
+    private record Fixture(Long disciplinaId,
+                           Usuario superadmin,
+                           Usuario gestor,
+                           UUID superadminMembershipId,
+                           UUID gestorMembershipId) {
     }
 }

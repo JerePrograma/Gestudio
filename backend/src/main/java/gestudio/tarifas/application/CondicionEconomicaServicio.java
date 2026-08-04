@@ -6,13 +6,14 @@ import gestudio.entidades.Inscripcion;
 import gestudio.entidades.Usuario;
 import gestudio.infra.errores.TratadorDeErrores.OperacionNoPermitidaException;
 import gestudio.infra.errores.TratadorDeErrores.RecursoNoEncontradoException;
+import gestudio.infra.seguridad.RbacService;
 import gestudio.repositorios.BonificacionRepositorio;
 import gestudio.repositorios.InscripcionRepositorio;
-import gestudio.repositorios.UsuarioRepositorio;
 import gestudio.tarifas.api.CondicionEconomicaRequest;
 import gestudio.tarifas.api.CondicionEconomicaResponse;
 import gestudio.tarifas.persistence.CondicionEconomicaInscripcion;
 import gestudio.tarifas.persistence.CondicionEconomicaRepositorio;
+import gestudio.tenancy.TenantAccess;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,20 +34,20 @@ public class CondicionEconomicaServicio {
     private final CondicionEconomicaRepositorio condiciones;
     private final InscripcionRepositorio inscripciones;
     private final BonificacionRepositorio bonificaciones;
-    private final UsuarioRepositorio usuarios;
+    private final RbacService rbac;
     private final AuditService audit;
     private final Clock clock;
 
     public CondicionEconomicaServicio(CondicionEconomicaRepositorio condiciones,
                                       InscripcionRepositorio inscripciones,
                                       BonificacionRepositorio bonificaciones,
-                                      UsuarioRepositorio usuarios,
+                                      RbacService rbac,
                                       AuditService audit,
                                       Clock clock) {
         this.condiciones = condiciones;
         this.inscripciones = inscripciones;
         this.bonificaciones = bonificaciones;
-        this.usuarios = usuarios;
+        this.rbac = rbac;
         this.audit = audit;
         this.clock = clock;
     }
@@ -55,10 +56,15 @@ public class CondicionEconomicaServicio {
     public CondicionEconomicaResponse crear(Long inscripcionId,
                                             CondicionEconomicaRequest request,
                                             Usuario actor) {
-        Usuario actorActual = actorAutorizado(actor);
+        Usuario actorActual = rbac.exigirPermiso(
+                actor,
+                PERM_CONDICIONES_ECONOMICAS_ADMIN,
+                "CREAR_CONDICION_ECONOMICA"
+        );
+        TenantAccess access = rbac.accesoActual(actorActual);
 
         if (request.vigenteDesde().isBefore(LocalDate.now(clock))
-                && !actorActual.tienePermiso(PERM_TARIFAS_HISTORICAS)) {
+                && !access.permissionCodes().contains(PERM_TARIFAS_HISTORICAS)) {
             throw new AccessDeniedException("Permiso requerido: " + PERM_TARIFAS_HISTORICAS);
         }
 
@@ -130,17 +136,6 @@ public class CondicionEconomicaServicio {
     public Optional<CondicionEconomicaInscripcion> vigenteOpcional(Long inscripcionId, LocalDate fecha) {
         return condiciones.findFirstByInscripcionIdAndVigenteDesdeLessThanEqualOrderByVigenteDesdeDesc(
                 inscripcionId, fecha);
-    }
-
-    private Usuario actorAutorizado(Usuario actor) {
-        if (actor == null || actor.getId() == null) {
-            throw new AccessDeniedException("Actor requerido");
-        }
-
-        return usuarios.findByIdConRolesYPermisos(actor.getId())
-                .filter(Usuario::isEnabled)
-                .filter(usuario -> usuario.tienePermiso(PERM_CONDICIONES_ECONOMICAS_ADMIN))
-                .orElseThrow(() -> new AccessDeniedException("Actor sin permisos para administrar condiciones económicas"));
     }
 
     private CondicionEconomicaResponse response(CondicionEconomicaInscripcion value) {

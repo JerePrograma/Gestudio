@@ -1,5 +1,7 @@
 package gestudio.dto.usuario.response;
 
+import gestudio.tenancy.TenantSummaryResponse;
+
 import java.util.List;
 
 public record UsuarioResponse(
@@ -7,6 +9,12 @@ public record UsuarioResponse(
         String nombreUsuario,
         List<String> roles,
         List<String> permisos,
-        Boolean activo
+        Boolean activo,
+        TenantSummaryResponse tenantActivo,
+        List<TenantSummaryResponse> tenantsDisponibles
 ) {
+    public UsuarioResponse(Long id, String nombreUsuario, List<String> roles,
+                           List<String> permisos, Boolean activo) {
+        this(id, nombreUsuario, roles, permisos, activo, null, List.of());
+    }
 }

@@ -11,7 +11,13 @@ import java.util.UUID;
 
 public interface RefreshSessionRepositorio extends JpaRepository<RefreshSession, UUID> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select s from RefreshSession s join fetch s.usuario u join fetch u.rol where s.tokenHash = :hash")
+    @Query("""
+            select s from RefreshSession s
+            join fetch s.usuario
+            join fetch s.tenant
+            join fetch s.membership
+            where s.tokenHash = :hash
+            """)
     Optional<RefreshSession> findByTokenHashForUpdate(@Param("hash") String hash);
 
     @Modifying

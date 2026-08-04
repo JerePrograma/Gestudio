@@ -5,6 +5,7 @@ import com.auth0.jwt.algorithms.Algorithm;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.auth0.jwt.interfaces.JWTVerifier;
 import gestudio.entidades.Usuario;
+import gestudio.tenancy.TenantAccess;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
@@ -31,31 +32,29 @@ public class TokenService {
                 .build();
     }
 
-    public String generarAccessToken(Usuario usuario) {
-        return generarToken(usuario, UUID.randomUUID(), properties.accessTokenTtl(), TokenType.ACCESS);
+    public String generarAccessToken(Usuario usuario, TenantAccess access) {
+        return generarToken(usuario, access, UUID.randomUUID(), properties.accessTokenTtl(), TokenType.ACCESS);
     }
 
-    public String generarRefreshToken(Usuario usuario, UUID sessionId) {
-        return generarToken(usuario, sessionId, properties.refreshTokenTtl(), TokenType.REFRESH);
+    public String generarRefreshToken(Usuario usuario, TenantAccess access, UUID sessionId) {
+        return generarToken(usuario, access, sessionId, properties.refreshTokenTtl(), TokenType.REFRESH);
     }
 
     public Instant refreshExpiresAt(Instant issuedAt) {
         return issuedAt.plus(properties.refreshTokenTtl());
     }
 
-    private String generarToken(Usuario usuario, UUID jwtId, Duration ttl, TokenType tipo) {
+    private String generarToken(Usuario usuario, TenantAccess access, UUID jwtId, Duration ttl, TokenType tipo) {
         if (usuario == null
                 || usuario.getId() == null
                 || usuario.getNombreUsuario() == null
-                || usuario.getRol() == null
-                || usuario.getAuthVersion() == null) {
+                || usuario.getAuthVersion() == null
+                || access == null
+                || !usuario.getId().equals(access.usuario().getId())) {
             throw new IllegalArgumentException("No se puede generar un token para un usuario incompleto");
         }
 
-        String rolPrincipal = rolPrincipalCodigo(usuario);
-        if (rolPrincipal == null || rolPrincipal.isBlank()) {
-            throw new IllegalArgumentException("No se puede generar un token sin rol principal");
-        }
+        String rolPrincipal = access.primaryRoleCode();
 
         Instant issuedAt = clock.instant();
 
@@ -66,19 +65,16 @@ public class TokenService {
                 .withClaim("id", usuario.getId())
                 .withClaim("type", tipo.name())
                 .withClaim("rol", rolPrincipal)
-                .withClaim("roles", usuario.codigosRolesActivos().stream().toList())
+                .withClaim("roles", access.roleCodes().stream().sorted().toList())
                 .withClaim("auth_version", usuario.getAuthVersion())
+                .withClaim("tenant_id", access.tenantId().toString())
+                .withClaim("membership_id", access.membershipId().toString())
+                .withClaim("tenant_security_version", access.tenantSecurityVersion())
+                .withClaim("membership_security_version", access.membershipSecurityVersion())
                 .withJWTId(jwtId.toString())
                 .withIssuedAt(Date.from(issuedAt))
                 .withExpiresAt(Date.from(issuedAt.plus(ttl)))
                 .sign(algorithm);
-    }
-
-    private static String rolPrincipalCodigo(Usuario usuario) {
-        if (usuario.getRol().getCodigo() != null && !usuario.getRol().getCodigo().isBlank()) {
-            return usuario.getRol().getCodigo();
-        }
-        return usuario.getRol().getDescripcion();
     }
 
     public VerifiedToken verify(String token, TokenType expectedType) {
@@ -101,6 +97,10 @@ public class TokenService {
             Long userId = decoded.getClaim("id").asLong();
             String role = decoded.getClaim("rol").asString();
             Long authVersion = decoded.getClaim("auth_version").asLong();
+            String tenantId = decoded.getClaim("tenant_id").asString();
+            String membershipId = decoded.getClaim("membership_id").asString();
+            Long tenantSecurityVersion = decoded.getClaim("tenant_security_version").asLong();
+            Long membershipSecurityVersion = decoded.getClaim("membership_security_version").asLong();
             String type = decoded.getClaim("type").asString();
             String jwtId = decoded.getId();
             Date issuedAt = decoded.getIssuedAt();
@@ -110,6 +110,10 @@ public class TokenService {
                     || userId == null
                     || role == null || role.isBlank()
                     || authVersion == null
+                    || tenantId == null || tenantId.isBlank()
+                    || membershipId == null || membershipId.isBlank()
+                    || tenantSecurityVersion == null
+                    || membershipSecurityVersion == null
                     || type == null || type.isBlank()
                     || jwtId == null || jwtId.isBlank()
                     || issuedAt == null
@@ -122,6 +126,10 @@ public class TokenService {
                     userId,
                     role,
                     authVersion,
+                    UUID.fromString(tenantId),
+                    UUID.fromString(membershipId),
+                    tenantSecurityVersion,
+                    membershipSecurityVersion,
                     jwtId,
                     TokenType.valueOf(type),
                     issuedAt.toInstant(),

@@ -10,6 +10,8 @@ import gestudio.repositorios.ReciboPendienteRepositorio;
 import gestudio.repositorios.ReciboRepositorio;
 import gestudio.servicios.email.IEmailService;
 import gestudio.servicios.email.EmailDeliveryResult;
+import gestudio.tenancy.TenantContext;
+import gestudio.tenancy.TenantExecutionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -44,6 +46,7 @@ public class ReciboStorageService {
     private final AplicacionPagoRepositorio aplicaciones;
     private final Clock clock;
     private final TransactionTemplate transactions;
+    private final TenantExecutionService tenants;
 
     public ReciboStorageService(PdfService pdf,
                                 IEmailService email,
@@ -52,7 +55,8 @@ public class ReciboStorageService {
                                 ReciboRepositorio recibos,
                                 AplicacionPagoRepositorio aplicaciones,
                                 Clock clock,
-                                PlatformTransactionManager transactionManager) {
+                                PlatformTransactionManager transactionManager,
+                                TenantExecutionService tenants) {
         this.pdf = pdf;
         this.email = email;
         this.properties = properties;
@@ -61,10 +65,15 @@ public class ReciboStorageService {
         this.aplicaciones = aplicaciones;
         this.clock = clock;
         this.transactions = new TransactionTemplate(transactionManager);
+        this.tenants = tenants;
     }
 
     @Scheduled(fixedDelayString = "${app.receipts.worker-delay-ms:30000}")
     public void procesarPendientes() {
+        tenants.forEachActiveTenant("receipts", ignored -> procesarPendientesDelTenant());
+    }
+
+    void procesarPendientesDelTenant() {
         List<Claim> trabajos = transactions.execute(status -> reclamar());
         if (trabajos == null) {
             return;
@@ -92,7 +101,8 @@ public class ReciboStorageService {
             if (trabajo == null) {
                 return;
             }
-            String nombre = "recibo_" + trabajo.pago().getId() + ".pdf";
+            String nombre = TenantContext.requireTenantId() + "/recibos/recibo_"
+                    + trabajo.pago().getId() + ".pdf";
             Path raiz = properties.receiptsPath().toAbsolutePath().normalize();
             Path almacenado = ReciboPathResolver.resolveExistingFile(raiz, trabajo.storageKey());
             byte[] bytes;
@@ -235,8 +245,9 @@ public class ReciboStorageService {
         if (!destino.startsWith(raiz)) {
             throw new IOException("Ruta de recibo inválida");
         }
-        Files.createDirectories(raiz);
-        Path temporal = Files.createTempFile(raiz, nombre, ".tmp");
+        Path directorio = destino.getParent();
+        Files.createDirectories(directorio);
+        Path temporal = Files.createTempFile(directorio, destino.getFileName().toString(), ".tmp");
         try {
             Files.write(temporal, bytes);
             try {

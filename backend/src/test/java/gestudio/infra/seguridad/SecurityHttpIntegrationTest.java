@@ -17,6 +17,15 @@ import gestudio.infra.errores.TratadorDeErrores.OperacionNoPermitidaException;
 import gestudio.infra.observabilidad.RequestCorrelationFilter;
 import gestudio.repositorios.ReciboRepositorio;
 import gestudio.repositorios.UsuarioRepositorio;
+import gestudio.tenancy.Tenant;
+import gestudio.tenancy.TenantAccess;
+import gestudio.tenancy.TenantAccessService;
+import gestudio.tenancy.TenantMembership;
+import gestudio.tenancy.TenantMembershipRole;
+import gestudio.tenancy.TenantMembershipStatus;
+import gestudio.tenancy.TenantMetrics;
+import gestudio.tenancy.TenantStatus;
+import gestudio.tenancy.TenantProvisioningService;
 import gestudio.servicios.pago.PagoServicio;
 import gestudio.servicios.permiso.PermisoServicio;
 import gestudio.servicios.rol.RolServicio;
@@ -101,6 +110,12 @@ class SecurityHttpIntegrationTest {
     private static final String ISSUER = "security-http-test";
 
     @MockitoBean private UsuarioRepositorio usuarioRepositorio;
+    @MockitoBean private TenantAccessService tenantAccessService;
+    @MockitoBean private TenantMetrics tenantMetrics;
+    @MockitoBean private TenantProvisioningService tenantProvisioningService;
+    @MockitoBean private RbacService rbacService;
+    @MockitoBean private gestudio.auditoria.application.AuditService auditService;
+    @MockitoBean private gestudio.integraciones.jereplatform.application.SourceTenantMapping sourceTenantMapping;
     @MockitoBean private AutenticacionService autenticacionService;
     @MockitoBean private UsuarioServicio usuarioServicio;
     @MockitoBean private RolServicio rolServicio;
@@ -147,6 +162,10 @@ class SecurityHttpIntegrationTest {
 
     @BeforeEach
     void configureControllerMocks() throws IOException {
+        when(rbacService.exigirPermiso(any(Usuario.class), anyString(), anyString()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(sourceTenantMapping.current()).thenReturn(Optional.empty());
+
         when(usuarioServicio.convertirAUsuarioResponse(any(Usuario.class)))
                 .thenAnswer(invocation -> usuarioResponse(invocation.getArgument(0)));
 
@@ -201,7 +220,7 @@ class SecurityHttpIntegrationTest {
                 .thenReturn(Optional.of(user));
 
         mockMvc.perform(get("/api/usuarios/perfil")
-                        .header(HttpHeaders.AUTHORIZATION, bearer(tokenService.generarAccessToken(user))))
+                        .header(HttpHeaders.AUTHORIZATION, bearer(accessToken(user))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.nombreUsuario").value("admin"));
     }
@@ -283,6 +302,51 @@ class SecurityHttpIntegrationTest {
     }
 
     @Test
+    void cambioDeTenantNoEsPublicoYRotaLaSesionAutenticada() throws Exception {
+        UUID targetTenant = UUID.randomUUID();
+        String body = "{\"tenantId\":\"" + targetTenant + "\"}";
+
+        mockMvc.perform(post("/api/login/tenant")
+                        .header(HttpHeaders.ORIGIN, "https://app.example.test")
+                        .cookie(new Cookie("gestudio_refresh", "refresh-raw"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isUnauthorized());
+
+        Usuario user = usuario(1L, "admin", "ADMINISTRADOR", true);
+        when(usuarioRepositorio.findByIdConRolesYPermisos(1L)).thenReturn(Optional.of(user));
+        when(autenticacionService.switchTenant(
+                any(Usuario.class), any(UUID.class), anyString(), nullable(String.class), anyString()))
+                .thenReturn(resultado(user));
+
+        mockMvc.perform(post("/api/login/tenant")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(accessToken(user)))
+                        .header(HttpHeaders.ORIGIN, "https://app.example.test")
+                        .cookie(new Cookie("gestudio_refresh", "refresh-raw"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").isString())
+                .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("HttpOnly")));
+    }
+
+    @Test
+    void superadminLocalNoObtieneCapacidadDePlataforma() throws Exception {
+        UUID targetTenant = UUID.randomUUID();
+        Usuario localSuperadmin = usuario(30L, "local-root", "SUPERADMIN", true);
+        when(usuarioRepositorio.findByIdConRolesYPermisos(30L)).thenReturn(Optional.of(localSuperadmin));
+        when(tenantProvisioningService.changeTenantStatus(
+                any(UUID.class), any(gestudio.tenancy.TenantStatus.class), any(Usuario.class)))
+                .thenThrow(new AccessDeniedException("platform capability required"));
+
+        mockMvc.perform(request(HttpMethod.PATCH, "/api/platform/tenants/" + targetTenant + "/status")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(accessToken(localSuperadmin)))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"estado\":\"SUSPENDED\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void accessVencidoFirmaInvalidaEIssuerInvalidoDevuelven401() throws Exception {
         Instant now = Instant.now();
 
@@ -306,7 +370,7 @@ class SecurityHttpIntegrationTest {
     void refreshUsadoComoAccessDevuelve401() throws Exception {
         Usuario user = usuario(1L, "admin", "ADMINISTRADOR", true);
 
-        assertUnauthorized(tokenService.generarRefreshToken(user, UUID.randomUUID()));
+        assertUnauthorized(refreshToken(user));
     }
 
     @Test
@@ -316,16 +380,19 @@ class SecurityHttpIntegrationTest {
         when(usuarioRepositorio.findByIdConRolesYPermisos(1L))
                 .thenReturn(Optional.of(inactive));
 
-        assertUnauthorized(tokenService.generarAccessToken(inactive));
+        assertUnauthorized(accessToken(inactive));
 
         Usuario withoutRole = usuario(2L, "without-role", "OPERADOR", true);
-        String token = tokenService.generarAccessToken(withoutRole);
+        String token = accessToken(withoutRole);
 
         withoutRole.setRol(null);
         withoutRole.getRoles().clear();
 
         when(usuarioRepositorio.findByIdConRolesYPermisos(2L))
                 .thenReturn(Optional.of(withoutRole));
+        when(tenantAccessService.revalidate(
+                anyLong(), any(UUID.class), any(UUID.class), anyLong(), anyLong()))
+                .thenReturn(Optional.empty());
 
         assertUnauthorized(token);
     }
@@ -337,7 +404,7 @@ class SecurityHttpIntegrationTest {
         when(usuarioRepositorio.findByIdConRolesYPermisos(2L))
                 .thenReturn(Optional.of(operator));
 
-        String operatorToken = tokenService.generarAccessToken(operator);
+        String operatorToken = accessToken(operator);
 
         mockMvc.perform(get("/api/usuarios")
                         .header(HttpHeaders.AUTHORIZATION, bearer(operatorToken)))
@@ -353,15 +420,15 @@ class SecurityHttpIntegrationTest {
                 .thenReturn(Optional.of(admin));
 
         mockMvc.perform(get("/api/usuarios")
-                        .header(HttpHeaders.AUTHORIZATION, bearer(tokenService.generarAccessToken(admin))))
+                        .header(HttpHeaders.AUTHORIZATION, bearer(accessToken(admin))))
                 .andExpect(status().isOk());
 
         mockMvc.perform(get("/api/usuarios/roles-asignables")
-                        .header(HttpHeaders.AUTHORIZATION, bearer(tokenService.generarAccessToken(admin))))
+                        .header(HttpHeaders.AUTHORIZATION, bearer(accessToken(admin))))
                 .andExpect(status().isOk());
 
         mockMvc.perform(get("/api/roles")
-                        .header(HttpHeaders.AUTHORIZATION, bearer(tokenService.generarAccessToken(admin))))
+                        .header(HttpHeaders.AUTHORIZATION, bearer(accessToken(admin))))
                 .andExpect(status().isForbidden());
 
         Usuario superadmin = usuario(3L, "root", "SUPERADMIN", true);
@@ -370,11 +437,11 @@ class SecurityHttpIntegrationTest {
                 .thenReturn(Optional.of(superadmin));
 
         mockMvc.perform(get("/api/usuarios")
-                        .header(HttpHeaders.AUTHORIZATION, bearer(tokenService.generarAccessToken(superadmin))))
+                        .header(HttpHeaders.AUTHORIZATION, bearer(accessToken(superadmin))))
                 .andExpect(status().isOk());
 
         mockMvc.perform(get("/api/pagos/recibo/999")
-                        .header(HttpHeaders.AUTHORIZATION, bearer(tokenService.generarAccessToken(superadmin))))
+                        .header(HttpHeaders.AUTHORIZATION, bearer(accessToken(superadmin))))
                 .andExpect(result -> assertThat(result.getResponse().getStatus()).isNotIn(401, 403));
     }
 
@@ -395,7 +462,7 @@ class SecurityHttpIntegrationTest {
                 .thenReturn(Optional.of(user));
 
         mockMvc.perform(get("/api/pagos/999")
-                        .header(HttpHeaders.AUTHORIZATION, bearer(tokenService.generarAccessToken(user))))
+                        .header(HttpHeaders.AUTHORIZATION, bearer(accessToken(user))))
                 .andExpect(result -> assertThat(result.getResponse().getStatus()).isNotIn(401, 403));
     }
 
@@ -415,7 +482,7 @@ class SecurityHttpIntegrationTest {
                 .thenReturn(Optional.of(inactiveRole));
 
         mockMvc.perform(get("/api/pagos/999")
-                        .header(HttpHeaders.AUTHORIZATION, bearer(tokenService.generarAccessToken(inactiveRole))))
+                        .header(HttpHeaders.AUTHORIZATION, bearer(accessToken(inactiveRole))))
                 .andExpect(status().isForbidden());
 
         Usuario inactivePermission = usuario(12L, "inactive-permission", "LECTURA", true);
@@ -431,14 +498,14 @@ class SecurityHttpIntegrationTest {
                 .thenReturn(Optional.of(inactivePermission));
 
         mockMvc.perform(get("/api/pagos/999")
-                        .header(HttpHeaders.AUTHORIZATION, bearer(tokenService.generarAccessToken(inactivePermission))))
+                        .header(HttpHeaders.AUTHORIZATION, bearer(accessToken(inactivePermission))))
                 .andExpect(status().isForbidden());
     }
 
     @Test
     void cambioDeAuthVersionInvalidaElAccessToken() throws Exception {
         Usuario user = usuario(13L, "versioned", "ADMINISTRADOR", true);
-        String token = tokenService.generarAccessToken(user);
+        String token = accessToken(user);
 
         user.setAuthVersion(1L);
 
@@ -470,7 +537,7 @@ class SecurityHttpIntegrationTest {
         when(usuarioRepositorio.findByIdConRolesYPermisos(2L))
                 .thenReturn(Optional.of(operator));
 
-        String token = tokenService.generarAccessToken(operator);
+        String token = accessToken(operator);
 
         mockMvc.perform(post("/api/usuarios/registro")
                         .header(HttpHeaders.AUTHORIZATION, bearer(token))
@@ -491,7 +558,7 @@ class SecurityHttpIntegrationTest {
         when(usuarioRepositorio.findByIdConRolesYPermisos(3L))
                 .thenReturn(Optional.of(superadmin));
 
-        String superadminToken = tokenService.generarAccessToken(superadmin);
+        String superadminToken = accessToken(superadmin);
 
         mockMvc.perform(get("/api/roles")
                         .header(HttpHeaders.AUTHORIZATION, bearer(superadminToken)))
@@ -519,7 +586,7 @@ class SecurityHttpIntegrationTest {
                 .thenReturn(Optional.of(operator));
 
         mockMvc.perform(post("/api/pagos")
-                        .header(HttpHeaders.AUTHORIZATION, bearer(tokenService.generarAccessToken(operator)))
+                        .header(HttpHeaders.AUTHORIZATION, bearer(accessToken(operator)))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isForbidden());
@@ -534,7 +601,7 @@ class SecurityHttpIntegrationTest {
                 .thenReturn(List.of("Alumno: Sofía Benítez"));
 
         mockMvc.perform(get("/api/notificaciones/cumpleaneros")
-                        .header(HttpHeaders.AUTHORIZATION, bearer(tokenService.generarAccessToken(user))))
+                        .header(HttpHeaders.AUTHORIZATION, bearer(accessToken(user))))
                 .andExpect(status().isOk())
                 .andExpect(content().json("[\"Alumno: Sofía Benítez\"]"));
     }
@@ -563,14 +630,14 @@ class SecurityHttpIntegrationTest {
                     .thenReturn(Optional.of(operator));
 
             mockMvc.perform(get(endpoint)
-                            .header(HttpHeaders.AUTHORIZATION, bearer(tokenService.generarAccessToken(operator))))
+                            .header(HttpHeaders.AUTHORIZATION, bearer(accessToken(operator))))
                     .andExpect(status().isForbidden());
 
             when(usuarioRepositorio.findByIdConRolesYPermisos(1L))
                     .thenReturn(Optional.of(admin));
 
             mockMvc.perform(get(endpoint)
-                            .header(HttpHeaders.AUTHORIZATION, bearer(tokenService.generarAccessToken(admin))))
+                            .header(HttpHeaders.AUTHORIZATION, bearer(accessToken(admin))))
                     .andExpect(result -> assertThat(result.getResponse().getStatus()).isNotIn(401, 403));
         }
     }
@@ -580,11 +647,12 @@ class SecurityHttpIntegrationTest {
         List<DiscoveredEndpoint> endpoints = discoverEndpoints();
         List<String> mismatches = new ArrayList<>();
 
-        assertThat(endpoints).hasSize(146);
+        assertThat(endpoints).hasSize(153);
 
         for (DiscoveredEndpoint endpoint : endpoints) {
             if (endpoint.path().startsWith("/api/login")
-                    || endpoint.path().equals("/api/usuarios/perfil")) {
+                    || endpoint.path().equals("/api/usuarios/perfil")
+                    || endpoint.path().startsWith("/api/platform/")) {
                 continue;
             }
 
@@ -610,7 +678,7 @@ class SecurityHttpIntegrationTest {
 
                 int denied = mockMvc.perform(matrixRequest(endpoint)
                                 .header(HttpHeaders.AUTHORIZATION,
-                                        bearer(tokenService.generarAccessToken(superadmin))))
+                                        bearer(accessToken(superadmin))))
                         .andReturn()
                         .getResponse()
                         .getStatus();
@@ -623,7 +691,7 @@ class SecurityHttpIntegrationTest {
 
             int withoutApp = mockMvc.perform(matrixRequest(endpoint)
                             .header(HttpHeaders.AUTHORIZATION,
-                                    bearer(tokenService.generarAccessToken(functionalOnly))))
+                                    bearer(accessToken(functionalOnly))))
                     .andReturn()
                     .getResponse()
                     .getStatus();
@@ -633,7 +701,7 @@ class SecurityHttpIntegrationTest {
             when(usuarioRepositorio.findByIdConRolesYPermisos(22L)).thenReturn(Optional.of(appOnly));
 
             int withoutFunctional = mockMvc.perform(matrixRequest(endpoint)
-                            .header(HttpHeaders.AUTHORIZATION, bearer(tokenService.generarAccessToken(appOnly))))
+                            .header(HttpHeaders.AUTHORIZATION, bearer(accessToken(appOnly))))
                     .andReturn()
                     .getResponse()
                     .getStatus();
@@ -645,7 +713,7 @@ class SecurityHttpIntegrationTest {
             when(usuarioRepositorio.findByIdConRolesYPermisos(23L)).thenReturn(Optional.of(allowed));
 
             int allowedStatus = mockMvc.perform(matrixRequest(endpoint)
-                            .header(HttpHeaders.AUTHORIZATION, bearer(tokenService.generarAccessToken(allowed))))
+                            .header(HttpHeaders.AUTHORIZATION, bearer(accessToken(allowed))))
                     .andReturn()
                     .getResponse()
                     .getStatus();
@@ -678,7 +746,7 @@ class SecurityHttpIntegrationTest {
         when(usuarioRepositorio.findByIdConRolesYPermisos(25L)).thenReturn(Optional.of(superadmin));
 
         mockMvc.perform(post("/api/nueva-mutacion-no-declarada")
-                        .header(HttpHeaders.AUTHORIZATION, bearer(tokenService.generarAccessToken(superadmin))))
+                        .header(HttpHeaders.AUTHORIZATION, bearer(accessToken(superadmin))))
                 .andExpect(status().isForbidden());
 
         Usuario tarifas = usuarioConPermisos(
@@ -689,7 +757,7 @@ class SecurityHttpIntegrationTest {
         when(usuarioRepositorio.findByIdConRolesYPermisos(26L)).thenReturn(Optional.of(tarifas));
 
         mockMvc.perform(get("/api/inscripciones/1/condiciones-economicas")
-                        .header(HttpHeaders.AUTHORIZATION, bearer(tokenService.generarAccessToken(tarifas))))
+                        .header(HttpHeaders.AUTHORIZATION, bearer(accessToken(tarifas))))
                 .andExpect(status().isForbidden());
     }
 
@@ -706,7 +774,7 @@ class SecurityHttpIntegrationTest {
                 """;
 
         mockMvc.perform(post("/api/pagos")
-                        .header(HttpHeaders.AUTHORIZATION, bearer(tokenService.generarAccessToken(admin)))
+                        .header(HttpHeaders.AUTHORIZATION, bearer(accessToken(admin)))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isConflict())
@@ -730,7 +798,7 @@ class SecurityHttpIntegrationTest {
                 """;
 
         mockMvc.perform(post("/api/pagos")
-                        .header(HttpHeaders.AUTHORIZATION, bearer(tokenService.generarAccessToken(cajero)))
+                        .header(HttpHeaders.AUTHORIZATION, bearer(accessToken(cajero)))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isForbidden())
@@ -752,7 +820,7 @@ class SecurityHttpIntegrationTest {
                 """;
 
         mockMvc.perform(post("/api/pagos")
-                        .header(HttpHeaders.AUTHORIZATION, bearer(tokenService.generarAccessToken(admin)))
+                        .header(HttpHeaders.AUTHORIZATION, bearer(accessToken(admin)))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isBadRequest());
@@ -782,7 +850,7 @@ class SecurityHttpIntegrationTest {
         mockMvc.perform(get("/api/usuarios/perfil")
                         .header(HttpHeaders.ORIGIN, "https://app.example.test")
                         .header(RequestCorrelationFilter.HEADER_NAME, "browser-request-123")
-                        .header(HttpHeaders.AUTHORIZATION, bearer(tokenService.generarAccessToken(user))))
+                        .header(HttpHeaders.AUTHORIZATION, bearer(accessToken(user))))
                 .andExpect(status().isOk())
                 .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "https://app.example.test"))
                 .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS, "true"))
@@ -804,7 +872,7 @@ class SecurityHttpIntegrationTest {
                 .thenThrow(new RuntimeException("cadena interna sensible"));
 
         mockMvc.perform(get("/api/usuarios")
-                        .header(HttpHeaders.AUTHORIZATION, bearer(tokenService.generarAccessToken(superadmin))))
+                        .header(HttpHeaders.AUTHORIZATION, bearer(accessToken(superadmin))))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.status").value(500))
                 .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"))
@@ -1018,6 +1086,9 @@ class SecurityHttpIntegrationTest {
                     : EndpointPolicy.required(PERM_REPORTES_EXPORTAR);
         }
         if (path.startsWith("/api/notificaciones")) return EndpointPolicy.required(PERM_ALUMNOS_LEER);
+        if (path.startsWith("/api/integraciones/jere-platform/mapping")) {
+            return EndpointPolicy.required(PERM_CONFIG_ADMIN);
+        }
         if (path.startsWith("/api/integraciones/jere-platform/estudiantes")) {
             return EndpointPolicy.required(PERM_CONFIG_ADMIN, PERM_REPORTES_EXPORTAR);
         }
@@ -1050,6 +1121,47 @@ class SecurityHttpIntegrationTest {
 
     private String bearer(String token) {
         return "Bearer " + token;
+    }
+
+    private String accessToken(Usuario user) {
+        TenantAccess access = tenantAccess(user);
+        stubAccess(access);
+        return tokenService.generarAccessToken(user, access);
+    }
+
+    private String refreshToken(Usuario user) {
+        TenantAccess access = tenantAccess(user);
+        return tokenService.generarRefreshToken(user, access, UUID.randomUUID());
+    }
+
+    private void stubAccess(TenantAccess access) {
+        when(tenantAccessService.revalidate(
+                access.usuario().getId(), access.membershipId(), access.tenantId(),
+                access.tenantSecurityVersion(), access.membershipSecurityVersion()))
+                .thenReturn(Optional.of(access));
+    }
+
+    private TenantAccess tenantAccess(Usuario user) {
+        UUID tenantId = UUID.nameUUIDFromBytes("security-http-tenant".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        Tenant tenant = new Tenant();
+        tenant.setId(tenantId);
+        tenant.setCode("SECURITY_TEST");
+        tenant.setName("Security test");
+        tenant.setStatus(TenantStatus.ACTIVE);
+        tenant.setSecurityVersion(0L);
+
+        TenantMembership membership = new TenantMembership();
+        membership.setId(UUID.nameUUIDFromBytes(("membership-" + user.getId())
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        membership.setTenant(tenant);
+        membership.setUsuario(user);
+        membership.setStatus(TenantMembershipStatus.ACTIVE);
+        membership.setSecurityVersion(0L);
+        membership.setValidFrom(Instant.EPOCH);
+        for (Rol role : user.rolesEfectivos()) {
+            membership.getRoleAssignments().add(new TenantMembershipRole(membership, tenant, role));
+        }
+        return new TenantAccess(membership);
     }
 
     private Usuario usuario(Long id, String username, String role, boolean active) {

@@ -23,6 +23,7 @@ import java.security.SecureRandom;
 import java.time.Clock;
 import java.util.Base64;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class StudentSourceExportServiceTest {
@@ -55,11 +56,18 @@ class StudentSourceExportServiceTest {
     private static Fixture fixture(int pageSize) {
         var properties = new StudentSourceExportProperties(
                 true,
-                "synthetic-academy",
-                "00000000-0000-0000-0000-0000000000a1",
                 runtimeSecret(),
                 pageSize
         );
+        var tenantMapping = mock(SourceTenantMapping.class);
+        when(tenantMapping.require()).thenReturn(new SourceTenantMapping.Mapping(
+                UUID.fromString("00000000-0000-0000-0000-0000000000b1"),
+                UUID.fromString("00000000-0000-0000-0000-0000000000a1"),
+                "synthetic-academy",
+                UUID.fromString("00000000-0000-0000-0000-0000000000e1"),
+                SourceTenantMapping.SOURCE_TYPE,
+                1,
+                SourceTenantMapping.SIGNING_KEY_REF));
         var students = mock(GestudioStudentReferenceReader.class);
         var serializer = mock(StudentSourceExportSerializer.class);
         var store = mock(StudentSourceExportStore.class);
@@ -69,7 +77,7 @@ class StudentSourceExportServiceTest {
         when(rbac.exigirPermiso(any(Usuario.class), anyString(), anyString()))
                 .thenReturn(actor);
         var service = new StudentSourceExportService(
-                new SourceTenantMapping(properties),
+                tenantMapping,
                 properties,
                 students,
                 serializer,

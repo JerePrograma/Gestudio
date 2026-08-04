@@ -295,6 +295,9 @@ class CargoSaldoPostgreSqlTest extends PostgreSqlIntegrationTest {
                 "PERM_PAGOS_REGISTRAR", "PERM_PAGOS_ANULAR",
                 "PERM_CREDITOS_ADMIN", "PERM_CREDITOS_CONSUMIR");
 
+        UUID membershipId = createActiveMembership(jdbc, user, role);
+        selectMembership(membershipId);
+
         Long profesor = id("""
                 INSERT INTO profesores(nombre, apellido, activo)
                 VALUES (?, 'Saldo', true) RETURNING id

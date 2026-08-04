@@ -3,8 +3,11 @@ package gestudio.integraciones.jereplatform;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import gestudio.entidades.Usuario;
 import gestudio.infra.persistencia.PostgreSqlIntegrationTest;
+import gestudio.integraciones.jereplatform.application.SourceTenantMapping;
 import gestudio.integraciones.jereplatform.application.StudentSourceExportException;
 import gestudio.integraciones.jereplatform.application.StudentSourceExportService;
+import gestudio.tenancy.TenantContext;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,13 +37,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
         webEnvironment = SpringBootTest.WebEnvironment.NONE,
         properties = {
                 "app.jere-platform-student-export.enabled=true",
-                "app.jere-platform-student-export.organization-id=synthetic-academy",
-                "app.jere-platform-student-export.tenant-id=00000000-0000-0000-0000-0000000000a1",
                 "app.jere-platform-student-export.page-size=2"
         }
 )
 class StudentSourceExportPostgreSqlTest extends PostgreSqlIntegrationTest {
     private static final String SECRET = runtimeSecret();
+    private static final UUID INTERNAL_TENANT = UUID.fromString("00000000-0000-0000-0000-000000000001");
+    private static final UUID EXTERNAL_TENANT = UUID.fromString("00000000-0000-0000-0000-0000000000a1");
 
     @DynamicPropertySource
     static void configureExportSecret(DynamicPropertyRegistry registry) {
@@ -52,13 +55,33 @@ class StudentSourceExportPostgreSqlTest extends PostgreSqlIntegrationTest {
     @Autowired private ObjectMapper objectMapper;
 
     private Usuario actor;
+    private TenantContext.Scope tenantScope;
 
     @BeforeEach
     void resetIntegrationData() {
-        jdbc.update("DELETE FROM jere_platform_student_export_pages");
-        jdbc.update("DELETE FROM jere_platform_student_export_snapshots");
+        jdbc.execute("""
+                TRUNCATE TABLE
+                    jere_platform_student_export_pages,
+                    jere_platform_student_export_snapshots
+                RESTART IDENTITY CASCADE
+                """);
         jdbc.execute("TRUNCATE TABLE alumnos CASCADE");
-        actor = actor("SUPERADMIN");
+        ActorFixture fixture = actor("SUPERADMIN");
+        actor = fixture.user();
+        jdbc.update("""
+                INSERT INTO jere_platform_tenant_mappings(
+                    id, internal_tenant_id, external_organization_id, external_tenant_id,
+                    source_type, config_version, signing_key_ref, active, created_by_usuario_id)
+                VALUES ('00000000-0000-0000-0000-000000000101', ?, 'synthetic-academy', ?, ?, 1, ?, true, ?)
+                ON CONFLICT (id) DO NOTHING
+                """, INTERNAL_TENANT, EXTERNAL_TENANT, SourceTenantMapping.SOURCE_TYPE,
+                SourceTenantMapping.SIGNING_KEY_REF, actor.getId());
+        tenantScope = TenantContext.open(INTERNAL_TENANT, fixture.membershipId());
+    }
+
+    @AfterEach
+    void clearTenantContext() {
+        if (tenantScope != null) tenantScope.close();
     }
 
     @Test
@@ -79,7 +102,7 @@ class StudentSourceExportPostgreSqlTest extends PostgreSqlIntegrationTest {
 
         var firstJson = objectMapper.readTree(first.payload());
         assertThat(firstJson.path("tenantId").textValue())
-                .isEqualTo("00000000-0000-0000-0000-0000000000a1");
+                .isEqualTo(EXTERNAL_TENANT.toString());
         assertThat(firstJson.path("sourceType").textValue()).isEqualTo("GESTUDIO_STUDENT");
         assertThat(firstJson.path("pageNumber").intValue()).isOne();
         assertThat(firstJson.path("pageCount").intValue()).isEqualTo(2);
@@ -129,8 +152,11 @@ class StudentSourceExportPostgreSqlTest extends PostgreSqlIntegrationTest {
         var created = exports.createSnapshot(actor);
 
         try (var executor = Executors.newFixedThreadPool(2)) {
-            var first = executor.submit(() -> exports.page(created.checkpoint().toString(), null, actor));
-            var second = executor.submit(() -> exports.page(created.checkpoint().toString(), null, actor));
+            UUID membershipId = TenantContext.currentMembershipId().orElseThrow();
+            var first = executor.submit(() -> inTenant(membershipId,
+                    () -> exports.page(created.checkpoint().toString(), null, actor)));
+            var second = executor.submit(() -> inTenant(membershipId,
+                    () -> exports.page(created.checkpoint().toString(), null, actor)));
             var firstPage = first.get(10, TimeUnit.SECONDS);
             var secondPage = second.get(10, TimeUnit.SECONDS);
             assertThat(firstPage.payload()).isEqualTo(secondPage.payload());
@@ -148,7 +174,7 @@ class StudentSourceExportPostgreSqlTest extends PostgreSqlIntegrationTest {
                 .extracting(error -> ((StudentSourceExportException) error).code())
                 .isEqualTo(StudentSourceExportException.Code.CURSOR_INVALID);
 
-        Usuario unauthorized = actor("CAJA");
+        Usuario unauthorized = actor("CAJA").user();
         assertThatThrownBy(() -> exports.createSnapshot(unauthorized))
                 .isInstanceOf(AccessDeniedException.class);
         assertThat(jdbc.queryForObject(
@@ -234,7 +260,7 @@ class StudentSourceExportPostgreSqlTest extends PostgreSqlIntegrationTest {
         );
     }
 
-    private Usuario actor(String roleCode) {
+    private ActorFixture actor(String roleCode) {
         Long roleId = jdbc.queryForObject(
                 "SELECT id FROM roles WHERE codigo = ?",
                 Long.class,
@@ -250,9 +276,27 @@ class StudentSourceExportPostgreSqlTest extends PostgreSqlIntegrationTest {
                 "student-export-" + roleCode.toLowerCase() + "-" + UUID.randomUUID(),
                 roleId
         );
-        Usuario actor = new Usuario();
-        actor.setId(userId);
-        return actor;
+        UUID membershipId = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO tenant_memberships(id, tenant_id, usuario_id, status, security_version)
+                VALUES (?, ?, ?, 'ACTIVE', 0)
+                """, membershipId, INTERNAL_TENANT, userId);
+        jdbc.update("""
+                INSERT INTO tenant_membership_roles(membership_id, tenant_id, role_id)
+                VALUES (?, ?, ?)
+                """, membershipId, INTERNAL_TENANT, roleId);
+        Usuario user = new Usuario();
+        user.setId(userId);
+        return new ActorFixture(user, membershipId);
+    }
+
+    private <T> T inTenant(UUID membershipId, java.util.concurrent.Callable<T> work) throws Exception {
+        try (TenantContext.Scope ignored = TenantContext.open(INTERNAL_TENANT, membershipId)) {
+            return work.call();
+        }
+    }
+
+    private record ActorFixture(Usuario user, UUID membershipId) {
     }
 
     private static void assertSignature(byte[] payload, String signature) throws Exception {

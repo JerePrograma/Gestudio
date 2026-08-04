@@ -5,6 +5,10 @@ import axios, {
 } from "axios";
 import { API_BASE_URL } from "../config/environment";
 import { clearAuthSession, getAccessToken, refreshSession } from "./authSession";
+import {
+  resetTenantClientState,
+  tenantRequestSignal,
+} from "../hooks/queryClient";
 
 interface RetriableRequestConfig extends InternalAxiosRequestConfig {
   _retry?: boolean;
@@ -16,9 +20,10 @@ export const AUTH_STORAGE_KEYS = [
   "usuario",
 ] as const;
 
-export function clearAuthStorage(): void {
+export async function clearAuthStorage(): Promise<void> {
   AUTH_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
   clearAuthSession();
+  await resetTenantClientState();
 }
 
 const api = axios.create({
@@ -87,6 +92,11 @@ function redirectToLogin(): void {
 }
 
 api.interceptors.request.use((config) => {
+  const tenantSignal = tenantRequestSignal();
+  config.signal = config.signal instanceof AbortSignal
+    ? AbortSignal.any([config.signal, tenantSignal])
+    : config.signal ?? tenantSignal;
+
   if (isAuthEndpoint(config)) {
     removeAuthorizationHeader(config);
     return config;
@@ -136,7 +146,11 @@ api.interceptors.response.use(
 
       return api(originalRequest);
     } catch (refreshError) {
-      clearAuthStorage();
+      if (axios.isCancel(refreshError)) {
+        return Promise.reject(refreshError);
+      }
+
+      await clearAuthStorage();
       redirectToLogin();
       return Promise.reject(refreshError);
     }

@@ -10,6 +10,9 @@ import org.hibernate.type.SqlTypes;
 import java.time.Instant;
 import java.util.UUID;
 
+import gestudio.tenancy.Tenant;
+import gestudio.tenancy.TenantMembership;
+
 @Entity
 @Getter
 @Setter
@@ -19,8 +22,12 @@ public class RefreshSession {
     @Id private UUID id;
     @Column(name = "family_id", nullable = false) private UUID familyId;
     @ManyToOne(optional = false) @JoinColumn(name = "usuario_id", nullable = false) private Usuario usuario;
+    @ManyToOne(optional = false) @JoinColumn(name = "tenant_id", nullable = false, updatable = false) private Tenant tenant;
+    @ManyToOne(optional = false) @JoinColumn(name = "membership_id", nullable = false, updatable = false) private TenantMembership membership;
     @JdbcTypeCode(SqlTypes.CHAR) @Column(name = "token_hash", length = 64, nullable = false, updatable = false) private String tokenHash;
     @Column(name = "auth_version", nullable = false, updatable = false) private Long authVersion;
+    @Column(name = "tenant_security_version", nullable = false, updatable = false) private Long tenantSecurityVersion;
+    @Column(name = "membership_security_version", nullable = false, updatable = false) private Long membershipSecurityVersion;
     @Column(name = "issued_at", nullable = false, updatable = false) private Instant issuedAt;
     @Column(name = "expires_at", nullable = false, updatable = false) private Instant expiresAt;
     @Column(name = "used_at") private Instant usedAt;

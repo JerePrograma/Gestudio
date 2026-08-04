@@ -4,16 +4,20 @@ import gestudio.auditoria.application.AuditService;
 import gestudio.entidades.Rol;
 import gestudio.entidades.Usuario;
 import gestudio.repositorios.UsuarioRepositorio;
+import gestudio.tenancy.TenantContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.DefaultApplicationArguments;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionStatus;
 
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -27,6 +31,8 @@ class LocalAdminPasswordResetRunnerTest {
 
     private static final String PASSWORD = "clave-admin-segura";
     private static final Instant NOW = Instant.parse("2026-07-06T03:00:00Z");
+    private static final UUID INITIAL_TENANT_ID =
+            UUID.fromString("00000000-0000-0000-0000-000000000001");
 
     private final UsuarioRepositorio usuarios = mock(UsuarioRepositorio.class);
     private final PasswordEncoder encoder = mock(PasswordEncoder.class);
@@ -46,6 +52,7 @@ class LocalAdminPasswordResetRunnerTest {
         assertThat(admin.getContrasena()).isEqualTo("hash-nuevo");
         assertThat(admin.getAuthVersion()).isEqualTo(3L);
         assertThat(admin.getPasswordChangedAt()).isEqualTo(NOW);
+        assertThat(TenantContext.currentTenantId()).isEmpty();
         verify(usuarios).saveAndFlush(admin);
         verify(audit).registrarAnonimo(eq("SEGURIDAD"), eq("ADMIN_PASSWORD_RESET_LOCAL"),
                 eq("admin"), any());
@@ -77,9 +84,14 @@ class LocalAdminPasswordResetRunnerTest {
     }
 
     private LocalAdminPasswordResetRunner runner() {
+        PlatformTransactionManager transactions = mock(PlatformTransactionManager.class);
+        when(transactions.getTransaction(any())).thenAnswer(invocation -> {
+            assertThat(TenantContext.currentTenantId()).contains(INITIAL_TENANT_ID);
+            return mock(TransactionStatus.class);
+        });
         return new LocalAdminPasswordResetRunner(
                 new LocalAdminPasswordResetProperties(" admin ", PASSWORD),
-                usuarios, encoder, passwordPolicy, audit, Clock.fixed(NOW, ZoneOffset.UTC));
+                usuarios, encoder, passwordPolicy, audit, Clock.fixed(NOW, ZoneOffset.UTC), transactions);
     }
 
     private Usuario admin(String hash) {

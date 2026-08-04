@@ -11,6 +11,12 @@ import gestudio.entidades.Usuario;
 import gestudio.infra.errores.TratadorDeErrores.OperacionNoPermitidaException;
 import gestudio.infra.seguridad.PasswordPolicy;
 import gestudio.infra.seguridad.RbacService;
+import gestudio.infra.seguridad.TenantTestAccess;
+import gestudio.tenancy.TenantAccessService;
+import gestudio.tenancy.TenantMembership;
+import gestudio.tenancy.TenantMembershipManagementService;
+import gestudio.tenancy.TenantMembershipRole;
+import gestudio.tenancy.TenantMembershipStatus;
 import gestudio.repositorios.RolRepositorio;
 import gestudio.repositorios.UsuarioRepositorio;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,13 +48,16 @@ class UsuarioServicioTest {
     private final UsuarioMapper mapper = mock(UsuarioMapper.class);
     private final AuditService audit = mock(AuditService.class);
     private final AuditFailureService auditFailures = mock(AuditFailureService.class);
+    private final TenantAccessService tenantAccess = mock(TenantAccessService.class);
+    private final TenantMembershipManagementService tenantMemberships =
+            mock(TenantMembershipManagementService.class);
 
     private final Clock clock = Clock.fixed(
             Instant.parse("2026-07-03T12:00:00Z"),
             ZoneOffset.UTC
     );
 
-    private final RbacService rbac = new RbacService(usuarios, auditFailures);
+    private final RbacService rbac = new RbacService(tenantAccess, auditFailures);
 
     private final UsuarioServicio service = new UsuarioServicio(
             usuarios,
@@ -58,7 +67,8 @@ class UsuarioServicioTest {
             mapper,
             clock,
             audit,
-            rbac
+            rbac,
+            tenantMemberships
     );
 
     private Rol superadmin;
@@ -67,6 +77,46 @@ class UsuarioServicioTest {
 
     @BeforeEach
     void setUp() {
+        when(tenantAccess.currentAccess(any(Usuario.class)))
+                .thenAnswer(invocation -> TenantTestAccess.from(invocation.getArgument(0)));
+        when(tenantMemberships.create(any(Usuario.class), any(), any(Usuario.class)))
+                .thenAnswer(invocation -> TenantTestAccess.from(invocation.getArgument(0)).membership());
+        when(tenantMemberships.require(any(Long.class))).thenAnswer(invocation -> {
+            Long id = invocation.getArgument(0);
+            Usuario user = id.equals(actor.getId())
+                    ? actor
+                    : usuarios.findByIdConRolesYPermisos(id).orElseThrow();
+            return TenantTestAccess.from(user).membership();
+        });
+        when(tenantMemberships.update(any(Long.class), any(), any(), any(Usuario.class)))
+                .thenAnswer(invocation -> {
+                    TenantMembership membership = tenantMemberships.require(invocation.getArgument(0));
+                    @SuppressWarnings("unchecked")
+                    Set<Rol> requested = invocation.getArgument(1);
+                    Boolean active = invocation.getArgument(2);
+                    if (requested != null) {
+                        membership.getRoleAssignments().clear();
+                        requested.forEach(role -> membership.getRoleAssignments().add(
+                                new TenantMembershipRole(membership, membership.getTenant(), role)));
+                    }
+                    if (active != null) {
+                        membership.setStatus(active
+                                ? TenantMembershipStatus.ACTIVE
+                                : TenantMembershipStatus.SUSPENDED);
+                    }
+                    return membership;
+                });
+        when(tenantMemberships.response(any(TenantMembership.class)))
+                .thenAnswer(invocation -> {
+                    TenantMembership membership = invocation.getArgument(0);
+                    return new gestudio.dto.usuario.response.UsuarioResponse(
+                            membership.getUsuario().getId(),
+                            membership.getUsuario().getNombreUsuario(),
+                            membership.roleCodes().stream().toList(),
+                            membership.permissionCodes().stream().toList(),
+                            membership.getStatus() == TenantMembershipStatus.ACTIVE
+                    );
+                });
         superadmin = rol(
                 1L,
                 "SUPERADMIN",
@@ -222,7 +272,7 @@ class UsuarioServicioTest {
         when(usuarios.saveAndFlush(any(Usuario.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
-        service.editarUsuario(
+        var response = service.editarUsuario(
                 objetivo.getId(),
                 new UsuarioModificacionRequest(
                         null,
@@ -233,9 +283,15 @@ class UsuarioServicioTest {
                 actor
         );
 
-        assertThat(objetivo.getRoles()).containsExactlyInAnyOrder(superadmin, recepcion);
-        assertThat(objetivo.getAuthVersion()).isOne();
+        assertThat(response.roles()).containsExactlyInAnyOrder("SUPERADMIN", "RECEPCION");
+        assertThat(objetivo.getAuthVersion()).isZero();
 
+        verify(tenantMemberships).update(
+                objetivo.getId(),
+                Set.of(superadmin, recepcion),
+                null,
+                actor
+        );
         verify(usuarios).saveAndFlush(objetivo);
     }
 
@@ -264,8 +320,15 @@ class UsuarioServicioTest {
 
     @Test
     void impidePerderUltimoSuperadmin() {
-        when(usuarios.findActiveSuperadminsForUpdate())
-                .thenReturn(java.util.List.of(actor));
+        when(usuarios.saveAndFlush(actor)).thenReturn(actor);
+        when(tenantMemberships.update(
+                actor.getId(),
+                Set.of(recepcion),
+                null,
+                actor
+        )).thenThrow(new OperacionNoPermitidaException(
+                "No se puede degradar al último SUPERADMIN activo del tenant"
+        ));
 
         assertThatThrownBy(() -> service.editarUsuario(
                 actor.getId(),
@@ -280,7 +343,12 @@ class UsuarioServicioTest {
                 .isInstanceOf(OperacionNoPermitidaException.class)
                 .hasMessageContaining("último SUPERADMIN");
 
-        verify(usuarios, never()).saveAndFlush(any());
+        verify(tenantMemberships).update(
+                actor.getId(),
+                Set.of(recepcion),
+                null,
+                actor
+        );
     }
 
     @Test

@@ -17,6 +17,18 @@ public interface UsuarioRepositorio extends JpaRepository<Usuario, Long> {
 
     Optional<Usuario> findByNombreUsuarioIgnoreCase(String nombreUsuario);
 
+    @Query(value = """
+        SELECT u.id,
+               u.nombre_usuario AS "nombreUsuario",
+               u.contrasena,
+               u.activo,
+               u.auth_version AS "authVersion"
+        FROM usuarios u
+        WHERE lower(u.nombre_usuario) = lower(:username)
+        """, nativeQuery = true)
+    Optional<CredencialesAutenticacion> findCredencialesAutenticacion(
+            @Param("username") String username);
+
     List<Usuario> findByRolAndActivo(Rol rol, Boolean activo);
 
     List<Usuario> findByRol(Rol rol);
@@ -77,4 +89,16 @@ public interface UsuarioRepositorio extends JpaRepository<Usuario, Long> {
         OR rol_id = :rolId
         """, nativeQuery = true)
     int incrementarAuthVersionPorRolId(@Param("rolId") Long rolId);
+
+    interface CredencialesAutenticacion {
+        Long getId();
+
+        String getNombreUsuario();
+
+        String getContrasena();
+
+        Boolean getActivo();
+
+        Long getAuthVersion();
+    }
 }

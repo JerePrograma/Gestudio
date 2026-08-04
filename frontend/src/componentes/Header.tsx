@@ -7,6 +7,7 @@ import { cn } from "../lib/utils";
 import NotificacionesModal from "./NotificacionesModal";
 import { useAuth } from "../hooks/context/useAuth";
 import { navigationItems, type NavigationItem } from "../config/navigation";
+import { getApiErrorMessage } from "../api/apiError";
 
 const findCurrentLabel = (items: NavigationItem[], pathname: string): string | undefined => {
   for (const item of items) {
@@ -27,17 +28,30 @@ export default function Header() {
   const unreadCount = 0;
   const { isExpanded, setMobileSidebarOpen } = useSidebar();
   const { resolvedTheme, setTheme } = useTheme();
-  const { user } = useAuth();
+  const { user, switchTenant } = useAuth();
   const location = useLocation();
   const [showModal, setShowModal] = useState(false);
 
   const currentLabel = findCurrentLabel(navigationItems, location.pathname) ?? "Panel administrativo";
   const initial = user?.nombreUsuario.trim().charAt(0).toUpperCase() || "G";
+  const activeTenants = user?.tenantsDisponibles.filter(
+    (tenant) => tenant.estado === "ACTIVE",
+  ) ?? [];
 
   const toggleTheme = () => setTheme(resolvedTheme === "dark" ? "light" : "dark");
 
   const handleModalOpen = () => setShowModal(true);
   const handleModalClose = () => setShowModal(false);
+
+  const handleTenantChange = (tenantId: string) => {
+    void switchTenant(tenantId).catch(async (error) => {
+      const { toast } = await import("react-toastify");
+      toast.error(getApiErrorMessage(
+        error,
+        "No se pudo cambiar de organización. Volvé a iniciar sesión si tu acceso fue revocado.",
+      ));
+    });
+  };
 
   return (
     <>
@@ -71,6 +85,28 @@ export default function Header() {
           </div>
 
           <div className="flex items-center gap-1 sm:gap-2">
+            {activeTenants.length > 1 ? (
+              <label>
+                <span className="sr-only">Organización activa</span>
+                <select
+                  className="form-input h-9 max-w-28 py-1 text-sm sm:max-w-48"
+                  value={user?.tenantActivo.id}
+                  onChange={(event) => handleTenantChange(event.target.value)}
+                  aria-label="Organización activa"
+                >
+                  {activeTenants.map((tenant) => (
+                    <option key={tenant.id} value={tenant.id}>
+                      {tenant.nombre}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <span className="max-w-24 truncate text-xs font-semibold text-muted-foreground sm:max-w-40">
+                {user?.tenantActivo.nombre}
+              </span>
+            )}
+
             <button
               onClick={toggleTheme}
               className="icon-button"

@@ -11,3 +11,14 @@ export const queryClient = new QueryClient({
     },
   },
 });
+
+let requestScope = new AbortController();
+
+export const tenantRequestSignal = (): AbortSignal => requestScope.signal;
+
+export async function resetTenantClientState(): Promise<void> {
+  requestScope.abort();
+  requestScope = new AbortController();
+  await queryClient.cancelQueries();
+  queryClient.clear();
+}

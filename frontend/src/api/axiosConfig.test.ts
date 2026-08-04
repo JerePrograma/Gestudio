@@ -12,6 +12,30 @@ import {
   refreshSession,
   setAuthSession,
 } from "./authSession";
+import { resetTenantClientState } from "../hooks/queryClient";
+
+const tenant = {
+  id: "00000000-0000-0000-0000-0000000000a1",
+  codigo: "ACADEMIA_A",
+  nombre: "Academia A",
+  estado: "ACTIVE" as const,
+};
+const otherTenant = {
+  id: "00000000-0000-0000-0000-0000000000b2",
+  codigo: "ACADEMIA_B",
+  nombre: "Academia B",
+  estado: "ACTIVE" as const,
+};
+
+const user = {
+  id: 1,
+  nombreUsuario: "admin",
+  roles: ["ADMINISTRADOR"],
+  permisos: [PERMISSIONS.PAGOS_LEER],
+  activo: true,
+  tenantActivo: tenant,
+  tenantsDisponibles: [tenant],
+};
 
 function response(
   config: InternalAxiosRequestConfig,
@@ -34,13 +58,7 @@ function rejectWith(status: number, config: InternalAxiosRequestConfig): never {
 describe("interceptor de autenticación", () => {
   beforeEach(() => {
     window.history.replaceState({}, "", "/login");
-    setAuthSession("old-access", {
-      id: 1,
-      nombreUsuario: "admin",
-      roles: ["ADMINISTRADOR"],
-      permisos: [PERMISSIONS.PAGOS_LEER],
-      activo: true,
-    });
+    setAuthSession("old-access", user);
     localStorage.setItem("accessToken", "legacy-access");
     localStorage.setItem("refreshToken", "legacy-refresh");
     localStorage.setItem("usuario", "legacy-user");
@@ -60,7 +78,7 @@ describe("interceptor de autenticación", () => {
         200,
         {
           accessToken: "new-access",
-          usuario: { id: 1, nombreUsuario: "admin", roles: ["ADMINISTRADOR"], permisos: [PERMISSIONS.PAGOS_LEER], activo: true },
+          usuario: user,
         },
       ));
     });
@@ -102,7 +120,7 @@ describe("interceptor de autenticación", () => {
     const refresh = vi.spyOn(axios, "post").mockResolvedValue({
       data: {
         accessToken: "new-access",
-        usuario: { id: 1, nombreUsuario: "admin", roles: ["ADMINISTRADOR"], permisos: [PERMISSIONS.PAGOS_LEER], activo: true },
+        usuario: user,
       },
     });
     const adapter = async (config: InternalAxiosRequestConfig) => {
@@ -126,6 +144,24 @@ describe("interceptor de autenticación", () => {
       {},
       expect.objectContaining({ withCredentials: true }),
     );
+  });
+
+  it("rechaza un refresh que intente cambiar el tenant de la sesión", async () => {
+    vi.spyOn(axios, "post").mockResolvedValue({
+      data: {
+        accessToken: "cross-tenant-access",
+        usuario: {
+          ...user,
+          tenantActivo: otherTenant,
+          tenantsDisponibles: [tenant, otherTenant],
+        },
+      },
+    });
+
+    await expect(refreshSession()).rejects.toThrow(
+      "El refresh intentó cambiar la organización activa",
+    );
+    expect(getAccessToken()).toBe("old-access");
   });
 
   it("rechaza, limpia sólo claves propias y no entra en loop si falla refresh", async () => {
@@ -154,5 +190,41 @@ describe("interceptor de autenticación", () => {
     ).rejects.toBeInstanceOf(AxiosError);
 
     expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("aborta las solicitudes en curso al rotar el scope de tenant", async () => {
+    let configured = false;
+    const request = api.get("/slow", {
+      adapter: (config) => new Promise((_resolve, reject) => {
+        configured = true;
+        config.signal?.addEventListener?.("abort", () => {
+          reject(new axios.CanceledError("tenant changed", config));
+        }, { once: true });
+      }),
+    });
+
+    await vi.waitFor(() => expect(configured).toBe(true));
+    await resetTenantClientState();
+
+    await expect(request).rejects.toSatisfy(axios.isCancel);
+  });
+
+  it("conserva la cancelación propia de cada solicitud", async () => {
+    const controller = new AbortController();
+    let configured = false;
+    const request = api.get("/slow", {
+      signal: controller.signal,
+      adapter: (config) => new Promise((_resolve, reject) => {
+        configured = true;
+        config.signal?.addEventListener?.("abort", () => {
+          reject(new axios.CanceledError("request canceled", config));
+        }, { once: true });
+      }),
+    });
+
+    await vi.waitFor(() => expect(configured).toBe(true));
+    controller.abort();
+
+    await expect(request).rejects.toSatisfy(axios.isCancel);
   });
 });

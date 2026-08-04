@@ -5,6 +5,8 @@ import gestudio.repositorios.AlumnoRepositorio;
 import gestudio.repositorios.NotificacionRepositorio;
 import gestudio.repositorios.ProfesorRepositorio;
 import gestudio.servicios.email.EmailAsyncService;
+import gestudio.servicios.email.EmailAsyncService.BirthdayEmail;
+import gestudio.tenancy.TenantContext;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -47,7 +49,9 @@ public class NotificacionService {
                 mensajes.add(mensaje);
                 if (guardar("alumno:" + alumno.getId() + ":" + hoy, mensaje, hoy)
                         && alumno.getEmail() != null && !alumno.getEmail().isBlank()) {
-                    efectos.add(() -> email.enviarMailCumple(alumno));
+                    BirthdayEmail command = new BirthdayEmail(
+                            TenantContext.requireTenantId(), alumno.getEmail(), alumno.getNombre());
+                    efectos.add(() -> email.enviarMailCumple(command));
                 }
             }
         }

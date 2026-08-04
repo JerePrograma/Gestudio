@@ -78,8 +78,6 @@ class StudentSourceExportCryptoTest {
     private static StudentSourceExportProperties properties(String secret) {
         return new StudentSourceExportProperties(
                 true,
-                "synthetic-academy",
-                "00000000-0000-0000-0000-000000000001",
                 secret,
                 1_000
         );

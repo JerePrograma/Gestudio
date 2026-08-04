@@ -1,21 +1,24 @@
 import axios from "axios";
 import { API_BASE_URL } from "../config/environment";
-import type { UsuarioResponse } from "../types/types";
-import { sanitizeUserProfile } from "../hooks/context/auth-context";
+import {
+  sanitizeUserProfile,
+  type UserProfile,
+} from "../hooks/context/auth-context";
+import { tenantRequestSignal } from "../hooks/queryClient";
 
 export interface AuthSession {
   accessToken: string | null;
-  user: UsuarioResponse | null;
+  user: UserProfile | null;
 }
 
 interface ActiveAuthSession {
   accessToken: string;
-  user: UsuarioResponse;
+  user: UserProfile;
 }
 
 interface RefreshResponse {
   accessToken: string;
-  usuario: UsuarioResponse;
+  usuario: unknown;
 }
 
 let session: AuthSession = { accessToken: null, user: null };
@@ -28,8 +31,9 @@ export const getAccessToken = (): string | null => session.accessToken;
 
 export function setAuthSession(
   accessToken: string,
-  user: UsuarioResponse,
+  user: UserProfile,
 ): void {
+  if (!accessToken.trim()) throw new Error("Token de acceso inválido");
   session = { accessToken, user };
   listeners.forEach((listener) => listener(session));
 }
@@ -54,12 +58,22 @@ export function refreshSession(): Promise<ActiveAuthSession> {
       {
         withCredentials: true,
         headers: { "Content-Type": "application/json" },
+        signal: tenantRequestSignal(),
       },
     )
     .then(({ data }) => {
+      const refreshedUser = sanitizeUserProfile(data.usuario);
+
+      if (
+        session.user &&
+        refreshedUser.tenantActivo.id !== session.user.tenantActivo.id
+      ) {
+        throw new Error("El refresh intentó cambiar la organización activa");
+      }
+
       const activeSession: ActiveAuthSession = {
         accessToken: data.accessToken,
-        user: sanitizeUserProfile(data.usuario),
+        user: refreshedUser,
       };
 
       setAuthSession(activeSession.accessToken, activeSession.user);

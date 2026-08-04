@@ -5,6 +5,8 @@ import gestudio.entidades.RefreshSession;
 import gestudio.entidades.Usuario;
 import gestudio.repositorios.RefreshSessionRepositorio;
 import gestudio.repositorios.UsuarioRepositorio;
+import gestudio.tenancy.TenantAccess;
+import gestudio.tenancy.TenantAccessService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,22 +27,25 @@ public class RefreshSessionService {
     private final TokenService tokens;
     private final Clock clock;
     private final AuditService audit;
+    private final TenantAccessService tenantAccess;
 
     public RefreshSessionService(RefreshSessionRepositorio sessions,
                                  UsuarioRepositorio usuarios,
                                  TokenService tokens,
                                  Clock clock,
-                                 AuditService audit) {
+                                 AuditService audit,
+                                 TenantAccessService tenantAccess) {
         this.sessions = sessions;
         this.usuarios = usuarios;
         this.tokens = tokens;
         this.clock = clock;
         this.audit = audit;
+        this.tenantAccess = tenantAccess;
     }
 
     @Transactional
-    public Emision iniciar(Usuario usuario, String userAgent, String ip) {
-        Emision emision = emitir(usuario, UUID.randomUUID(), userAgent, ip);
+    public Emision iniciar(Usuario usuario, TenantAccess access, String userAgent, String ip) {
+        Emision emision = emitir(usuario, access, UUID.randomUUID(), userAgent, ip);
 
         audit.registrar(
                 "SEGURIDAD",
@@ -88,17 +93,22 @@ public class RefreshSessionService {
             throw new InvalidTokenException();
         }
 
-        Usuario usuario = usuarios.findByIdConRolesYPermisos(actual.getUsuario().getId())
+        Usuario usuario = usuarios.findById(actual.getUsuario().getId())
                 .filter(Usuario::isEnabled)
-                .filter(user -> user.rolesEfectivos().stream().anyMatch(role -> Boolean.TRUE.equals(role.getActivo())))
                 .filter(user -> Objects.equals(user.getNombreUsuario(), verified.subject()))
                 .filter(user -> Objects.equals(user.getAuthVersion(), verified.authVersion()))
                 .filter(user -> Objects.equals(user.getAuthVersion(), actual.getAuthVersion()))
                 .orElseThrow(InvalidTokenException::new);
 
+        validarBinding(actual, verified);
+        TenantAccess access = tenantAccess.revalidate(
+                        usuario.getId(), verified.membershipId(), verified.tenantId(),
+                        verified.tenantSecurityVersion(), verified.membershipSecurityVersion())
+                .orElseThrow(InvalidTokenException::new);
+
         actual.setUsedAt(now);
 
-        Emision nueva = emitir(usuario, actual.getFamilyId(), userAgent, ip);
+        Emision nueva = emitir(usuario, access, actual.getFamilyId(), userAgent, ip);
         actual.setReplacedBy(nueva.session());
 
         audit.registrar(
@@ -115,6 +125,41 @@ public class RefreshSessionService {
         );
 
         return nueva;
+    }
+
+    @Transactional
+    public void revocarParaCambio(String rawToken, Usuario authenticatedUser) {
+        VerifiedToken verified = tokens.verify(rawToken, TokenType.REFRESH);
+        RefreshSession actual = sessions.findByTokenHashForUpdate(hash(rawToken))
+                .orElseThrow(InvalidTokenException::new);
+        validarBinding(actual, verified);
+        if (authenticatedUser == null
+                || !Objects.equals(authenticatedUser.getId(), verified.userId())
+                || actual.getUsedAt() != null
+                || actual.getRevokedAt() != null
+                || !actual.getExpiresAt().isAfter(clock.instant())) {
+            throw new InvalidTokenException();
+        }
+        tenantAccess.revalidate(
+                        verified.userId(), verified.membershipId(), verified.tenantId(),
+                        verified.tenantSecurityVersion(), verified.membershipSecurityVersion())
+                .orElseThrow(InvalidTokenException::new);
+        sessions.revokeFamily(actual.getFamilyId(), clock.instant(), "TENANT_SWITCH");
+    }
+
+    @Transactional
+    public Emision iniciarCambio(Usuario usuario, TenantAccess access, String userAgent, String ip) {
+        Emision emission = emitir(usuario, access, UUID.randomUUID(), userAgent, ip);
+        audit.registrar(
+                "SEGURIDAD",
+                "TENANT_SWITCH_COMPLETED",
+                "REFRESH_SESSION",
+                emission.session().getId().toString(),
+                usuario,
+                null,
+                Map.of("familyId", emission.session().getFamilyId().toString())
+        );
+        return emission;
     }
 
     @Transactional
@@ -144,18 +189,22 @@ public class RefreshSessionService {
         }
     }
 
-    private Emision emitir(Usuario usuario, UUID familyId, String userAgent, String ip) {
+    private Emision emitir(Usuario usuario, TenantAccess access, UUID familyId, String userAgent, String ip) {
         Instant now = clock.instant();
         UUID id = UUID.randomUUID();
 
-        String raw = tokens.generarRefreshToken(usuario, id);
+        String raw = tokens.generarRefreshToken(usuario, access, id);
 
         RefreshSession session = new RefreshSession();
         session.setId(id);
         session.setFamilyId(familyId);
         session.setUsuario(usuario);
+        session.setTenant(access.membership().getTenant());
+        session.setMembership(access.membership());
         session.setTokenHash(hash(raw));
         session.setAuthVersion(usuario.getAuthVersion());
+        session.setTenantSecurityVersion(access.tenantSecurityVersion());
+        session.setMembershipSecurityVersion(access.membershipSecurityVersion());
         session.setIssuedAt(now);
         session.setExpiresAt(tokens.refreshExpiresAt(now));
         session.setUserAgentHash(hashNullable(userAgent));
@@ -163,7 +212,19 @@ public class RefreshSessionService {
 
         session = sessions.save(session);
 
-        return new Emision(usuario, tokens.generarAccessToken(usuario), raw, session);
+        return new Emision(usuario, access, tokens.generarAccessToken(usuario, access), raw, session);
+    }
+
+    private static void validarBinding(RefreshSession session, VerifiedToken token) {
+        if (!session.getId().toString().equals(token.jwtId())
+                || !Objects.equals(session.getUsuario().getId(), token.userId())
+                || !Objects.equals(session.getAuthVersion(), token.authVersion())
+                || !Objects.equals(session.getTenant().getId(), token.tenantId())
+                || !Objects.equals(session.getMembership().getId(), token.membershipId())
+                || !Objects.equals(session.getTenantSecurityVersion(), token.tenantSecurityVersion())
+                || !Objects.equals(session.getMembershipSecurityVersion(), token.membershipSecurityVersion())) {
+            throw new InvalidTokenException();
+        }
     }
 
     static String hash(String value) {
@@ -183,6 +244,7 @@ public class RefreshSessionService {
 
     public record Emision(
             Usuario usuario,
+            TenantAccess access,
             String accessToken,
             String refreshToken,
             RefreshSession session

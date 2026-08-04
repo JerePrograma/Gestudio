@@ -769,7 +769,9 @@ try {
 }
 catch {
     Write-Host "[FAIL] $($_.Exception.Message)" -ForegroundColor Red
-    Show-TunnelLogTail
+    if ($newTunnelStarted) {
+        Show-TunnelLogTail
+    }
 
     if ($newTunnelStarted -and -not $pagesDeploymentCompleted) {
         try {

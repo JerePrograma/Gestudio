@@ -12,7 +12,9 @@ import gestudio.infra.errores.TratadorDeErrores.OperacionNoPermitidaException;
 import gestudio.infra.seguridad.RbacService;
 import gestudio.repositorios.PermisoRepositorio;
 import gestudio.repositorios.RolRepositorio;
-import gestudio.repositorios.UsuarioRepositorio;
+import gestudio.tenancy.TenantAccess;
+import gestudio.tenancy.TenantContext;
+import gestudio.tenancy.TenantMembershipRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,18 +29,18 @@ public class RolServicio {
 
     private final RolRepositorio roles;
     private final PermisoRepositorio permisos;
-    private final UsuarioRepositorio usuarios;
+    private final TenantMembershipRepository memberships;
     private final RolMapper rolMapper;
     private final RbacService rbac;
 
     public RolServicio(RolRepositorio roles,
                        PermisoRepositorio permisos,
-                       UsuarioRepositorio usuarios,
+                       TenantMembershipRepository memberships,
                        RolMapper rolMapper,
                        RbacService rbac) {
         this.roles = roles;
         this.permisos = permisos;
-        this.usuarios = usuarios;
+        this.memberships = memberships;
         this.rolMapper = rolMapper;
         this.rbac = rbac;
     }
@@ -113,7 +115,7 @@ public class RolServicio {
         rol.setPermisos(permisosAsignados);
 
         Rol saved = roles.saveAndFlush(rol);
-        usuarios.incrementarAuthVersionPorRolId(saved.getId());
+        invalidateMemberships(saved.getId());
 
         return rolMapper.toDTO(saved);
     }
@@ -133,7 +135,7 @@ public class RolServicio {
         rol.setPermisos(permisosAsignados);
 
         Rol saved = roles.saveAndFlush(rol);
-        usuarios.incrementarAuthVersionPorRolId(saved.getId());
+        invalidateMemberships(saved.getId());
 
         return rolMapper.toDTO(saved);
     }
@@ -190,7 +192,7 @@ public class RolServicio {
         rol.setActivo(false);
 
         Rol saved = roles.saveAndFlush(rol);
-        usuarios.incrementarAuthVersionPorRolId(saved.getId());
+        invalidateMemberships(saved.getId());
     }
 
     private void validarEditableDesdePanel(Rol rol) {
@@ -224,11 +226,12 @@ public class RolServicio {
     }
 
     private void validarNoEscalaPermisos(Usuario actor, Set<Permiso> permisosAsignados) {
-        if (actor.esSuperadminSistema()) {
+        TenantAccess access = rbac.accesoActual(actor);
+        if (access.membership().isSuperadmin()) {
             return;
         }
 
-        Set<String> permisosActor = actor.codigosPermisosActivos();
+        Set<String> permisosActor = access.permissionCodes();
 
         for (Permiso permiso : permisosAsignados) {
             if (!permisosActor.contains(permiso.getCodigo())) {
@@ -237,6 +240,10 @@ public class RolServicio {
                 );
             }
         }
+    }
+
+    private void invalidateMemberships(Long roleId) {
+        memberships.incrementSecurityVersionForRole(TenantContext.requireTenantId(), roleId);
     }
 
     private static String normalizarCodigoRol(String codigo) {

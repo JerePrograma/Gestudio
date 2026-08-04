@@ -49,6 +49,8 @@ function Set-SyntheticEnvironment {
         POSTGRES_DB = 'gestudio_email_verify'
         POSTGRES_USER = 'gestudio_email_verify'
         POSTGRES_PASSWORD = 'synthetic-compose-password'
+        POSTGRES_APP_USER = 'gestudio_email_app'
+        POSTGRES_APP_PASSWORD = 'synthetic-compose-app-password'
         BACKEND_IMAGE = 'example.invalid/gestudio-backend:email-verify'
         FRONTEND_IMAGE = 'example.invalid/gestudio-frontend:email-verify'
         JWT_SECRET = 'synthetic-email-gate-jwt-secret-at-least-32-characters'

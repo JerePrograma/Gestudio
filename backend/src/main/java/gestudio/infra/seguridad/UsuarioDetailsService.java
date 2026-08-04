@@ -18,14 +18,20 @@ public class UsuarioDetailsService implements UserDetailsService {
 
     @Override
     public UserDetails loadUserByUsername(String username) {
-        return usuarios.findByNombreUsuarioIgnoreCaseConRolesYPermisos(username.trim())
-                .filter(UsuarioDetailsService::usuarioHabilitado)
+        return usuarios.findCredencialesAutenticacion(username.trim())
+                .map(UsuarioDetailsService::principalAutenticacion)
+                .filter(Usuario::isEnabled)
                 .orElseThrow(() -> new UsernameNotFoundException("Usuario no encontrado"));
     }
 
-    private static boolean usuarioHabilitado(Usuario usuario) {
-        return usuario.isEnabled()
-                && usuario.rolesEfectivos().stream()
-                .anyMatch(rol -> Boolean.TRUE.equals(rol.getActivo()));
+    private static Usuario principalAutenticacion(
+            UsuarioRepositorio.CredencialesAutenticacion credenciales) {
+        Usuario usuario = new Usuario();
+        usuario.setId(credenciales.getId());
+        usuario.setNombreUsuario(credenciales.getNombreUsuario());
+        usuario.setContrasena(credenciales.getContrasena());
+        usuario.setActivo(credenciales.getActivo());
+        usuario.setAuthVersion(credenciales.getAuthVersion());
+        return usuario;
     }
 }

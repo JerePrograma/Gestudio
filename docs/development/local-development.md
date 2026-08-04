@@ -58,24 +58,29 @@ $env:SPRING_PROFILES_ACTIVE = 'dev'
 
 ## Flyway
 
-La cadena productiva vigente es V1-V7:
+La cadena del árbol de desarrollo es V1-V11:
 
 - V1: esquema canónico;
 - V5: estructuras RBAC y backfill;
 - V6: catálogo de 32 permisos y matrices base;
-- V7: snapshots y páginas firmadas del emisor Jere Platform.
+- V7: snapshots y páginas firmadas del emisor Jere Platform;
+- V8: control plane de tenants y memberships;
+- V9: aislamiento shared-schema del plano de dominio;
+- V10: RLS, grants mínimos y salud estructural;
+- V11: cobertura de índices para claves foráneas.
 
 Reglas:
 
 - V1-V7 son inmutables;
-- cualquier corrección futura requiere V8 o superior;
+- una vez publicadas V8-V11, cualquier corrección requiere V12 o superior;
 - no usar `ddl-auto=update`;
 - no ejecutar down migrations;
 - el seed demo no es una migración;
+- la demo estable remota permanece en V7 y nunca recibe V8-V11;
 - un artefacto de rollback debe conservar todas las migraciones aplicadas.
 
 Los scripts de demo derivan el manifiesto desde los nombres `V*__*.sql`, exigen
-versiones únicas y contiguas y comparan el historial completo. Al agregar V8 no
+versiones únicas y contiguas y comparan el historial completo. Al agregar V12 no
 se debe editar un número fijo en `demo-local.ps1` ni en el validador.
 
 ## Ejecución separada

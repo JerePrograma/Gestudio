@@ -5,6 +5,7 @@ import gestudio.servicios.matricula.MatriculaServicio;
 import gestudio.servicios.mensualidad.MensualidadServicio;
 import gestudio.servicios.notificaciones.NotificacionService;
 import gestudio.servicios.recargo.RecargoServicio;
+import gestudio.tenancy.TenantExecutionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -24,17 +25,20 @@ public class ScheduledTasks {
     private final RecargoServicio recargoServicio;
     private final AsistenciaMensualServicio asistenciaMensualServicio;
     private final NotificacionService notificacionService;
+    private final TenantExecutionService tenants;
 
     public ScheduledTasks(MensualidadServicio mensualidadServicio,
                           MatriculaServicio matriculaServicio,
                           RecargoServicio recargoServicio,
                           AsistenciaMensualServicio asistenciaMensualServicio,
-                          NotificacionService notificacionService) {
+                          NotificacionService notificacionService,
+                          TenantExecutionService tenants) {
         this.mensualidadServicio = mensualidadServicio;
         this.matriculaServicio = matriculaServicio;
         this.recargoServicio = recargoServicio;
         this.asistenciaMensualServicio = asistenciaMensualServicio;
         this.notificacionService = notificacionService;
+        this.tenants = tenants;
     }
 
     /**
@@ -43,7 +47,8 @@ public class ScheduledTasks {
      */
     @Scheduled(cron = "0 0 0 1 * *", zone = "${app.time-zone}")
     public void generarMensualidadesMesVigente() {
-        mensualidadServicio.generarMensualidadesParaMesVigente();
+        tenants.forEachActiveTenant("monthly_fees",
+                ignored -> mensualidadServicio.generarMensualidadesParaMesVigente());
     }
 
     /**
@@ -52,7 +57,8 @@ public class ScheduledTasks {
      */
     @Scheduled(cron = "0 0 0 1 1 *", zone = "${app.time-zone}")
     public void generarMatriculasAnioVigente() {
-        matriculaServicio.generarMatriculasAnioVigente();
+        tenants.forEachActiveTenant("annual_enrollments",
+                ignored -> matriculaServicio.generarMatriculasAnioVigente());
     }
 
     /**
@@ -61,7 +67,8 @@ public class ScheduledTasks {
      */
     @Scheduled(cron = "0 0 1 * * *", zone = "${app.time-zone}")
     public void aplicarRecargosAutomaticos() {
-        recargoServicio.aplicarRecargosAutomaticos();
+        tenants.forEachActiveTenant("surcharges",
+                ignored -> recargoServicio.aplicarRecargosAutomaticos());
     }
 
     /**
@@ -70,7 +77,8 @@ public class ScheduledTasks {
      */
     @Scheduled(cron = "0 0 2 * * *", zone = "${app.time-zone}")
     public void crearAsistenciasParaInscripcionesActivas() {
-        asistenciaMensualServicio.crearAsistenciasParaInscripcionesActivasDetallado();
+        tenants.forEachActiveTenant("attendance",
+                ignored -> asistenciaMensualServicio.crearAsistenciasParaInscripcionesActivasDetallado());
     }
 
     /**
@@ -79,11 +87,9 @@ public class ScheduledTasks {
      */
     @Scheduled(cron = "0 0 10 * * *", zone = "${app.time-zone}")
     public void enviarNotificacionesCumpleanios() {
-        try {
+        tenants.forEachActiveTenant("birthdays", ignored -> {
             List<String> mensajes = notificacionService.generarYObtenerCumpleanerosDelDia();
             log.info("Notificaciones de cumpleaños procesadas cantidad={}", mensajes.size());
-        } catch (RuntimeException e) {
-            log.error("Falló el proceso de notificaciones de cumpleaños type={}", e.getClass().getSimpleName());
-        }
+        });
     }
 }

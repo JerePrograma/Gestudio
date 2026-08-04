@@ -10,9 +10,15 @@ import gestudio.entidades.Rol;
 import gestudio.entidades.Usuario;
 import gestudio.infra.errores.TratadorDeErrores.OperacionNoPermitidaException;
 import gestudio.infra.seguridad.RbacService;
+import gestudio.infra.seguridad.TenantTestAccess;
+import gestudio.tenancy.TenantAccessService;
+import gestudio.tenancy.TenantMembershipRepository;
+import gestudio.tenancy.TenantContext;
 import gestudio.repositorios.PermisoRepositorio;
 import gestudio.repositorios.RolRepositorio;
 import gestudio.repositorios.UsuarioRepositorio;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashSet;
@@ -34,19 +40,41 @@ class RolServicioTest {
     private final PermisoRepositorio permisos = mock(PermisoRepositorio.class);
     private final UsuarioRepositorio usuarios = mock(UsuarioRepositorio.class);
     private final AuditFailureService auditFailures = mock(AuditFailureService.class);
+    private final TenantAccessService tenantAccess = mock(TenantAccessService.class);
+    private final TenantMembershipRepository memberships = mock(TenantMembershipRepository.class);
 
     private final RolMapper mapper = new RolMapper() {
     };
 
-    private final RbacService rbac = new RbacService(usuarios, auditFailures);
+    private final RbacService rbac = new RbacService(tenantAccess, auditFailures);
 
     private final RolServicio service = new RolServicio(
             roles,
             permisos,
-            usuarios,
+            memberships,
             mapper,
             rbac
     );
+
+    private TenantContext.Scope tenantScope;
+
+    @BeforeEach
+    void tenantAccess() {
+        tenantScope = TenantContext.open(
+                java.util.UUID.fromString("10000000-0000-0000-0000-000000000001"),
+                null
+        );
+        when(tenantAccess.currentAccess(any(Usuario.class)))
+                .thenAnswer(invocation -> TenantTestAccess.from(invocation.getArgument(0)));
+    }
+
+    @AfterEach
+    void clearTenantContext() {
+        if (tenantScope != null) {
+            tenantScope.close();
+            tenantScope = null;
+        }
+    }
 
     @Test
     void creaRolActivoConPermisosEnUnaSolaOperacion() {
@@ -187,7 +215,7 @@ class RolServicioTest {
         );
 
         assertThat(editable.getPermisos()).extracting("codigo").containsExactly("PERM_PAGOS_LEER");
-        verify(usuarios).incrementarAuthVersionPorRolId(10L);
+        verify(memberships).incrementSecurityVersionForRole(any(java.util.UUID.class), org.mockito.ArgumentMatchers.eq(10L));
     }
 
     @Test
@@ -223,7 +251,7 @@ class RolServicioTest {
         assertThat(editable.getNombre()).isEqualTo("Operador de pagos");
         assertThat(editable.getPermisos()).extracting("codigo").containsExactly("PERM_PAGOS_LEER");
 
-        verify(usuarios).incrementarAuthVersionPorRolId(10L);
+        verify(memberships).incrementSecurityVersionForRole(any(java.util.UUID.class), org.mockito.ArgumentMatchers.eq(10L));
     }
 
     private static Rol rol(Long id, String codigo, String... codigosPermiso) {

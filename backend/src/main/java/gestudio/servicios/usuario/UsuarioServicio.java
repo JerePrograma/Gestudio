@@ -11,6 +11,10 @@ import gestudio.entidades.Usuario;
 import gestudio.infra.errores.TratadorDeErrores.OperacionNoPermitidaException;
 import gestudio.infra.seguridad.PasswordPolicy;
 import gestudio.infra.seguridad.RbacService;
+import gestudio.tenancy.TenantAccess;
+import gestudio.tenancy.TenantMembership;
+import gestudio.tenancy.TenantMembershipManagementService;
+import gestudio.tenancy.TenantMembershipStatus;
 import gestudio.repositorios.RolRepositorio;
 import gestudio.repositorios.UsuarioRepositorio;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -37,6 +41,7 @@ public class UsuarioServicio {
     private final Clock clock;
     private final AuditService audit;
     private final RbacService rbac;
+    private final TenantMembershipManagementService tenantMemberships;
 
     public UsuarioServicio(UsuarioRepositorio usuarios,
                            PasswordEncoder passwordEncoder,
@@ -45,7 +50,8 @@ public class UsuarioServicio {
                            UsuarioMapper mapper,
                            Clock clock,
                            AuditService audit,
-                           RbacService rbac) {
+                           RbacService rbac,
+                           TenantMembershipManagementService tenantMemberships) {
         this.usuarios = usuarios;
         this.passwordEncoder = passwordEncoder;
         this.passwordPolicy = passwordPolicy;
@@ -54,6 +60,7 @@ public class UsuarioServicio {
         this.clock = clock;
         this.audit = audit;
         this.rbac = rbac;
+        this.tenantMemberships = tenantMemberships;
     }
 
     @Transactional
@@ -67,7 +74,7 @@ public class UsuarioServicio {
         }
 
         Set<Rol> rolesNuevos = rolesActivos(request.roles());
-        validarAsignacionPermitida(actorActual, rolesNuevos);
+        validarAsignacionPermitida(rbac.accesoActual(actorActual), rolesNuevos);
 
         passwordPolicy.validar(request.contrasena(), contieneSuperadmin(rolesNuevos));
 
@@ -81,6 +88,7 @@ public class UsuarioServicio {
         usuario.setPasswordChangedAt(clock.instant());
 
         usuario = usuarios.saveAndFlush(usuario);
+        TenantMembership membership = tenantMemberships.create(usuario, rolesNuevos, actorActual);
 
         audit.registrar(
                 "USUARIOS",
@@ -91,36 +99,31 @@ public class UsuarioServicio {
                 null,
                 null,
                 null,
-                snapshot(usuario),
+                snapshot(membership),
                 Map.of()
         );
 
-        return convertirAUsuarioResponse(recargar(usuario.getId()));
+        return tenantMemberships.response(membership);
     }
 
     @Transactional
     public UsuarioResponse editarUsuario(Long idUsuario, UsuarioModificacionRequest request, Usuario actor) {
         Usuario actorActual = rbac.exigirPermiso(actor, PERM_USUARIOS_ADMIN, "MODIFICAR_USUARIO");
-        Usuario usuario = bloquearObjetivo(idUsuario);
+        TenantMembership membership = tenantMemberships.require(idUsuario);
+        Usuario usuario = membership.getUsuario();
 
-        Map<String, ?> anterior = snapshot(usuario);
+        Map<String, ?> anterior = snapshot(membership);
 
-        Set<Rol> rolesActuales = new LinkedHashSet<>(usuario.rolesEfectivos());
+        Set<Rol> rolesActuales = new LinkedHashSet<>(membership.roles());
         Set<Rol> rolesNuevos = request.roles() == null || request.roles().isEmpty()
                 ? rolesActuales
                 : rolesParaEdicion(request.roles(), rolesActuales);
 
-        validarAsignacionPermitida(actorActual, rolesNuevos);
+        validarAsignacionPermitida(rbac.accesoActual(actorActual), rolesNuevos);
 
         boolean activoNuevo = request.activo() == null
-                ? Boolean.TRUE.equals(usuario.getActivo())
+                ? membership.getStatus() == TenantMembershipStatus.ACTIVE
                 : request.activo();
-
-        if (contieneSuperadmin(rolesActuales)
-                && Boolean.TRUE.equals(usuario.getActivo())
-                && (!contieneSuperadmin(rolesNuevos) || !activoNuevo)) {
-            impedirPerderUltimoSuperadmin(usuario.getId());
-        }
 
         if (request.nombreUsuario() != null && !request.nombreUsuario().isBlank()) {
             String username = normalizarUsername(request.nombreUsuario());
@@ -138,7 +141,7 @@ public class UsuarioServicio {
 
         boolean passwordCambiada = false;
         boolean rolesCambiados = false;
-        boolean estadoCambiado = false;
+        boolean estadoCambiado = activoNuevo != (membership.getStatus() == TenantMembershipStatus.ACTIVE);
 
         if (request.contrasena() != null && !request.contrasena().isBlank()) {
             passwordPolicy.validar(request.contrasena(), contieneSuperadmin(rolesNuevos));
@@ -148,23 +151,22 @@ public class UsuarioServicio {
         }
 
         if (!codigosRoles(rolesActuales).equals(codigosRoles(rolesNuevos))) {
-            usuario.setRoles(rolesNuevos);
-            usuario.setRol(rolPrincipal(rolesNuevos));
             rolesCambiados = true;
         }
 
-        if (request.activo() != null && request.activo() != Boolean.TRUE.equals(usuario.getActivo())) {
-            usuario.setActivo(request.activo());
-            estadoCambiado = true;
-        }
-
-        if (passwordCambiada || rolesCambiados || estadoCambiado) {
+        if (passwordCambiada) {
             usuario.setAuthVersion((usuario.getAuthVersion() == null ? 0L : usuario.getAuthVersion()) + 1L);
         }
 
         usuario = usuarios.saveAndFlush(usuario);
+        membership = tenantMemberships.update(
+                idUsuario,
+                rolesCambiados ? rolesNuevos : null,
+                estadoCambiado ? activoNuevo : null,
+                actorActual
+        );
 
-        Map<String, ?> nuevo = snapshot(usuario);
+        Map<String, ?> nuevo = snapshot(membership);
 
         if (passwordCambiada) {
             auditarCambio("PASSWORD_CAMBIADA", usuario, actorActual, anterior, nuevo);
@@ -175,7 +177,7 @@ public class UsuarioServicio {
         }
 
         if (estadoCambiado) {
-            auditarCambio(Boolean.TRUE.equals(usuario.getActivo())
+            auditarCambio(membership.getStatus() == TenantMembershipStatus.ACTIVE
                     ? "USUARIO_ACTIVADO"
                     : "USUARIO_DESACTIVADO", usuario, actorActual, anterior, nuevo);
         }
@@ -184,74 +186,49 @@ public class UsuarioServicio {
             auditarCambio("USUARIO_MODIFICADO", usuario, actorActual, anterior, nuevo);
         }
 
-        return convertirAUsuarioResponse(recargar(usuario.getId()));
+        return tenantMemberships.response(membership);
     }
 
     @Transactional(readOnly = true)
     public UsuarioResponse obtenerUsuario(Long idUsuario) {
-        return convertirAUsuarioResponse(recargar(idUsuario));
+        return tenantMemberships.response(tenantMemberships.require(idUsuario));
     }
 
     @Transactional(readOnly = true)
-    public List<Usuario> listarUsuarios(String rolCodigo, Boolean activo) {
-        return usuarios.findAllConRolesYPermisos().stream()
-                .filter(usuario -> activo == null || activo.equals(usuario.getActivo()))
-                .filter(usuario -> rolCodigo == null
+    public List<UsuarioResponse> listarUsuarios(String rolCodigo, Boolean activo) {
+        return tenantMemberships.list().stream()
+                .filter(membership -> activo == null
+                        || activo == (membership.getStatus() == TenantMembershipStatus.ACTIVE))
+                .filter(membership -> rolCodigo == null
                         || rolCodigo.isBlank()
-                        || usuario.codigosRolesActivos().stream()
+                        || membership.roleCodes().stream()
                         .anyMatch(codigo -> codigo.equalsIgnoreCase(rolCodigo.trim())))
+                .map(tenantMemberships::response)
                 .toList();
     }
 
     @Transactional(readOnly = true)
     public List<RolAsignableResponse> listarRolesAsignables(Usuario actor) {
         Usuario actorActual = rbac.exigirPermiso(actor, PERM_USUARIOS_ADMIN, "LISTAR_ROLES_ASIGNABLES");
-        Set<String> permisosActor = actorActual.codigosPermisosActivos();
+        TenantAccess access = rbac.accesoActual(actorActual);
+        Set<String> permisosActor = access.permissionCodes();
 
         return roles.findAllByOrderByCodigoAsc().stream()
                 .filter(Rol::estaActivo)
                 .filter(rol -> !"PROFESOR".equals(rol.getCodigo()))
-                .filter(rol -> actorActual.esSuperadminSistema()
+                .filter(rol -> access.membership().isSuperadmin()
                         || (!rol.esSuperadminSistema() && permisosActor.containsAll(permisosActivos(rol))))
                 .map(rol -> new RolAsignableResponse(rol.getCodigo(), rol.getNombre()))
                 .toList();
     }
 
     public UsuarioResponse convertirAUsuarioResponse(Usuario usuario) {
-        return mapper.toDTO(usuario);
+        return tenantMemberships.response(tenantMemberships.require(usuario.getId()));
     }
 
     @Transactional
     public void eliminarUsuario(Long idUsuario, Usuario actor) {
         editarUsuario(idUsuario, new UsuarioModificacionRequest(null, null, null, false), actor);
-    }
-
-    private Usuario recargar(Long idUsuario) {
-        return usuarios.findByIdConRolesYPermisos(idUsuario)
-                .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
-    }
-
-    private Usuario bloquearObjetivo(Long idUsuario) {
-        Usuario snapshot = recargar(idUsuario);
-
-        if (Boolean.TRUE.equals(snapshot.getActivo()) && snapshot.esSuperadminSistema()) {
-            return usuarios.findActiveSuperadminsForUpdate().stream()
-                    .filter(user -> user.getId().equals(idUsuario))
-                    .findFirst()
-                    .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
-        }
-
-        return snapshot;
-    }
-
-    private void impedirPerderUltimoSuperadmin(Long idUsuario) {
-        List<Usuario> activos = usuarios.findActiveSuperadminsForUpdate();
-
-        if (activos.size() == 1 && activos.getFirst().getId().equals(idUsuario)) {
-            throw new OperacionNoPermitidaException(
-                    "No se puede degradar o desactivar al último SUPERADMIN activo"
-            );
-        }
     }
 
     private Set<Rol> rolesActivos(Set<String> codigos) {
@@ -300,8 +277,8 @@ public class UsuarioServicio {
         return result;
     }
 
-    private void validarAsignacionPermitida(Usuario actor, Set<Rol> rolesObjetivo) {
-        if (actor.esSuperadminSistema()) {
+    private void validarAsignacionPermitida(TenantAccess actor, Set<Rol> rolesObjetivo) {
+        if (actor.membership().isSuperadmin()) {
             return;
         }
 
@@ -309,7 +286,7 @@ public class UsuarioServicio {
             throw new OperacionNoPermitidaException("Sólo SUPERADMIN sistema puede asignar SUPERADMIN");
         }
 
-        Set<String> permisosActor = actor.codigosPermisosActivos();
+        Set<String> permisosActor = actor.permissionCodes();
 
         Set<String> permisosObjetivo = rolesObjetivo.stream()
                 .flatMap(rol -> rol.getPermisos().stream())
@@ -390,13 +367,14 @@ public class UsuarioServicio {
         );
     }
 
-    private static Map<String, ?> snapshot(Usuario usuario) {
+    private static Map<String, ?> snapshot(TenantMembership membership) {
+        Usuario usuario = membership.getUsuario();
         return Map.of(
                 "username", usuario.getNombreUsuario(),
-                "roles", usuario.codigosRolesActivos(),
-                "permisos", usuario.codigosPermisosActivos(),
-                "activo", Boolean.TRUE.equals(usuario.getActivo()),
-                "authVersion", usuario.getAuthVersion()
+                "roles", membership.roleCodes(),
+                "permisos", membership.permissionCodes(),
+                "activo", membership.getStatus() == TenantMembershipStatus.ACTIVE,
+                "membershipSecurityVersion", membership.getSecurityVersion()
         );
     }
 

@@ -2,12 +2,21 @@ import { describe, expect, it } from "vitest";
 import { PERMISSIONS } from "../../config/permissions";
 import { isAuthenticatedSession, profileHasPermission, sanitizeUserProfile, type UserProfile } from "./auth-context";
 
+const tenant = {
+  id: "00000000-0000-0000-0000-0000000000a1",
+  codigo: "ACADEMIA_A",
+  nombre: "Academia A",
+  estado: "ACTIVE" as const,
+};
+
 const user: UserProfile = {
   id: 1,
   nombreUsuario: "operador",
   roles: ["RECEPCION", "COBRANZAS"],
   permisos: [PERMISSIONS.APP_ACCESS, PERMISSIONS.PAGOS_REGISTRAR],
   activo: true,
+  tenantActivo: tenant,
+  tenantsDisponibles: [tenant],
 };
 
 describe("autorización del perfil", () => {
@@ -41,5 +50,20 @@ describe("autorización del perfil", () => {
     expect(isAuthenticatedSession("token", user)).toBe(true);
     expect(isAuthenticatedSession("token", { ...user, activo: false })).toBe(false);
     expect(isAuthenticatedSession(null, user)).toBe(false);
+  });
+
+  it("exige una organización activa incluida en las memberships disponibles", () => {
+    expect(() => sanitizeUserProfile({
+      ...user,
+      tenantActivo: { ...tenant, estado: "SUSPENDED" },
+    })).toThrow("Organización activa inválida");
+    expect(() => sanitizeUserProfile({
+      ...user,
+      tenantsDisponibles: [],
+    })).toThrow("Organización activa inválida");
+    expect(() => sanitizeUserProfile({
+      ...user,
+      tenantActivo: undefined,
+    })).toThrow("Organización inválida");
   });
 });

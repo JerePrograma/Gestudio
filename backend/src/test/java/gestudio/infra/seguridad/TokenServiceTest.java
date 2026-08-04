@@ -4,6 +4,12 @@ import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
 import gestudio.entidades.Rol;
 import gestudio.entidades.Usuario;
+import gestudio.tenancy.Tenant;
+import gestudio.tenancy.TenantAccess;
+import gestudio.tenancy.TenantMembership;
+import gestudio.tenancy.TenantMembershipRole;
+import gestudio.tenancy.TenantMembershipStatus;
+import gestudio.tenancy.TenantStatus;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
@@ -44,7 +50,8 @@ class TokenServiceTest {
 
     @Test
     void verificaUnaVezYDevuelveClaimsTipados() {
-        String token = service.generarAccessToken(usuarioActivo("ADMINISTRADOR"));
+        Usuario usuario = usuarioActivo("ADMINISTRADOR");
+        String token = service.generarAccessToken(usuario, tenantAccess(usuario));
 
         VerifiedToken verified = service.verify(token, TokenType.ACCESS);
         long minutes = Duration.between(now, verified.expiresAt()).toMinutes();
@@ -59,6 +66,8 @@ class TokenServiceTest {
         assertEquals("ADMINISTRADOR", JWT.decode(token).getClaim("rol").asString());
         assertEquals(List.of("ADMINISTRADOR"), JWT.decode(token).getClaim("roles").asList(String.class));
         assertNull(JWT.decode(token).getClaim("permisos").asList(String.class));
+        assertEquals(verified.tenantId().toString(), JWT.decode(token).getClaim("tenant_id").asString());
+        assertEquals(verified.membershipId().toString(), JWT.decode(token).getClaim("membership_id").asString());
     }
 
     @Test
@@ -66,10 +75,11 @@ class TokenServiceTest {
         Usuario usuario = usuarioActivo("ADMINISTRADOR");
 
         assertThrows(InvalidTokenException.class,
-                () -> service.verify(service.generarAccessToken(usuario), TokenType.REFRESH));
+                () -> service.verify(service.generarAccessToken(usuario, tenantAccess(usuario)), TokenType.REFRESH));
 
         assertThrows(InvalidTokenException.class,
-                () -> service.verify(service.generarRefreshToken(usuario, java.util.UUID.randomUUID()), TokenType.ACCESS));
+                () -> service.verify(service.generarRefreshToken(
+                        usuario, tenantAccess(usuario), java.util.UUID.randomUUID()), TokenType.ACCESS));
     }
 
     @Test
@@ -77,8 +87,8 @@ class TokenServiceTest {
         Usuario usuario = usuarioActivo("ADMINISTRADOR");
 
         assertNotEquals(
-                service.generarRefreshToken(usuario, java.util.UUID.randomUUID()),
-                service.generarRefreshToken(usuario, java.util.UUID.randomUUID())
+                service.generarRefreshToken(usuario, tenantAccess(usuario), java.util.UUID.randomUUID()),
+                service.generarRefreshToken(usuario, tenantAccess(usuario), java.util.UUID.randomUUID())
         );
     }
 
@@ -116,7 +126,8 @@ class TokenServiceTest {
 
     @Test
     void verificacionEsSeguraAnteConcurrencia() throws Exception {
-        String token = service.generarAccessToken(usuarioActivo("ADMINISTRADOR"));
+        Usuario usuario = usuarioActivo("ADMINISTRADOR");
+        String token = service.generarAccessToken(usuario, tenantAccess(usuario));
 
         try (var executor = Executors.newFixedThreadPool(8)) {
             var tasks = java.util.stream.IntStream.range(0, 100)
@@ -145,6 +156,25 @@ class TokenServiceTest {
         usuario.setActivo(true);
         usuario.setAuthVersion(0L);
         return usuario;
+    }
+
+    private TenantAccess tenantAccess(Usuario user) {
+        Tenant tenant = new Tenant();
+        tenant.setId(java.util.UUID.fromString("10000000-0000-0000-0000-000000000001"));
+        tenant.setCode("TEST");
+        tenant.setName("Test");
+        tenant.setStatus(TenantStatus.ACTIVE);
+        tenant.setSecurityVersion(2L);
+
+        TenantMembership membership = new TenantMembership();
+        membership.setId(java.util.UUID.fromString("20000000-0000-0000-0000-000000000001"));
+        membership.setTenant(tenant);
+        membership.setUsuario(user);
+        membership.setStatus(TenantMembershipStatus.ACTIVE);
+        membership.setSecurityVersion(3L);
+        membership.setValidFrom(Instant.EPOCH);
+        membership.getRoleAssignments().add(new TenantMembershipRole(membership, tenant, user.getRol()));
+        return new TenantAccess(membership);
     }
 
     private String tokenFirmado(

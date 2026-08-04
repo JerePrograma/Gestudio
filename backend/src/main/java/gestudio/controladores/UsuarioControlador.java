@@ -58,10 +58,7 @@ public class UsuarioControlador {
             @RequestParam(required = false) String rol,
             @RequestParam(required = false) Boolean activo
     ) {
-        List<UsuarioResponse> response = usuarioService.listarUsuarios(rol, activo)
-                .stream()
-                .map(usuarioService::convertirAUsuarioResponse)
-                .toList();
+        List<UsuarioResponse> response = usuarioService.listarUsuarios(rol, activo);
 
         return ResponseEntity.ok(response);
     }

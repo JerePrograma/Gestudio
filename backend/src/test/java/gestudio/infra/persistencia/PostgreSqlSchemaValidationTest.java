@@ -72,7 +72,9 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
             "bootstrap_ejecuciones", "auditoria_eventos", "disciplina_tarifas",
             "inscripcion_condiciones_economicas", "cargo_liquidaciones", "cargo_eventos",
             "permisos", "usuario_roles", "rol_permisos",
-            "jere_platform_student_export_snapshots", "jere_platform_student_export_pages"
+            "jere_platform_student_export_snapshots", "jere_platform_student_export_pages",
+            "tenants", "tenant_memberships", "tenant_membership_roles",
+            "platform_admins", "jere_platform_tenant_mappings"
     );
 
     @Test
@@ -171,7 +173,11 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
                               'refresh_sessions',
                               'bootstrap_ejecuciones',
                               'jere_platform_student_export_snapshots',
-                              'jere_platform_student_export_pages'
+                              'jere_platform_student_export_pages',
+                              'tenants',
+                              'tenant_memberships',
+                              'tenant_membership_roles',
+                              'jere_platform_tenant_mappings'
                           )
                           AND c.data_type <> 'bigint'
                         """))
@@ -206,7 +212,10 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
                           AND c.confdeltype = 'c'
                           AND (t.relname, c.conname) NOT IN (
                               ('disciplina_horarios', 'fk_horarios_disciplina'),
+                              ('disciplina_horarios', 'fk_horarios_tenant_disciplina'),
                               ('rol_permisos', 'fk_rol_permisos_rol'),
+                              ('rol_permisos', 'fk_rol_permisos_tenant_role'),
+                              ('tenant_membership_roles', 'fk_tenant_membership_roles_membership'),
                               ('usuario_roles', 'fk_usuario_roles_usuario')
                           )
                         """))
@@ -224,7 +233,19 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
                             SELECT 1
                             FROM pg_index i
                             WHERE i.indrelid = c.conrelid
-                              AND (i.indkey::smallint[])[0:cardinality(c.conkey)-1] @> c.conkey
+                              AND i.indisvalid
+                              AND i.indisready
+                              AND i.indpred IS NULL
+                              AND i.indnkeyatts >= cardinality(c.conkey)
+                              AND NOT EXISTS (
+                                SELECT 1
+                                FROM unnest(c.conkey)
+                                     WITH ORDINALITY fk_column(attnum, ordinal_position)
+                                LEFT JOIN unnest(i.indkey::smallint[])
+                                     WITH ORDINALITY index_column(attnum, ordinal_position)
+                                  ON index_column.ordinal_position = fk_column.ordinal_position
+                                WHERE index_column.attnum IS DISTINCT FROM fk_column.attnum
+                              )
                           )
                         """))
                         .as("cada FK tiene índice de prefijo")
@@ -308,8 +329,8 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
     }
 
     @Test
-    void migracionesPosterioresActualizanDesdeV5SinPerderIdentidadesAsignacionesNiDatosPersonalizados() throws Exception {
-        String databaseName = "gestudio_rbac_v6_upgrade_" + UUID.randomUUID().toString().replace("-", "");
+    void v7ActualizaHastaLaVersionActualSinPerderIdentidadesAsignacionesNiDatosPersonalizados() throws Exception {
+        String databaseName = "gestudio_v7_upgrade_" + UUID.randomUUID().toString().replace("-", "");
         String jdbcUrl = POSTGRESQL.getJdbcUrl().replace(POSTGRESQL.getDatabaseName(), databaseName);
 
         crearBase(databaseName);
@@ -365,7 +386,7 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
                         INSERT INTO usuarios
                             (nombre_usuario, contrasena, rol_id, activo, auth_version, version)
                         SELECT 'usuario-admin-v5', 'hash-no-real', id, TRUE, 7, 0
-                        FROM roles WHERE codigo = 'ADMINISTRADOR'
+                        FROM roles WHERE codigo = 'SUPERADMIN'
                         UNION ALL
                         SELECT 'usuario-custom-afectado', 'hash-no-real', id, TRUE, 11, 0
                         FROM roles WHERE codigo = 'CUSTOM_AFECTADO'
@@ -391,6 +412,10 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
                                id, repeat('a', 64), 7, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '1 day'
                         FROM usuarios WHERE nombre_usuario = 'usuario-admin-v5'
                         """);
+                statement.executeUpdate("""
+                        INSERT INTO alumnos(nombre, apellido, fecha_incorporacion, documento)
+                        VALUES ('Alumno', 'Legacy V7', DATE '2026-01-10', 'LEGACY-V7-001')
+                        """);
 
                 administradorId = valor(connection, "SELECT id FROM roles WHERE codigo = 'ADMINISTRADOR'");
                 rolAfectadoId = valor(connection, "SELECT id FROM roles WHERE codigo = 'CUSTOM_AFECTADO'");
@@ -409,6 +434,42 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
                         "SELECT id FROM permisos WHERE codigo = 'PERM_CUSTOM_LEER'");
             }
 
+            Flyway v7 = Flyway.configure()
+                    .dataSource(jdbcUrl, POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
+                    .target("7")
+                    .load();
+            assertThat(v7.migrate().migrationsExecuted).isEqualTo(2);
+            assertThat(v7.info().current().getVersion()).isEqualTo(MigrationVersion.fromVersion("7"));
+
+            try (Connection connection = DriverManager.getConnection(
+                    jdbcUrl,
+                    POSTGRESQL.getUsername(),
+                    POSTGRESQL.getPassword()
+            ); Statement statement = connection.createStatement()) {
+                statement.executeUpdate("""
+                        INSERT INTO jere_platform_student_export_snapshots(
+                            checkpoint, organization_id, tenant_id, status, page_size,
+                            page_count, total_records, created_by, created_at
+                        )
+                        SELECT '33333333-3333-4333-8333-333333333333',
+                               'org-legacy-v7',
+                               '44444444-4444-4444-8444-444444444444',
+                               'READY', 100, 1, 1, id, CURRENT_TIMESTAMP
+                        FROM usuarios
+                        WHERE nombre_usuario = 'usuario-admin-v5'
+                        """);
+                statement.executeUpdate("""
+                        INSERT INTO jere_platform_student_export_pages(
+                            snapshot_checkpoint, page_number, cursor_token, next_cursor_token,
+                            full_snapshot, record_count, payload, payload_sha256, signature, created_at
+                        ) VALUES (
+                            '33333333-3333-4333-8333-333333333333', 1, NULL, NULL,
+                            TRUE, 1, decode('7b7d', 'hex'), repeat('a', 64),
+                            'sha256=' || repeat('b', 64), CURRENT_TIMESTAMP
+                        )
+                        """);
+            }
+
             Flyway latest = Flyway.configure()
                     .dataSource(jdbcUrl, POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
                     .load();
@@ -417,6 +478,10 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
             MigrationVersion expectedLatestVersion = pendingMigrations[pendingMigrations.length - 1].getVersion();
             assertThat(latest.migrate().migrationsExecuted).isEqualTo(pendingMigrations.length);
             assertThat(latest.info().current().getVersion()).isEqualTo(expectedLatestVersion);
+            ValidateResult validation = latest.validateWithResult();
+            assertThat(validation.validationSuccessful)
+                    .withFailMessage(validation.getAllErrorMessages())
+                    .isTrue();
 
             try (Connection connection = DriverManager.getConnection(
                     jdbcUrl,
@@ -447,6 +512,11 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
 
                 assertThat(contar(connection, "SELECT count(*) FROM usuarios")).isEqualTo(3);
                 assertThat(contar(connection, "SELECT count(*) FROM usuario_roles")).isEqualTo(3);
+                assertThat(contar(connection, "SELECT count(*) FROM tenant_memberships")).isEqualTo(3);
+                assertThat(contar(connection, "SELECT count(*) FROM tenant_memberships WHERE status = 'ACTIVE'"))
+                        .isEqualTo(3);
+                assertThat(contar(connection, "SELECT count(*) FROM tenant_membership_roles"))
+                        .isEqualTo(4);
                 assertThat(codigos(connection, """
                         SELECT u.nombre_usuario || ':' || r.codigo
                         FROM usuario_roles ur
@@ -457,6 +527,23 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
                                 "usuario-admin-v5:ADMINISTRADOR",
                                 "usuario-custom-afectado:CUSTOM_AFECTADO",
                                 "usuario-custom-no-afectado:CUSTOM_NO_AFECTADO");
+                assertThat(contar(connection, """
+                        SELECT count(*)
+                        FROM platform_admins pa
+                        JOIN usuarios u ON u.id = pa.usuario_id
+                        WHERE u.nombre_usuario = 'usuario-admin-v5'
+                          AND pa.active
+                        """))
+                        .isOne();
+                assertThat(codigos(connection, """
+                        SELECT r.codigo
+                        FROM tenant_membership_roles tmr
+                        JOIN tenant_memberships tm ON tm.id = tmr.membership_id
+                        JOIN usuarios u ON u.id = tm.usuario_id
+                        JOIN roles r ON r.id = tmr.role_id
+                        WHERE u.nombre_usuario = 'usuario-admin-v5'
+                        """))
+                        .containsExactlyInAnyOrder("SUPERADMIN", "ADMINISTRADOR");
                 assertThat(contar(connection,
                         "SELECT count(*) FROM usuarios WHERE contrasena = 'hash-no-real'"))
                         .isEqualTo(3);
@@ -488,6 +575,64 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
                         FROM refresh_sessions s
                         JOIN usuarios u ON u.id = s.usuario_id
                         WHERE s.auth_version <> u.auth_version
+                        """))
+                        .isOne();
+                assertThat(contar(connection, """
+                        SELECT count(*)
+                        FROM refresh_sessions s
+                        JOIN tenant_memberships m
+                          ON m.tenant_id = s.tenant_id AND m.id = s.membership_id
+                        WHERE s.tenant_id = '00000000-0000-0000-0000-000000000001'
+                          AND s.tenant_security_version = 0
+                          AND s.membership_security_version = m.security_version
+                        """))
+                        .isOne();
+
+                assertThat(contar(connection, """
+                        SELECT count(*) FROM roles
+                        WHERE tenant_id <> '00000000-0000-0000-0000-000000000001'
+                        """))
+                        .isZero();
+                assertThat(contar(connection, """
+                        SELECT count(*) FROM alumnos
+                        WHERE documento = 'LEGACY-V7-001'
+                          AND tenant_id = '00000000-0000-0000-0000-000000000001'
+                        """))
+                        .isOne();
+                assertThat(contar(connection, """
+                        SELECT count(*)
+                        FROM jere_platform_student_export_snapshots s
+                        JOIN jere_platform_tenant_mappings m
+                          ON m.internal_tenant_id = s.internal_tenant_id
+                         AND m.id = s.mapping_id
+                        WHERE s.checkpoint = '33333333-3333-4333-8333-333333333333'
+                          AND s.internal_tenant_id = '00000000-0000-0000-0000-000000000001'
+                          AND s.external_organization_id = 'org-legacy-v7'
+                          AND s.external_tenant_id = '44444444-4444-4444-8444-444444444444'
+                        """))
+                        .isOne();
+                assertThat(contar(connection, """
+                        SELECT count(*) FROM jere_platform_student_export_pages
+                        WHERE snapshot_checkpoint = '33333333-3333-4333-8333-333333333333'
+                          AND internal_tenant_id = '00000000-0000-0000-0000-000000000001'
+                        """))
+                        .isOne();
+                assertThat(codigos(connection, "SELECT public.gestudio_multitenancy_health()"))
+                        .containsExactly("GREEN");
+                assertThat(contar(connection, """
+                        SELECT count(*)
+                        FROM pg_catalog.pg_constraint
+                        WHERE NOT convalidated
+                        """))
+                        .isZero();
+                assertThat(contar(connection, """
+                        SELECT count(*)
+                        FROM pg_catalog.pg_class c
+                        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                        WHERE n.nspname = 'public'
+                          AND c.relname = 'refresh_sessions'
+                          AND c.relrowsecurity
+                          AND c.relforcerowsecurity
                         """))
                         .isOne();
 

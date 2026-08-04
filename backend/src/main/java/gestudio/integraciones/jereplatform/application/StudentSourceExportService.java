@@ -31,7 +31,7 @@ import static gestudio.integraciones.jereplatform.application.StudentSourceExpor
 
 @Service
 public class StudentSourceExportService {
-    public static final String SOURCE_TYPE = "GESTUDIO_STUDENT";
+    public static final String SOURCE_TYPE = SourceTenantMapping.SOURCE_TYPE;
     public static final int MAX_PAYLOAD_BYTES = 1_000_000;
 
     private static final Logger log = LoggerFactory.getLogger(StudentSourceExportService.class);
@@ -104,7 +104,7 @@ public class StudentSourceExportService {
             boolean fullSnapshot = pageNumber == pageCount;
             byte[] payload = serializer.serialize(new StudentSourceExport(
                     1,
-                    mapping.tenantId(),
+                    mapping.externalTenantId(),
                     SOURCE_TYPE,
                     checkpoint.toString(),
                     nextCursor == null ? null : nextCursor.toString(),
@@ -160,7 +160,7 @@ public class StudentSourceExportService {
         );
         log.info(
                 "Jere student export created organization={} tenant={} checkpoint={} pages={} count={} correlationId={} result=CREATED",
-                mapping.organizationId(), mapping.tenantId(), checkpoint, pageCount, references.size(), correlationId);
+                mapping.organizationId(), mapping.externalTenantId(), checkpoint, pageCount, references.size(), correlationId);
         return firstPage;
     }
 
@@ -190,7 +190,7 @@ public class StudentSourceExportService {
         );
         log.info(
                 "Jere student export emitted organization={} tenant={} checkpoint={} page={} count={} correlationId={} result=EMITTED",
-                mapping.organizationId(), mapping.tenantId(), checkpoint, page.pageNumber(),
+                mapping.organizationId(), mapping.externalTenantId(), checkpoint, page.pageNumber(),
                 page.recordCount(), correlationId);
         return page;
     }
@@ -255,7 +255,9 @@ public class StudentSourceExportService {
     ) {
         return Map.of(
                 "organizationId", mapping.organizationId(),
-                "tenantId", mapping.tenantId().toString(),
+                "internalTenantId", mapping.internalTenantId().toString(),
+                "externalTenantId", mapping.externalTenantId().toString(),
+                "mappingConfigVersion", mapping.configVersion(),
                 "sourceType", SOURCE_TYPE,
                 "checkpoint", checkpoint.toString(),
                 "cursor", cursor == null ? "FIRST" : cursor.toString(),

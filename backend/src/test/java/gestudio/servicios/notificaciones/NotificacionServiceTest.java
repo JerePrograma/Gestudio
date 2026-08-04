@@ -6,10 +6,13 @@ import gestudio.repositorios.AlumnoRepositorio;
 import gestudio.repositorios.NotificacionRepositorio;
 import gestudio.repositorios.ProfesorRepositorio;
 import gestudio.servicios.email.EmailAsyncService;
+import gestudio.servicios.email.EmailAsyncService.BirthdayEmail;
+import gestudio.tenancy.TenantContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -22,13 +25,13 @@ import java.time.ZoneId;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.same;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -117,12 +120,18 @@ class NotificacionServiceTest {
         personasActivas(cumpleanero);
         NotificacionService service = servicioEn("2026-07-21T15:00:00Z");
 
-        service.generarYObtenerCumpleanerosDelDia();
-        service.generarYObtenerCumpleanerosDelDia();
+        UUID tenantId = UUID.fromString("10000000-0000-0000-0000-000000000001");
+        try (TenantContext.Scope ignored = TenantContext.open(tenantId, null)) {
+            service.generarYObtenerCumpleanerosDelDia();
+            service.generarYObtenerCumpleanerosDelDia();
+        }
 
-        verify(email, never()).enviarMailCumple(any(Alumno.class));
+        verify(email, never()).enviarMailCumple(any(BirthdayEmail.class));
         TransactionSynchronizationUtils.triggerAfterCommit();
-        verify(email, times(1)).enviarMailCumple(same(cumpleanero));
+        ArgumentCaptor<BirthdayEmail> command = ArgumentCaptor.forClass(BirthdayEmail.class);
+        verify(email, times(1)).enviarMailCumple(command.capture());
+        assertThat(command.getValue()).isEqualTo(new BirthdayEmail(
+                tenantId, "cumpleanero@example.test", "Correo"));
     }
 
     private NotificacionService servicioEn(String instant) {

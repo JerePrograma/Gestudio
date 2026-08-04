@@ -15,7 +15,7 @@ public interface NotificacionRepositorio extends JpaRepository<Notificacion, Lon
     @Query(value = """
             INSERT INTO notificaciones(tipo, mensaje, fecha_creacion, fecha_negocio, dedup_key, leida)
             VALUES (:tipo, :mensaje, :fechaCreacion, :fechaNegocio, :dedupKey, false)
-            ON CONFLICT (dedup_key) DO NOTHING
+            ON CONFLICT (tenant_id, dedup_key) DO NOTHING
             """, nativeQuery = true)
     int insertarSiAusente(@Param("tipo") String tipo,
                           @Param("mensaje") String mensaje,

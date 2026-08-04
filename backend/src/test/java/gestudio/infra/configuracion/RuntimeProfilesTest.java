@@ -16,6 +16,7 @@ import gestudio.servicios.matricula.MatriculaServicio;
 import gestudio.servicios.mensualidad.MensualidadServicio;
 import gestudio.servicios.notificaciones.NotificacionService;
 import gestudio.servicios.recargo.RecargoServicio;
+import gestudio.tenancy.TenantExecutionService;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
@@ -125,5 +126,6 @@ class RuntimeProfilesTest {
         @Bean RecargoServicio recargoServicio() { return mock(RecargoServicio.class); }
         @Bean AsistenciaMensualServicio asistenciaMensualServicio() { return mock(AsistenciaMensualServicio.class); }
         @Bean NotificacionService notificacionService() { return mock(NotificacionService.class); }
+        @Bean TenantExecutionService tenantExecutionService() { return mock(TenantExecutionService.class); }
     }
 }

@@ -3,6 +3,9 @@ package gestudio.auditoria.application;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import gestudio.entidades.Usuario;
+import gestudio.tenancy.TenantAccessService;
+import gestudio.tenancy.TenantContext;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -29,11 +32,14 @@ public class AuditService {
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
     private final Clock clock;
+    private final TenantAccessService tenantAccess;
 
-    public AuditService(JdbcTemplate jdbc, ObjectMapper objectMapper, Clock clock) {
+    public AuditService(JdbcTemplate jdbc, ObjectMapper objectMapper, Clock clock,
+                        TenantAccessService tenantAccess) {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
         this.clock = clock;
+        this.tenantAccess = tenantAccess;
     }
 
     public void registrar(String categoria, String accion, String entidadTipo, String entidadId,
@@ -51,17 +57,17 @@ public class AuditService {
         validarSinSecretos(metadata);
         jdbc.update("""
                 INSERT INTO auditoria_eventos(
-                    categoria, accion, entidad_tipo, entidad_id,
+                    tenant_id, categoria, accion, entidad_tipo, entidad_id,
                     actor_usuario_id, actor_username_snapshot, actor_role_snapshot,
                     fecha_negocio, correlation_id, idempotency_key,
                     estado_anterior, estado_nuevo, metadata)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                         CAST(? AS jsonb), CAST(? AS jsonb), CAST(? AS jsonb))
                 """,
-                categoria, accion, entidadTipo, entidadId,
+                TenantContext.currentTenantId().orElse(null), categoria, accion, entidadTipo, entidadId,
                 actor == null ? null : actor.getId(),
                 actor == null ? null : actor.getNombreUsuario(),
-                actor == null || actor.getRol() == null ? null : actor.getRol().getDescripcion(),
+                actorRoleSnapshot(actor),
                 LocalDate.now(clock), correlationId, idempotencyKey,
                 jsonNullable(estadoAnterior), jsonNullable(estadoNuevo), json(metadata));
     }
@@ -71,9 +77,10 @@ public class AuditService {
         validarSinSecretos(metadata);
         jdbc.update("""
                 INSERT INTO auditoria_eventos(
-                    categoria, accion, actor_username_snapshot, fecha_negocio, metadata)
-                VALUES (?, ?, ?, ?, CAST(? AS jsonb))
-                """, categoria, accion, usernameSnapshot, LocalDate.now(clock), json(metadata));
+                    tenant_id, categoria, accion, actor_username_snapshot, fecha_negocio, metadata)
+                VALUES (?, ?, ?, ?, ?, CAST(? AS jsonb))
+                """, TenantContext.currentTenantId().orElse(null), categoria, accion,
+                usernameSnapshot, LocalDate.now(clock), json(metadata));
     }
 
     private String json(Map<String, ?> metadata) {
@@ -81,6 +88,19 @@ public class AuditService {
             return objectMapper.writeValueAsString(metadata == null ? Map.of() : metadata);
         } catch (JsonProcessingException e) {
             throw new IllegalArgumentException("Metadata de auditoría inválida", e);
+        }
+    }
+
+    private String actorRoleSnapshot(Usuario actor) {
+        if (actor == null
+                || TenantContext.currentTenantId().isEmpty()
+                || TenantContext.currentMembershipId().isEmpty()) {
+            return null;
+        }
+        try {
+            return tenantAccess.currentAccess(actor).primaryRoleCode();
+        } catch (AccessDeniedException ignored) {
+            return null;
         }
     }
 

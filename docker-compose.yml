@@ -6,11 +6,14 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-gestudio_db}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-only-change-me}
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER:-gestudio_app_local}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:-local-only-app-change-me}
       TZ: ${APP_TIME_ZONE:-America/Argentina/Buenos_Aires}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./scripts/db/10-create-application-role.sh:/docker-entrypoint-initdb.d/10-create-application-role.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
@@ -31,12 +34,15 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-gestudio_db}
-      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-postgres}
-      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-local-only-change-me}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_APP_USER:-gestudio_app_local}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_APP_PASSWORD:-local-only-app-change-me}
+      SPRING_FLYWAY_USER: ${POSTGRES_USER:-postgres}
+      SPRING_FLYWAY_PASSWORD: ${POSTGRES_PASSWORD:-local-only-change-me}
       SPRING_JPA_HIBERNATE_DDL_AUTO: ${SPRING_JPA_HIBERNATE_DDL_AUTO:-validate}
       SPRING_FLYWAY_ENABLED: ${SPRING_FLYWAY_ENABLED:-true}
       SPRING_FLYWAY_BASELINE_ON_MIGRATE: ${SPRING_FLYWAY_BASELINE_ON_MIGRATE:-false}
       SPRING_FLYWAY_BASELINE_VERSION: ${SPRING_FLYWAY_BASELINE_VERSION:-1}
+      APP_MULTITENANCY_REQUIRED: ${APP_MULTITENANCY_REQUIRED:-true}
       JWT_SECRET: ${JWT_SECRET:-local-only-jwt-secret-change-before-sharing}
       JWT_ISSUER: ${JWT_ISSUER:-gestudio-local}
       JWT_ACCESS_TOKEN_TTL: ${JWT_ACCESS_TOKEN_TTL:-PT15M}

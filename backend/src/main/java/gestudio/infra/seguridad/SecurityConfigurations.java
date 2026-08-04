@@ -101,8 +101,10 @@ public class SecurityConfigurations {
                     req.requestMatchers(HttpMethod.POST, "/api/login").permitAll();
                     req.requestMatchers(HttpMethod.POST, "/api/login/refresh").permitAll();
                     req.requestMatchers(HttpMethod.POST, "/api/login/logout").permitAll();
+                    req.requestMatchers(HttpMethod.POST, "/api/login/tenant").authenticated();
 
                     req.requestMatchers(HttpMethod.GET, "/api/usuarios/perfil").authenticated();
+                    req.requestMatchers("/api/platform/**").authenticated();
 
                     req.requestMatchers("/api/observaciones-profesores/**").denyAll();
 
@@ -217,6 +219,9 @@ public class SecurityConfigurations {
 
                     req.requestMatchers(HttpMethod.GET, "/api/notificaciones/**")
                             .access(appAnd(PERM_ALUMNOS_LEER));
+
+                    req.requestMatchers("/api/integraciones/jere-platform/mapping")
+                            .access(appAnd(PERM_CONFIG_ADMIN));
 
                     req.requestMatchers("/api/integraciones/jere-platform/estudiantes/**")
                             .access(appAndBoth(PERM_CONFIG_ADMIN, PERM_REPORTES_EXPORTAR));

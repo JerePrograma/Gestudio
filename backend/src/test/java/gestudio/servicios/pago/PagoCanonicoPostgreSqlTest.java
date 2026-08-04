@@ -296,13 +296,13 @@ class PagoCanonicoPostgreSqlTest extends PostgreSqlIntegrationTest {
         assertThat(estadoCargo(escenario.cargo1())).isEqualTo("PARCIAL");
     }
 
-    private Object registrarAlLiberar(CountDownLatch start, Escenario escenario, String key) {
+    private Object registrarAlLiberar(CountDownLatch start, Escenario escenario, String key) throws Exception {
         try {
             if (!start.await(5, TimeUnit.SECONDS)) {
                 throw new IllegalStateException("Timeout esperando inicio concurrente");
             }
 
-            return pagos.registrarPago(new PagoRegistroRequest(
+            return withTenant(escenario.membershipId(), () -> pagos.registrarPago(new PagoRegistroRequest(
                     escenario.alumno(),
                     escenario.metodo(),
                     "80.00",
@@ -310,7 +310,7 @@ class PagoCanonicoPostgreSqlTest extends PostgreSqlIntegrationTest {
                     null,
                     List.of(new AplicacionPagoRequest(escenario.cargo1(), "80.00")),
                     false
-            ), escenario.usuario()).id();
+            ), escenario.usuario()).id());
         } catch (OperacionNoPermitidaException e) {
             return e;
         } catch (InterruptedException e) {
@@ -357,6 +357,9 @@ class PagoCanonicoPostgreSqlTest extends PostgreSqlIntegrationTest {
                 "PERM_CREDITOS_CONSUMIR"
         );
 
+        UUID membershipId = createActiveMembership(jdbc, usuario, role);
+        selectMembership(membershipId);
+
         Long alumno = jdbc.queryForObject("""
                 INSERT INTO alumnos (nombre, fecha_incorporacion, activo)
                 VALUES (?, ?, true)
@@ -386,7 +389,7 @@ class PagoCanonicoPostgreSqlTest extends PostgreSqlIntegrationTest {
 
         Usuario principal = usuarios.findByIdConRolesYPermisos(usuario).orElseThrow();
 
-        return new Escenario(alumno, metodo, cargo1, cargo2, principal);
+        return new Escenario(alumno, metodo, cargo1, cargo2, principal, membershipId);
     }
 
     private void otorgarPermisos(Long usuarioId, Long rolId, String... permisos) {
@@ -468,6 +471,6 @@ class PagoCanonicoPostgreSqlTest extends PostgreSqlIntegrationTest {
         return prefix + "-" + UUID.randomUUID();
     }
 
-    private record Escenario(Long alumno, Long metodo, Long cargo1, Long cargo2, Usuario usuario) {
+    private record Escenario(Long alumno, Long metodo, Long cargo1, Long cargo2, Usuario usuario, UUID membershipId) {
     }
 }

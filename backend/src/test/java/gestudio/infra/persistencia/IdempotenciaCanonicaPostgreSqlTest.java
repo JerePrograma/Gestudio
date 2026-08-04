@@ -62,7 +62,7 @@ class IdempotenciaCanonicaPostgreSqlTest extends PostgreSqlIntegrationTest {
                 egresoKey
         );
 
-        List<Long> egresoIds = concurrentes(() -> egresos.agregarEgreso(egreso, fixture.usuario()).id());
+        List<Long> egresoIds = concurrentes(fixture.membershipId(), () -> egresos.agregarEgreso(egreso, fixture.usuario()).id());
 
         assertThat(egresoIds).containsOnly(egresoIds.getFirst());
         assertThat(count("egresos", egresoKey)).isOne();
@@ -86,7 +86,7 @@ class IdempotenciaCanonicaPostgreSqlTest extends PostgreSqlIntegrationTest {
                 ventaKey
         );
 
-        List<Long> cargoIds = concurrentes(() -> stock.vender(venta, fixture.usuario()).id());
+        List<Long> cargoIds = concurrentes(fixture.membershipId(), () -> stock.vender(venta, fixture.usuario()).id());
 
         assertThat(cargoIds).containsOnly(cargoIds.getFirst());
         assertThat(count("ventas_stock", ventaKey)).isOne();
@@ -110,7 +110,7 @@ class IdempotenciaCanonicaPostgreSqlTest extends PostgreSqlIntegrationTest {
                 creditoKey
         );
 
-        List<Long> movimientoIds = concurrentes(() -> creditos.ajustar(ajuste, fixture.usuario()).id());
+        List<Long> movimientoIds = concurrentes(fixture.membershipId(), () -> creditos.ajustar(ajuste, fixture.usuario()).id());
 
         assertThat(movimientoIds).containsOnly(movimientoIds.getFirst());
         assertThat(count("movimientos_credito", creditoKey)).isOne();
@@ -131,7 +131,7 @@ class IdempotenciaCanonicaPostgreSqlTest extends PostgreSqlIntegrationTest {
                 "carga duplicada"
         );
 
-        assertThat(concurrentes(() -> egresos.anular(
+        assertThat(concurrentes(fixture.membershipId(), () -> egresos.anular(
                 egresoIds.getFirst(),
                 egresoReversal,
                 fixture.usuario()
@@ -158,7 +158,7 @@ class IdempotenciaCanonicaPostgreSqlTest extends PostgreSqlIntegrationTest {
                 "venta incorrecta"
         );
 
-        assertThat(concurrentes(() -> stock.revertirVenta(
+        assertThat(concurrentes(fixture.membershipId(), () -> stock.revertirVenta(
                 ventaId,
                 ventaReversal,
                 fixture.usuario()
@@ -174,12 +174,12 @@ class IdempotenciaCanonicaPostgreSqlTest extends PostgreSqlIntegrationTest {
                 .hasMessageContaining("otro contenido");
     }
 
-    private List<Long> concurrentes(Callable<Long> operation) throws Exception {
+    private List<Long> concurrentes(UUID membershipId, Callable<Long> operation) throws Exception {
         CountDownLatch start = new CountDownLatch(1);
         ExecutorService executor = Executors.newFixedThreadPool(2);
 
-        Future<Long> first = executor.submit(() -> ejecutarAlLiberar(start, operation));
-        Future<Long> second = executor.submit(() -> ejecutarAlLiberar(start, operation));
+        Future<Long> first = executor.submit(() -> ejecutarAlLiberar(start, membershipId, operation));
+        Future<Long> second = executor.submit(() -> ejecutarAlLiberar(start, membershipId, operation));
 
         boolean completed = false;
 
@@ -206,12 +206,12 @@ class IdempotenciaCanonicaPostgreSqlTest extends PostgreSqlIntegrationTest {
         }
     }
 
-    private static Long ejecutarAlLiberar(CountDownLatch start, Callable<Long> operation) throws Exception {
+    private static Long ejecutarAlLiberar(CountDownLatch start, UUID membershipId, Callable<Long> operation) throws Exception {
         if (!start.await(5, TimeUnit.SECONDS)) {
             throw new IllegalStateException("Timeout esperando inicio concurrente");
         }
 
-        return operation.call();
+        return withTenant(membershipId, operation);
     }
 
     private Fixture fixture() {
@@ -236,6 +236,9 @@ class IdempotenciaCanonicaPostgreSqlTest extends PostgreSqlIntegrationTest {
                 "PERM_CREDITOS_CONSUMIR"
         );
 
+        UUID membershipId = createActiveMembership(jdbc, user, role);
+        selectMembership(membershipId);
+
         Long alumno = id("""
                 INSERT INTO alumnos(nombre, fecha_incorporacion, activo)
                 VALUES (?, DATE '2026-01-01', true)
@@ -258,7 +261,13 @@ class IdempotenciaCanonicaPostgreSqlTest extends PostgreSqlIntegrationTest {
                 VALUES (?, 'INGRESO', 20, 'Fixture inicial reconciliable', ?, ?)
                 """, stockId, key("stock-inicial"), user);
 
-        return new Fixture(alumno, metodo, stockId, usuarios.findByIdConRolesYPermisos(user).orElseThrow());
+        return new Fixture(
+                alumno,
+                metodo,
+                stockId,
+                usuarios.findByIdConRolesYPermisos(user).orElseThrow(),
+                membershipId
+        );
     }
 
     private void otorgarPermisos(Long usuarioId, Long rolId, String... permisos) {
@@ -325,6 +334,6 @@ class IdempotenciaCanonicaPostgreSqlTest extends PostgreSqlIntegrationTest {
         return prefix + "-" + UUID.randomUUID();
     }
 
-    private record Fixture(Long alumno, Long metodo, Long stock, Usuario usuario) {
+    private record Fixture(Long alumno, Long metodo, Long stock, Usuario usuario, UUID membershipId) {
     }
 }

@@ -4,12 +4,13 @@ import gestudio.auditoria.application.AuditService;
 import gestudio.entidades.Usuario;
 import gestudio.infra.errores.TratadorDeErrores.DisciplinaNotFoundException;
 import gestudio.infra.errores.TratadorDeErrores.OperacionNoPermitidaException;
+import gestudio.infra.seguridad.RbacService;
 import gestudio.repositorios.DisciplinaRepositorio;
-import gestudio.repositorios.UsuarioRepositorio;
 import gestudio.tarifas.api.TarifaDisciplinaRequest;
 import gestudio.tarifas.api.TarifaDisciplinaResponse;
 import gestudio.tarifas.persistence.TarifaDisciplina;
 import gestudio.tarifas.persistence.TarifaDisciplinaRepositorio;
+import gestudio.tenancy.TenantAccess;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,28 +28,29 @@ public class TarifaDisciplinaServicio {
 
     private final TarifaDisciplinaRepositorio tarifas;
     private final DisciplinaRepositorio disciplinas;
-    private final UsuarioRepositorio usuarios;
+    private final RbacService rbac;
     private final AuditService audit;
     private final Clock clock;
 
     public TarifaDisciplinaServicio(TarifaDisciplinaRepositorio tarifas,
                                     DisciplinaRepositorio disciplinas,
-                                    UsuarioRepositorio usuarios,
+                                    RbacService rbac,
                                     AuditService audit,
                                     Clock clock) {
         this.tarifas = tarifas;
         this.disciplinas = disciplinas;
-        this.usuarios = usuarios;
+        this.rbac = rbac;
         this.audit = audit;
         this.clock = clock;
     }
 
     @Transactional
     public TarifaDisciplinaResponse crear(Long disciplinaId, TarifaDisciplinaRequest request, Usuario actor) {
-        Usuario actorActual = actorAutorizado(actor);
+        Usuario actorActual = rbac.exigirPermiso(actor, PERM_TARIFAS_ADMIN, "CREAR_TARIFA");
+        TenantAccess access = rbac.accesoActual(actorActual);
 
         if (request.vigenteDesde().isBefore(LocalDate.now(clock))
-                && !actorActual.tienePermiso(PERM_TARIFAS_HISTORICAS)) {
+                && !access.permissionCodes().contains(PERM_TARIFAS_HISTORICAS)) {
             throw new AccessDeniedException("Permiso requerido: " + PERM_TARIFAS_HISTORICAS);
         }
 
@@ -102,17 +104,6 @@ public class TarifaDisciplinaServicio {
     public TarifaDisciplina vigente(Long disciplinaId, LocalDate fecha) {
         return tarifas.findFirstByDisciplinaIdAndVigenteDesdeLessThanEqualOrderByVigenteDesdeDesc(disciplinaId, fecha)
                 .orElseThrow(() -> new TarifaHistoricaNoDefinidaException(fecha));
-    }
-
-    private Usuario actorAutorizado(Usuario actor) {
-        if (actor == null || actor.getId() == null) {
-            throw new AccessDeniedException("Actor requerido");
-        }
-
-        return usuarios.findByIdConRolesYPermisos(actor.getId())
-                .filter(Usuario::isEnabled)
-                .filter(usuario -> usuario.tienePermiso(PERM_TARIFAS_ADMIN))
-                .orElseThrow(() -> new AccessDeniedException("Actor sin permisos para administrar tarifas"));
     }
 
     private TarifaDisciplinaResponse response(TarifaDisciplina value) {

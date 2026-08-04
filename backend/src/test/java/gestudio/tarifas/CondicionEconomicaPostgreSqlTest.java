@@ -38,6 +38,7 @@ class CondicionEconomicaPostgreSqlTest extends PostgreSqlIntegrationTest {
                 RETURNING id
                 """, Long.class);
 
+        selectMembership(fixture.superadminMembershipId());
         var enero = condiciones.crear(
                 fixture.inscripcionId(),
                 new CondicionEconomicaRequest(
@@ -100,19 +101,23 @@ class CondicionEconomicaPostgreSqlTest extends PostgreSqlIntegrationTest {
                 "Condición futura autorizada"
         );
 
+        selectMembership(fixture.gestorMembershipId());
         assertThat(condiciones.crear(fixture.inscripcionId(), future, fixture.gestor()).id())
                 .isPositive();
 
+        selectMembership(fixture.gestorTarifasMembershipId());
         assertThatThrownBy(() -> condiciones.crear(
                 fixture.inscripcionId(),
                 future,
                 fixture.gestorTarifas()
         )).isInstanceOf(AccessDeniedException.class);
 
+        selectMembership(fixture.gestorMembershipId());
         assertThatThrownBy(() -> condiciones.crear(fixture.inscripcionId(), historical, fixture.gestor()))
                 .isInstanceOf(AccessDeniedException.class)
                 .hasMessageContaining(PERM_TARIFAS_HISTORICAS);
 
+        selectMembership(fixture.superadminMembershipId());
         var created = condiciones.crear(fixture.inscripcionId(), historical, fixture.superadmin());
 
         assertThat(jdbc.queryForObject("""
@@ -142,6 +147,17 @@ class CondicionEconomicaPostgreSqlTest extends PostgreSqlIntegrationTest {
         Long superId = usuario("root-condition-" + suffix, superRole);
         Long gestorId = usuarioConPermiso("gestor-condition-" + suffix, PERM_CONDICIONES_ECONOMICAS_ADMIN);
         Long gestorTarifasId = usuarioConPermiso("gestor-tarifas-" + suffix, PERM_TARIFAS_ADMIN);
+        UUID superadminMembershipId = createActiveMembership(jdbc, superId, superRole);
+        UUID gestorMembershipId = createActiveMembership(
+                jdbc,
+                gestorId,
+                jdbc.queryForObject("SELECT rol_id FROM usuarios WHERE id = ?", Long.class, gestorId)
+        );
+        UUID gestorTarifasMembershipId = createActiveMembership(
+                jdbc,
+                gestorTarifasId,
+                jdbc.queryForObject("SELECT rol_id FROM usuarios WHERE id = ?", Long.class, gestorTarifasId)
+        );
 
         Long profesorId = jdbc.queryForObject("""
                 INSERT INTO profesores(nombre, apellido)
@@ -178,7 +194,10 @@ class CondicionEconomicaPostgreSqlTest extends PostgreSqlIntegrationTest {
                 inscripcionId,
                 usuarios.findByIdConRolesYPermisos(superId).orElseThrow(),
                 usuarios.findByIdConRolesYPermisos(gestorId).orElseThrow(),
-                usuarios.findByIdConRolesYPermisos(gestorTarifasId).orElseThrow()
+                usuarios.findByIdConRolesYPermisos(gestorTarifasId).orElseThrow(),
+                superadminMembershipId,
+                gestorMembershipId,
+                gestorTarifasMembershipId
         );
     }
 
@@ -237,6 +256,12 @@ class CondicionEconomicaPostgreSqlTest extends PostgreSqlIntegrationTest {
                 """, roleId, permiso);
     }
 
-    private record Fixture(Long inscripcionId, Usuario superadmin, Usuario gestor, Usuario gestorTarifas) {
+    private record Fixture(Long inscripcionId,
+                           Usuario superadmin,
+                           Usuario gestor,
+                           Usuario gestorTarifas,
+                           UUID superadminMembershipId,
+                           UUID gestorMembershipId,
+                           UUID gestorTarifasMembershipId) {
     }
 }

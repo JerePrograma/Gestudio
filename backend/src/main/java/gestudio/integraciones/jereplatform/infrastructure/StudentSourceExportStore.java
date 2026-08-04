@@ -2,6 +2,7 @@ package gestudio.integraciones.jereplatform.infrastructure;
 
 import gestudio.integraciones.jereplatform.application.SourceTenantMapping.Mapping;
 import gestudio.integraciones.jereplatform.application.SignedStudentSourceExportPage;
+import gestudio.tenancy.TenantContext;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -30,13 +31,19 @@ public class StudentSourceExportStore {
         jdbc.update(
                 """
                 INSERT INTO jere_platform_student_export_snapshots(
-                    checkpoint, organization_id, tenant_id, status, page_size,
-                    page_count, total_records, created_by, created_at, version)
-                VALUES (?, ?, ?, 'READY', ?, ?, ?, ?, ?, 0)
+                    checkpoint, internal_tenant_id, mapping_id, external_organization_id,
+                    external_tenant_id, source_type, mapping_config_version, signing_key_ref,
+                    status, page_size, page_count, total_records, created_by, created_at, version)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'READY', ?, ?, ?, ?, ?, 0)
                 """,
                 checkpoint,
+                mapping.internalTenantId(),
+                mapping.id(),
                 mapping.organizationId(),
-                mapping.tenantId(),
+                mapping.externalTenantId(),
+                mapping.sourceType(),
+                mapping.configVersion(),
+                mapping.signingKeyRef(),
                 pageSize,
                 pageCount,
                 totalRecords,
@@ -60,10 +67,11 @@ public class StudentSourceExportStore {
         jdbc.update(
                 """
                 INSERT INTO jere_platform_student_export_pages(
-                    snapshot_checkpoint, page_number, cursor_token, next_cursor_token,
+                    internal_tenant_id, snapshot_checkpoint, page_number, cursor_token, next_cursor_token,
                     full_snapshot, record_count, payload, payload_sha256, signature, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
+                TenantContext.requireTenantId(),
                 checkpoint,
                 pageNumber,
                 cursor,
@@ -84,10 +92,13 @@ public class StudentSourceExportStore {
                        p.payload, p.signature
                   FROM jere_platform_student_export_snapshots s
                   JOIN jere_platform_student_export_pages p
-                    ON p.snapshot_checkpoint = s.checkpoint
+                    ON p.internal_tenant_id = s.internal_tenant_id
+                   AND p.snapshot_checkpoint = s.checkpoint
                  WHERE s.checkpoint = ?
-                   AND s.organization_id = ?
-                   AND s.tenant_id = ?
+                   AND s.internal_tenant_id = ?
+                   AND s.mapping_id = ?
+                   AND s.external_organization_id = ?
+                   AND s.external_tenant_id = ?
                    AND ((CAST(? AS UUID) IS NULL AND p.cursor_token IS NULL)
                         OR p.cursor_token = CAST(? AS UUID))
                 """,
@@ -100,8 +111,10 @@ public class StudentSourceExportStore {
                         resultSet.getString("signature")
                 ),
                 checkpoint,
+                mapping.internalTenantId(),
+                mapping.id(),
                 mapping.organizationId(),
-                mapping.tenantId(),
+                mapping.externalTenantId(),
                 cursor,
                 cursor
         ).stream().findFirst();

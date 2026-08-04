@@ -12,6 +12,18 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class ReciboPathResolverTest {
 
+    @Test
+    void resuelveArchivoDentroDelNamespaceTenant() throws Exception {
+        Path root = Files.createDirectories(temp.resolve("root-tenant"));
+        Path receipt = root.resolve("10000000-0000-0000-0000-000000000001/recibos/recibo_7.pdf");
+        Files.createDirectories(receipt.getParent());
+        Files.writeString(receipt, "pdf");
+
+        assertThat(ReciboPathResolver.resolveExistingFile(root,
+                "10000000-0000-0000-0000-000000000001/recibos/recibo_7.pdf"))
+                .isEqualTo(receipt.toRealPath());
+    }
+
     @TempDir
     Path temp;
 

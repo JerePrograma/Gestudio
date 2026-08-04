@@ -1,5 +1,6 @@
 import { createContext } from "react";
 import { PERMISSIONS, type PermissionCode } from "../../config/permissions";
+import type { TenantStatus, TenantSummary } from "../../types/types";
 
 const PERMISSION_CODES = new Set<string>(Object.values(PERMISSIONS));
 
@@ -10,12 +11,24 @@ export interface UserProfile {
   roles: string[];
   permisos: string[];
   activo: boolean;
+  tenantActivo: TenantSummary;
+  tenantsDisponibles: TenantSummary[];
+}
+
+export interface TenantSelection {
+  selectionRequired: true;
+  tenants: TenantSummary[];
 }
 
 export interface AuthContextProps {
   isAuth: boolean;
   loading: boolean;
-  login: (nombreUsuario: string, contrasena: string) => Promise<void>;
+  login: (
+    nombreUsuario: string,
+    contrasena: string,
+    tenantId?: string,
+  ) => Promise<TenantSelection | null>;
+  switchTenant: (tenantId: string) => Promise<void>;
   logout: () => Promise<void>;
   accessToken: string | null;
   user: UserProfile | null;
@@ -45,7 +58,45 @@ export const profileHasAnyPermission = (
 export const isAuthenticatedSession = (
   accessToken: string | null,
   user: UserProfile | null,
-): boolean => accessToken !== null && user?.activo === true;
+): boolean =>
+  accessToken !== null &&
+  user?.activo === true &&
+  user.tenantActivo.estado === "ACTIVE";
+
+const TENANT_STATUSES = new Set<TenantStatus>([
+  "ACTIVE",
+  "SUSPENDED",
+  "ARCHIVED",
+]);
+const UUID_PATTERN = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+
+export const sanitizeTenantSummary = (value: unknown): TenantSummary => {
+  if (!value || typeof value !== "object") {
+    throw new Error("Organización inválida");
+  }
+
+  const raw = value as Record<string, unknown>;
+
+  if (
+    typeof raw.id !== "string" ||
+    !UUID_PATTERN.test(raw.id) ||
+    typeof raw.codigo !== "string" ||
+    raw.codigo.length === 0 ||
+    typeof raw.nombre !== "string" ||
+    raw.nombre.length === 0 ||
+    typeof raw.estado !== "string" ||
+    !TENANT_STATUSES.has(raw.estado as TenantStatus)
+  ) {
+    throw new Error("Organización inválida");
+  }
+
+  return {
+    id: raw.id,
+    codigo: raw.codigo,
+    nombre: raw.nombre,
+    estado: raw.estado as TenantStatus,
+  };
+};
 
 export const sanitizeUserProfile = (value: unknown): UserProfile => {
   if (!value || typeof value !== "object") {
@@ -61,9 +112,28 @@ export const sanitizeUserProfile = (value: unknown): UserProfile => {
     !Array.isArray(raw.roles) ||
     !raw.roles.every((role) => typeof role === "string" && /^[A-Z][A-Z0-9_]{2,95}$/.test(role)) ||
     !Array.isArray(raw.permisos) ||
-    !raw.permisos.every((permission) => typeof permission === "string")
+    !raw.permisos.every((permission) => typeof permission === "string") ||
+    !Array.isArray(raw.tenantsDisponibles)
   ) {
     throw new Error("Perfil de usuario inválido");
+  }
+
+  const tenantActivo = sanitizeTenantSummary(raw.tenantActivo);
+  const tenantsDisponibles = [
+    ...new Map(
+      raw.tenantsDisponibles
+        .map(sanitizeTenantSummary)
+        .map((tenant) => [tenant.id, tenant]),
+    ).values(),
+  ];
+
+  if (
+    tenantActivo.estado !== "ACTIVE" ||
+    !tenantsDisponibles.some(
+      (tenant) => tenant.id === tenantActivo.id && tenant.estado === "ACTIVE",
+    )
+  ) {
+    throw new Error("Organización activa inválida");
   }
 
   return {
@@ -75,6 +145,8 @@ export const sanitizeUserProfile = (value: unknown): UserProfile => {
       (permission): permission is string => typeof permission === "string" && PERMISSION_CODES.has(permission),
     ))],
     activo: raw.activo,
+    tenantActivo,
+    tenantsDisponibles,
   };
 };
 
