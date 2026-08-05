@@ -127,6 +127,10 @@ jobs:
               Get-ChildItem "./scripts/remote-demo" -Filter "*.ps1" -File |
                 Sort-Object FullName |
                 ForEach-Object FullName
+            ) + @(
+              Get-ChildItem "./scripts/deploy" -Filter "*.ps1" -File |
+                Sort-Object FullName |
+                ForEach-Object FullName
             )
             foreach ($path in $paths) {
               $tokens = $null
@@ -144,7 +148,7 @@ jobs:
             }
           '
 
-  remote-demo-powershell:
+  windows-powershell:
     runs-on: windows-latest
     timeout-minutes: 10
 
@@ -152,7 +156,7 @@ jobs:
       - name: Checkout verified SHA
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
-      - name: Parse remote demo scripts with Windows PowerShell 5.1
+      - name: Parse Windows scripts with Windows PowerShell 5.1
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
@@ -160,6 +164,10 @@ jobs:
             (Resolve-Path '.\scripts\demo-remote.ps1').Path
           ) + @(
             Get-ChildItem '.\scripts\remote-demo' -Filter '*.ps1' -File |
+              Sort-Object FullName |
+              ForEach-Object FullName
+          ) + @(
+            Get-ChildItem '.\scripts\deploy' -Filter '*.ps1' -File |
               Sort-Object FullName |
               ForEach-Object FullName
           )
@@ -178,7 +186,7 @@ jobs:
             }
           }
 
-      - name: Parse remote demo scripts with PowerShell 7
+      - name: Parse Windows scripts with PowerShell 7
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -186,6 +194,10 @@ jobs:
             (Resolve-Path '.\scripts\demo-remote.ps1').Path
           ) + @(
             Get-ChildItem '.\scripts\remote-demo' -Filter '*.ps1' -File |
+              Sort-Object FullName |
+              ForEach-Object FullName
+          ) + @(
+            Get-ChildItem '.\scripts\deploy' -Filter '*.ps1' -File |
               Sort-Object FullName |
               ForEach-Object FullName
           )
@@ -202,6 +214,21 @@ jobs:
               $errors | Format-List | Out-Host
               exit 1
             }
+          }
+
+      - name: Validate deploy launcher from another directory
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Push-Location $env:RUNNER_TEMP
+          try {
+            & cmd.exe /d /c ('call "' + $env:GITHUB_WORKSPACE + '\deploy.cmd" --help')
+            if ($LASTEXITCODE -ne 0) {
+              throw "deploy.cmd --help returned $LASTEXITCODE"
+            }
+          }
+          finally {
+            Pop-Location
           }
 
   build-images:

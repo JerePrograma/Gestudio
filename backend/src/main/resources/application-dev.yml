@@ -7,6 +7,7 @@ spring:
     username: ${SPRING_DATASOURCE_USERNAME:gestudio_app_local}
     password: ${SPRING_DATASOURCE_PASSWORD:local-only-app-change-me}
   flyway:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/gestudio_db}
     user: ${SPRING_FLYWAY_USER:postgres}
     password: ${SPRING_FLYWAY_PASSWORD:local-only-change-me}
 

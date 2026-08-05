@@ -140,7 +140,7 @@ try {
 
     Invoke-Native -FilePath 'docker' -Arguments @(
         'exec', $dbContainer, 'sh', '-ec',
-        'PGPASSWORD="$POSTGRES_PASSWORD" pg_dump --format=custom --compress=9 --no-owner --no-privileges --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" --file="$1"',
+        'PGPASSWORD="$POSTGRES_PASSWORD" pg_dump --format=custom --compress=9 --no-owner --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" --file="$1"',
         'sh', $remoteDump
     ) | Out-Null
     Invoke-Native -FilePath 'docker' -Arguments @('cp', "${dbContainer}:$remoteDump", $dumpPath) | Out-Null

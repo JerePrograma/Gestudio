@@ -79,6 +79,7 @@ logs/
 /backup-*/
 /output*.txt
 /backend/backup-*/
+/.gestudio-deploy/
 # Coverage Reports
 coverage/
 lcov-report/

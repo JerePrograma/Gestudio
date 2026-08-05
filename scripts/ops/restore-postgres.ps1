@@ -343,7 +343,7 @@ $restoreDatabaseScript = @'
 set -eu
 PGPASSWORD="$POSTGRES_PASSWORD" dropdb --username="$POSTGRES_USER" --maintenance-db=postgres --if-exists --force "$1"
 PGPASSWORD="$POSTGRES_PASSWORD" createdb --username="$POSTGRES_USER" --maintenance-db=postgres "$1"
-PGPASSWORD="$POSTGRES_PASSWORD" pg_restore --exit-on-error --no-owner --no-privileges --username="$POSTGRES_USER" --dbname="$1" "$2"
+PGPASSWORD="$POSTGRES_PASSWORD" pg_restore --exit-on-error --no-owner --username="$POSTGRES_USER" --dbname="$1" "$2"
 '@
 $restoreDatabaseScriptBase64 = [Convert]::ToBase64String(
     [Text.Encoding]::UTF8.GetBytes($restoreDatabaseScript))

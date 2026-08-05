@@ -11,6 +11,9 @@
 - Continuidad reanudada: `2026-08-04`; `git fetch origin` volvió a confirmar
   `HEAD == origin/main == 1d8ad314abdb3efa0ab9704395c2505b98087672`, sin
   staging, conflictos ni worktrees adicionales.
+- Primera publicación de la continuidad: commit
+  `1598b9ecf956d5d0ee002a2048c30fefe8438350`, enviado normalmente a
+  `origin/main`; el árbol quedó limpio y alineado antes de investigar Actions.
 - Worktrees: solo `C:\laburo\Gestudio`, asociado a `refs/heads/main`.
 
 ## Restricciones
@@ -141,14 +144,34 @@
   atribuidos al desarrollo multitenancy; no hay paths sospechosos ni ajenos.
 - Documentación, secretos, recursos protegidos, artefactos, V1-V7, lockfile y
   diff fueron revisados; identidad/origen e index explícito fueron revalidados.
-  Faltan únicamente commit, push y la fotografía protegida posterior.
+- La fotografía posterior a la primera publicación conservó sin cambios el
+  repositorio, los contenedores, los endpoints y `public-deployment.json`
+  protegidos.
+- Actions del primer SHA expuso dos regresiones adicionales: orden de tests en
+  la auditoría SQL y falta de `spring.flyway.url` con el datasource envuelto.
 
 ## Cambios implementados
 
-- En la continuidad actual no fue necesario modificar código productivo,
+- Hasta la primera publicación no fue necesario modificar código productivo,
   migraciones ni pruebas: PostgreSQL real confirmó las correcciones heredadas.
-  Se actualizaron esta autorreferencia y el estado normativo de gobernanza con
-  la evidencia ejecutada.
+  Actions posterior identificó dos defectos reales de validación/configuración,
+  corregidos sin cambiar migraciones ni contratos productivos.
+- `DataAuditSqlPostgreSqlTest`: ejecuta Flyway y las auditorías de solo lectura
+  en una base efímera propia; deja de depender de los datos que otros tests
+  PostgreSQL escriban en la base compartida.
+- Perfiles `dev`, `prod` y `remote-demo`: Flyway recibe explícitamente la misma
+  URL PostgreSQL que el datasource, conservando usuarios migrador/runtime
+  distintos y evitando que Spring Boot intente clonar `TenantAwareDataSource`.
+- `RuntimeProfilesTest`: regresión que exige URL compartida y credenciales
+  separadas en los tres perfiles operativos.
+- El verificador oficial de backup/restore avanzó después del fix de Flyway y
+  reveló un tercer defecto: `pg_dump` y `pg_restore` omitían ACLs con
+  `--no-privileges`. Al recrear una base con historial V11, Flyway no reejecuta
+  V10 y el runtime queda sin grants; `ReceiptNamespaceMigrator` falló primero
+  con `SQLSTATE 42501 permission denied for table tenants`.
+- `backup-postgres.ps1`/`restore-postgres.ps1`: el backup confiable conserva y
+  el restore aplica los grants ya publicados por Flyway, manteniendo
+  `--no-owner`; el backend con usuario runtime es la regresión end-to-end.
 - `AutenticacionServiceTest.credenciales`: reemplazado el mock Mockito anidado por el record inmutable privado `Credenciales`, implementación exacta de los cinco getters de la proyección. No cambió el contrato productivo ni los asserts.
 - `AuditService.actorRoleSnapshot`: el snapshot usa `TenantAccessService.currentAccess` sólo con tenant y membership presentes; ausencia o denegación produce `null`, fallos de infraestructura no se ocultan. Añadido `AuditServiceTest`.
 - `LocalAdminPasswordResetRunner.run`: abre el tenant inicial antes de consultar el rol administrativo y garantiza el cierre del contexto; el test comprueba que no queda contexto residual.
@@ -219,6 +242,15 @@ superado por las ejecuciones actuales con Docker y Java 21 listadas debajo.
 | `npm test` | PASS | 25.3 s pared | 166 | 0/0/0 |
 | `npm run lint` | PASS | 8.5 s pared | - | 0 errores |
 | `npm run build` con `VITE_API_BASE_URL=https://example.invalid/api` por proceso | PASS | 21.4 s pared | 2388 módulos | 0 errores |
+| `\.\mvnw.cmd '-Dtest=RuntimeProfilesTest,DataAuditSqlPostgreSqlTest' test` | PASS después de fixes | 59.441 s Maven / 62.6 s pared | 6 | 0/0/0 |
+| `\.\mvnw.cmd '-Dsurefire.runOrder=reversealphabetical' '-Dtest=SchedulerIdempotencyPostgreSqlTest,DataAuditSqlPostgreSqlTest' test` | PASS con el orden Linux que falló | 1:21 min Maven / 84.2 s pared | 2 | 0/0/0 |
+| `pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\ops\verify-backup-restore.ps1` | FAIL reproducido tras 10 pasos funcionales; limpieza PASS | 9:06 min script / 547.3 s pared | gate operativo | `permission denied for table tenants` después de restore sin ACL |
+| `pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\ops\verify-backup-restore.ps1` después de conservar ACLs | PASS 12/12; limpieza PASS | 2:46 min pared | gate operativo | 0 |
+| `.\mvnw.cmd clean verify` después de los fixes remotos | PASS | 2:45 min pared | 283 | 0/0/2 |
+| `npm test` | PASS | ejecución actual | 166 (9 Node + 157 Vitest) | 0/0/0 |
+| `npm run lint` | PASS | ejecución actual | - | 0 errores |
+| `npm run build` con `VITE_API_BASE_URL=https://example.invalid/api` por proceso | PASS | ejecución actual | 2388 módulos | 0 errores |
+| `pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\deploy\test-idempotency.ps1` | PASS integral final | 576.53 s | help, dry-run, doble deploy, verify, lock, Docker inválido, V7→V11 | 0 |
 
 Testcontainers 1.21.4 conectó al Engine 29.3.1 y levantó PostgreSQL
 15.18-alpine3.24 en puertos host aleatorios `59840` y `62906`; no usó los
@@ -240,11 +272,79 @@ puertos, volúmenes, networks ni contenedores de la demo.
   build. `package-lock.json` quedó sin diff y conservó SHA-256
   `C37EED9E41953E2B1E82D7A054F9F5D6D340AB22CCF1D6CDA9F3BA39E5C31113`.
 
+## Despliegue idempotente
+
+- Launcher: `deploy.cmd`, independiente del directorio actual, Batch mínimo y
+  propagación exacta del código de PowerShell.
+- Motor PowerShell: `scripts/deploy/deploy.ps1`, compatible con PowerShell 7 y
+  Windows PowerShell 5.1.
+- Verificador: `scripts/deploy/verify-deployment.ps1`.
+- Prueba permanente: `scripts/deploy/test-idempotency.ps1`.
+- Compose: `docker-compose.yml` existente, sin duplicar la definición del stack.
+- Proyecto normal: `gestudio-windows`; distinto de `gestudio-remote-demo`.
+- Configuración, estado, logs y backups: subdirectorios de
+  `.gestudio-deploy/`, ignorado por Git.
+- Secretos: generados una sola vez, reutilizados, no impresos ni incluidos en
+  el estado JSON.
+- Backups: solo antes de un cambio real de migraciones sobre una base existente,
+  mediante `scripts/ops/backup-postgres.ps1`; sin restore automático.
+- Volúmenes: persistentes; el flujo normal nunca ejecuta `down`, `down -v`,
+  `rm` ni comandos de prune.
+- Códigos: `0` correcto, `2` preflight/argumento, `3` configuración, `4`
+  Docker, `5` build/migración, `6` health, `7` verificación, `8` lock, `9`
+  backup y `10` drift no reparable.
+
+### Ejecuciones aisladas del deploy
+
+| Ejecución | Modo | Resultado | Exit code | Fingerprint | Duración |
+|---|---|---:|---:|---|---:|
+| 0 | `--help` | PASS | 0 | no aplica | 0.98 s |
+| 0 | `--dry-run` | PASS, 0 recursos | 0 | `b8d81adbe8141bdfc3e2a1bd5ccb81d074492beff1f12766f239d43a335bd7dd` | 4.63 s |
+| 1 | normal, ruta con espacios | PASS | 0 | mismo | 165.72 s |
+| 2 | normal sin cambios | PASS | 0 | mismo | 8.01 s |
+| 3 | `--verify-only` | PASS sin mutaciones | 0 | mismo | 5.84 s |
+
+### Evidencia de idempotencia
+
+- Proyecto: `gestudio-idem-3248fffb4b`.
+- Volumen PostgreSQL en ambas ejecuciones:
+  `gestudio-idem-3248fffb4b_postgres_data`.
+- Hash de secretos en ambas ejecuciones:
+  `a1e575c6416cb4d93849412fb366141b40538f97d92fb4e6e042d170bab1efea`.
+- Flyway antes/después: `11|11`; filas agregadas en la segunda: `0`.
+- Bootstrap antes/después: tenants `1`, usuarios `1`, memberships `1`, roles
+  `6`, permisos `32`, membership-roles `1`.
+- IDs de contenedores antes/después: `6de7cbfbafcd`, `9328a15b0577`,
+  `fce69dc031cf`; recreaciones innecesarias: `0`.
+- Backup innecesario en la segunda ejecución: `0`.
+- Lock concurrente: dueño `0`, competidor `8`, sin mutar recursos.
+- Ruta con espacios: PASS.
+- Docker inaccesible: código `4`, estado y recursos sin cambios.
+- Recursos ajenos eliminados: contenedores `0`, volúmenes `0`, redes `0`.
+- Demo `gestudio-remote-demo`: IDs sin cambios.
+
+### Upgrade y backup
+
+- Proyecto aislado: `gestudio-upgrade-3248fffb4b`.
+- Versión inicial/final: V7/V11.
+- Volumen antes/después:
+  `gestudio-upgrade-3248fffb4b_postgres_data`.
+- Hash de secretos antes/después:
+  `28c870a20a28405e93109254b5f76a6ffde037d75838d431927796cd53497222`.
+- Backup: uno, creado antes de V8 y validado mediante manifiesto, dump y
+  recibos; Flyway del manifiesto V7.
+- ACL de base y grants del migrador: conservados.
+- Grants del runtime: establecidos por el upgrade; runtime sin privilegios
+  elevados y RLS `GREEN`.
+- Dato representativo: conservado exactamente una vez.
+- Migraciones: V8, V9, V10 y V11 aplicadas una vez.
+- Reejecución V11: PASS, sin migración, duplicación ni backup adicional.
+
 ## Pendientes
 
-- Crear el commit y hacer push normal después de la última revisión del index.
-- Verificar `HEAD == origin/main`, árbol limpio y recursos protegidos después
-  del push.
+- Revalidar el diff final y los gates afectados después de documentación y CI.
+- Crear y publicar un segundo commit normal; confirmar todos los Actions del SHA
+  definitivo, `HEAD == origin/main` y árbol limpio.
 
 ## Preparación de commit
 
@@ -264,12 +364,11 @@ puertos, volúmenes, networks ni contenedores de la demo.
 
 ## Commit y push
 
-- Hash: se verifica después de crear el commit y se informa externamente; el
-  SHA de un commit no puede auto-incrustarse dentro de su propio contenido.
-- Mensaje previsto: `feat: complete tenant-aware authentication under PostgreSQL RLS`.
-- Push: no ejecutado.
-- Motivo actual: backend, PostgreSQL, frontend, limpieza, secret scan, diff,
-  recursos protegidos e index pasan; commit y push aún no se ejecutaron.
+- Primer hash: `1598b9ecf956d5d0ee002a2048c30fefe8438350`.
+- Primer mensaje: `feat: complete tenant-aware authentication under PostgreSQL RLS`.
+- Primer push: PASS normal a `origin/main`; SHAs alineados y árbol limpio.
+- Segundo commit/push: pendientes hasta que los fixes de los gates remotos
+  pasen localmente y el diff explícito vuelva a ser revisado.
 
 ## Riesgos o limitaciones finales
 
@@ -284,6 +383,6 @@ puertos, volúmenes, networks ni contenedores de la demo.
 - La demo protegida está activa y sólo se inspeccionó en lectura: frontend 200,
   perfil anónimo 404 vacío, readiness 200 y dos contenedores healthy. No hay
   `cloudflared` visible.
-- La certificación operativa absoluta definida por gobernanza continúa AMBER
-  porque el backup/restore multitenant no formó parte de este cierre técnico.
+- El backup/restore aislado pasó 12/12 y el upgrade V7→V11 pasó sobre Docker
+  real; la promoción productiva externa continúa fuera del alcance local.
 - No se intentó iniciar Docker ni la demo porque el contrato operativo prohíbe hacerlo automáticamente y exige no mutar `gestudio-remote-demo`.

@@ -11,6 +11,7 @@ spring:
       ddl-auto: validate
   flyway:
     enabled: true
+    url: ${SPRING_DATASOURCE_URL}
     user: ${SPRING_FLYWAY_USER}
     password: ${SPRING_FLYWAY_PASSWORD}
     baseline-on-migrate: false

@@ -22,12 +22,17 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.autoconfigure.mail.MailProperties;
+import org.springframework.boot.env.YamlPropertySourceLoader;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.test.context.runner.ContextConsumer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.core.io.ClassPathResource;
+
+import java.io.IOException;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -92,6 +97,21 @@ class RuntimeProfilesTest {
             assertThat(context.getStartupFailure()).hasRootCauseMessage(
                     "Debe activar exactamente un perfil Spring explícito: dev, test, prod o remote-demo");
         });
+    }
+
+    @Test
+    void flywayUsaLaUrlDelDatasourceConCredencialesSeparadas() throws IOException {
+        for (String profile : List.of("dev", "prod", "remote-demo")) {
+            var source = new YamlPropertySourceLoader().load(
+                    profile, new ClassPathResource("application-" + profile + ".yml")).getFirst();
+
+            assertThat(source.getProperty("spring.flyway.url"))
+                    .as("URL Flyway del perfil %s", profile)
+                    .isEqualTo(source.getProperty("spring.datasource.url"));
+            assertThat(source.getProperty("spring.flyway.user"))
+                    .as("usuario Flyway del perfil %s", profile)
+                    .isNotEqualTo(source.getProperty("spring.datasource.username"));
+        }
     }
 
     private void run(String profile,

@@ -11,6 +11,7 @@ spring:
       ddl-auto: validate
   flyway:
     enabled: ${SPRING_FLYWAY_ENABLED:true}
+    url: ${SPRING_DATASOURCE_URL}
     user: ${SPRING_FLYWAY_USER}
     password: ${SPRING_FLYWAY_PASSWORD}
 jwt:

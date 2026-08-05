@@ -78,6 +78,10 @@ nueva migración. La demo estable protegida continúa en V7.
 
 ## Inicio recomendado: demo persistente
 
+Para un despliegue local idempotente desde Windows use `deploy.cmd`; requisitos,
+modos, estado, secretos, backups y recuperación están en la
+[guía de despliegue para Windows](docs/deployment-windows.md).
+
 ```powershell
 git clone https://github.com/JerePrograma/Gestudio.git
 Set-Location .\Gestudio
@@ -246,6 +250,7 @@ El gate local usa únicamente dobles y configuración sintética. Véase
 
 ## Documentación
 
+- [Despliegue idempotente en Windows](docs/deployment-windows.md)
 - [Puesta en marcha y flujo de uso](docs/operations/local-runbook.md)
 - [Backup y restore](docs/operations/backup-restore.md)
 - [Rollback](docs/operations/rollback.md)
