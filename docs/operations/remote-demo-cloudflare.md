@@ -93,6 +93,8 @@ Copy-Item .\.env.remote-demo.example .\.env.remote-demo
 Completar valores reales exclusivamente en `.env.remote-demo`:
 
 - `POSTGRES_PASSWORD`: aleatoria y exclusiva de esta base;
+- `POSTGRES_APP_PASSWORD`: aleatoria, exclusiva del usuario runtime y distinta
+  de `POSTGRES_PASSWORD`;
 - `JWT_SECRET`: aleatorio, mínimo 32 bytes UTF-8;
 - `APP_OBSERVABILITY_METRICS_TOKEN`: aleatorio, mínimo 32 bytes UTF-8 y distinto
   de `JWT_SECRET`;

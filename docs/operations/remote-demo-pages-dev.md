@@ -112,6 +112,7 @@ APP_REMOTE_DEMO_PROXY_TOKEN=<secreto-aleatorio-independiente>
 El resto de los secretos debe seguir siendo independiente:
 
 - `POSTGRES_PASSWORD`;
+- `POSTGRES_APP_PASSWORD`;
 - `JWT_SECRET`;
 - `APP_REMOTE_DEMO_PROXY_TOKEN`;
 - `APP_OBSERVABILITY_METRICS_TOKEN`.
@@ -123,7 +124,7 @@ no directamente con Quick Tunnel.
 
 1. Actualizar `main` y comprobar árbol limpio.
 2. Crear el proyecto Pages y obtener su URL `*.pages.dev`.
-3. Crear `.env.remote-demo` con ese origin y cuatro secretos independientes.
+3. Crear `.env.remote-demo` con ese origin y cinco secretos independientes.
 4. Iniciar el stack local mediante `scripts/demo-remote.ps1 -Action Start`.
 5. Iniciar Quick Tunnel hacia `http://127.0.0.1:18080`.
 6. Copiar el hostname `trycloudflare.com` a `GESTUDIO_BACKEND_ORIGIN`.

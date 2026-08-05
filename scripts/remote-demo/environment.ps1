@@ -30,6 +30,7 @@
 
     foreach ($secretName in @(
         "POSTGRES_PASSWORD",
+        "POSTGRES_APP_PASSWORD",
         "JWT_SECRET",
         "APP_REMOTE_DEMO_PROXY_TOKEN",
         "APP_OBSERVABILITY_METRICS_TOKEN"
@@ -88,7 +89,8 @@ function Assert-EnvironmentContract {
 
     foreach ($name in @(
         "SPRING_PROFILES_ACTIVE", "SPRING_JPA_HIBERNATE_DDL_AUTO", "SPRING_FLYWAY_ENABLED",
-        "POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD", "JWT_SECRET", "JWT_ISSUER",
+        "POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_APP_USER",
+        "POSTGRES_APP_PASSWORD", "JWT_SECRET", "JWT_ISSUER",
         "JWT_ACCESS_TOKEN_TTL", "JWT_REFRESH_TOKEN_TTL", "APP_TIME_ZONE", "APP_RECEIPTS_PATH",
         "APP_CORS_ALLOWED_ORIGINS", "APP_REMOTE_DEMO_PROXY_TOKEN", "APP_OBSERVABILITY_METRICS_TOKEN",
         "APP_SECURITY_REFRESH_COOKIE_NAME", "APP_SECURITY_REFRESH_COOKIE_SECURE",
@@ -117,6 +119,7 @@ function Assert-EnvironmentContract {
     Assert-Equal (Get-EnvironmentValue "COMPOSE_PROJECT_NAME") $script:project "COMPOSE_PROJECT_NAME remoto incorrecto"
     Assert-Equal (Get-EnvironmentValue "POSTGRES_DB") "gestudio_remote_demo" "POSTGRES_DB remoto incorrecto"
     Assert-Equal (Get-EnvironmentValue "POSTGRES_USER") "gestudio_remote_demo" "POSTGRES_USER remoto incorrecto"
+    Assert-Equal (Get-EnvironmentValue "POSTGRES_APP_USER") "gestudio_remote_demo_runtime" "POSTGRES_APP_USER remoto incorrecto"
     Assert-Equal (Get-EnvironmentValue "JWT_ISSUER") "gestudio-remote-demo" "JWT_ISSUER remoto incorrecto"
     Assert-Equal (Get-EnvironmentValue "JWT_REFRESH_TOKEN_TTL") "P1D" "JWT_REFRESH_TOKEN_TTL remoto incorrecto"
     Assert-Equal (Get-EnvironmentValue "APP_SECURITY_REFRESH_COOKIE_NAME") "gestudio_remote_demo_refresh" "Nombre de cookie remoto incorrecto"
@@ -125,6 +128,7 @@ function Assert-EnvironmentContract {
 
     foreach ($name in @(
         "POSTGRES_PASSWORD",
+        "POSTGRES_APP_PASSWORD",
         "JWT_SECRET",
         "APP_REMOTE_DEMO_PROXY_TOKEN",
         "APP_OBSERVABILITY_METRICS_TOKEN"
@@ -138,6 +142,13 @@ function Assert-EnvironmentContract {
     $databasePassword = Get-EnvironmentValue "POSTGRES_PASSWORD"
     if ([Text.Encoding]::UTF8.GetByteCount($databasePassword) -lt 16) {
         throw "POSTGRES_PASSWORD debe tener al menos 16 bytes UTF-8"
+    }
+    $runtimeDatabasePassword = Get-EnvironmentValue "POSTGRES_APP_PASSWORD"
+    if ([Text.Encoding]::UTF8.GetByteCount($runtimeDatabasePassword) -lt 16) {
+        throw "POSTGRES_APP_PASSWORD debe tener al menos 16 bytes UTF-8"
+    }
+    if ($databasePassword -ceq $runtimeDatabasePassword) {
+        throw "POSTGRES_PASSWORD y POSTGRES_APP_PASSWORD deben ser independientes"
     }
     $jwtSecret = Get-EnvironmentValue "JWT_SECRET"
     if ([Text.Encoding]::UTF8.GetByteCount($jwtSecret) -lt 32) {
@@ -157,8 +168,13 @@ function Assert-EnvironmentContract {
 
     $databaseName = Get-EnvironmentValue "POSTGRES_DB"
     $databaseUser = Get-EnvironmentValue "POSTGRES_USER"
-    if ($databaseName -notmatch '^[A-Za-z0-9_.-]+$' -or $databaseUser -notmatch '^[A-Za-z0-9_.-]+$') {
-        throw "POSTGRES_DB y POSTGRES_USER sólo pueden contener letras, números, punto, guion o guion bajo"
+    $runtimeDatabaseUser = Get-EnvironmentValue "POSTGRES_APP_USER"
+    if ($databaseName -notmatch '^[A-Za-z0-9_.-]+$' -or $databaseUser -notmatch '^[A-Za-z0-9_.-]+$' -or
+            $runtimeDatabaseUser -notmatch '^[A-Za-z0-9_.-]+$') {
+        throw "POSTGRES_DB, POSTGRES_USER y POSTGRES_APP_USER sólo pueden contener letras, números, punto, guion o guion bajo"
+    }
+    if ($databaseUser -ceq $runtimeDatabaseUser) {
+        throw "POSTGRES_USER y POSTGRES_APP_USER deben ser distintos"
     }
 
     $backendPort = 0
