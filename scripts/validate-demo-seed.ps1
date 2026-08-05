@@ -39,6 +39,8 @@ $backendPort = $null
 $postgresDb = "gestudio_demo_$suffix"
 $postgresUser = "gestudio_demo_$suffix"
 $postgresPassword = $null
+$postgresAppUser = "gestudio_demo_app_$suffix"
+$postgresAppPassword = $null
 $jwtSecret = $null
 $anchorDate = $null
 $businessDate = $null
@@ -716,8 +718,10 @@ function Assert-BcryptPair {
 function Configure-BackendEnvironment {
     Set-ScopedEnvironmentVariable -Name "SPRING_PROFILES_ACTIVE" -Value "dev"
     Set-ScopedEnvironmentVariable -Name "SPRING_DATASOURCE_URL" -Value "jdbc:postgresql://127.0.0.1:$($script:dbPort)/$($script:postgresDb)"
-    Set-ScopedEnvironmentVariable -Name "SPRING_DATASOURCE_USERNAME" -Value $script:postgresUser
-    Set-ScopedEnvironmentVariable -Name "SPRING_DATASOURCE_PASSWORD" -Value $script:postgresPassword
+    Set-ScopedEnvironmentVariable -Name "SPRING_DATASOURCE_USERNAME" -Value $script:postgresAppUser
+    Set-ScopedEnvironmentVariable -Name "SPRING_DATASOURCE_PASSWORD" -Value $script:postgresAppPassword
+    Set-ScopedEnvironmentVariable -Name "SPRING_FLYWAY_USER" -Value $script:postgresUser
+    Set-ScopedEnvironmentVariable -Name "SPRING_FLYWAY_PASSWORD" -Value $script:postgresPassword
     Set-ScopedEnvironmentVariable -Name "SPRING_JPA_HIBERNATE_DDL_AUTO" -Value "validate"
     Set-ScopedEnvironmentVariable -Name "SPRING_FLYWAY_ENABLED" -Value "true"
     Set-ScopedEnvironmentVariable -Name "SPRING_FLYWAY_BASELINE_ON_MIGRATE" -Value "false"
@@ -940,6 +944,11 @@ function Get-DemoSnapshot {
     return Invoke-Sql -Query @"
 WITH demo_users AS (
     SELECT id FROM usuarios WHERE lower(nombre_usuario) LIKE 'demo-%'
+), demo_memberships AS (
+    SELECT m.id
+    FROM tenant_memberships m
+    JOIN demo_users u ON u.id = m.usuario_id
+    WHERE m.tenant_id = '00000000-0000-0000-0000-000000000001'
 ), demo_alumnos AS (
     SELECT id FROM alumnos WHERE email LIKE '%@correo.local'
 ), demo_inscripciones AS (
@@ -977,6 +986,10 @@ SELECT (jsonb_build_object(
     'usersHash', (SELECT md5(COALESCE(string_agg(u.id::text || '|' || lower(u.nombre_usuario) || '|' || u.rol_id::text || '|' || u.activo::text || '|' || u.auth_version::text, E'\n' ORDER BY u.id), '')) FROM usuarios u JOIN demo_users du ON du.id=u.id),
     'userRolesCount', (SELECT count(*) FROM usuario_roles ur JOIN demo_users u ON u.id = ur.usuario_id),
     'userRolesIds', (SELECT md5(COALESCE(string_agg(ur.usuario_id::text || ':' || ur.rol_id::text, ',' ORDER BY ur.usuario_id, ur.rol_id), '')) FROM usuario_roles ur JOIN demo_users u ON u.id = ur.usuario_id),
+    'membershipsCount', (SELECT count(*) FROM demo_memberships),
+    'membershipsIds', (SELECT md5(COALESCE(string_agg(id::text, ',' ORDER BY id), '')) FROM demo_memberships),
+    'membershipRolesCount', (SELECT count(*) FROM tenant_membership_roles mr JOIN demo_memberships m ON m.id = mr.membership_id),
+    'membershipRolesHash', (SELECT md5(COALESCE(string_agg(mr.membership_id::text || ':' || mr.role_id::text, ',' ORDER BY mr.membership_id, mr.role_id), '')) FROM tenant_membership_roles mr JOIN demo_memberships m ON m.id = mr.membership_id),
     'studentsCount', (SELECT count(*) FROM demo_alumnos),
     'studentsIds', (SELECT md5(COALESCE(string_agg(id::text, ',' ORDER BY id), '')) FROM demo_alumnos),
     'enrollmentsCount', (SELECT count(*) FROM demo_inscripciones),
@@ -1037,6 +1050,8 @@ function Assert-ExpectedDemoCounts {
     $expected = [ordered]@{
         usersCount = 5
         userRolesCount = 5
+        membershipsCount = 5
+        membershipRolesCount = 5
         studentsCount = 28
         enrollmentsCount = 34
         monthlyCount = 70
@@ -1374,7 +1389,7 @@ try {
             Get-ChildItem -LiteralPath (Join-Path $backendRoot "src") -File -Recurse
         )
         $latestInput = $buildInputs | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
-        if ($backendJar.LastWriteTimeUtc -lt $latestInput.LastWriteTimeUtc) {
+        if ($jars[0].LastWriteTimeUtc -lt $latestInput.LastWriteTimeUtc) {
             throw "-SkipBackendBuild rechazado: el JAR es anterior a $($latestInput.FullName)"
         }
         Add-Result -Stage "Build backend" -Result "INFO" -Detail "Se reutilizó $([IO.Path]::GetFileName($backendJar))"
@@ -1391,13 +1406,17 @@ try {
     $businessDate = Get-BusinessDate
     $anchorDate = $businessDate.AddDays(-1)
     $postgresPassword = New-HexSecret 24
+    $postgresAppPassword = New-HexSecret 24
     $jwtSecret = New-HexSecret 64
     Add-Secret $postgresPassword
+    Add-Secret $postgresAppPassword
     Add-Secret $jwtSecret
 
     Set-ScopedEnvironmentVariable -Name "POSTGRES_DB" -Value $postgresDb
     Set-ScopedEnvironmentVariable -Name "POSTGRES_USER" -Value $postgresUser
     Set-ScopedEnvironmentVariable -Name "POSTGRES_PASSWORD" -Value $postgresPassword
+    Set-ScopedEnvironmentVariable -Name "POSTGRES_APP_USER" -Value $postgresAppUser
+    Set-ScopedEnvironmentVariable -Name "POSTGRES_APP_PASSWORD" -Value $postgresAppPassword
     Set-ScopedEnvironmentVariable -Name "POSTGRES_PORT" -Value ([string]$dbPort)
     Set-ScopedEnvironmentVariable -Name "APP_TIME_ZONE" -Value "America/Argentina/Buenos_Aires"
     Configure-BackendEnvironment
@@ -1628,6 +1647,7 @@ finally {
     $actorTokens.Clear()
     $secretValues.Clear()
     $postgresPassword = $null
+    $postgresAppPassword = $null
     $jwtSecret = $null
 }
 

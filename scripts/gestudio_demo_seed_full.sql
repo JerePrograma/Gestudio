@@ -14,6 +14,7 @@ SELECT
     :'demo_business_date'::date AS business_date,
     :'demo_expected_flyway_count'::integer AS expected_flyway_count,
     :'demo_expected_flyway_latest'::integer AS expected_flyway_latest,
+    '00000000-0000-0000-0000-000000000001'::uuid AS tenant_id,
     date_trunc('month', :'demo_anchor_date'::date)::date AS month_0,
     (date_trunc('month', :'demo_anchor_date'::date) - interval '1 month')::date AS month_1,
     (date_trunc('month', :'demo_anchor_date'::date) - interval '2 months')::date AS month_2,
@@ -34,6 +35,7 @@ BEGIN
 
     FOREACH required_table IN ARRAY ARRAY[
         'flyway_schema_history', 'roles', 'usuarios', 'permisos', 'rol_permisos', 'usuario_roles',
+        'tenants', 'tenant_memberships', 'tenant_membership_roles',
         'alumnos', 'salones', 'profesores', 'observaciones_profesores', 'disciplinas',
         'disciplina_horarios', 'inscripciones', 'bonificaciones', 'recargos', 'metodo_pagos',
         'sub_conceptos', 'conceptos', 'disciplina_tarifas', 'inscripcion_condiciones_economicas',
@@ -169,6 +171,7 @@ INSERT INTO _demo_users_desired (username, password_hash, role_id)
 SELECT 'demo-superadmin', :'demo_superadmin_password_hash', r.id
 FROM public.roles r
 WHERE r.activo
+  AND r.tenant_id = (SELECT tenant_id FROM _demo_config)
   AND r.sistema
   AND NOT r.editable
   AND (SELECT count(*) FROM public.rol_permisos rp WHERE rp.rol_id = r.id) =
@@ -176,15 +179,19 @@ WHERE r.activo
 UNION ALL
 SELECT 'demo-direccion', :'demo_direccion_password_hash', r.id
 FROM public.roles r WHERE r.codigo = 'DIRECCION' AND r.activo
+  AND r.tenant_id = (SELECT tenant_id FROM _demo_config)
 UNION ALL
 SELECT 'demo-administrador', :'demo_administrador_password_hash', r.id
 FROM public.roles r WHERE r.codigo = 'ADMINISTRADOR' AND r.activo
+  AND r.tenant_id = (SELECT tenant_id FROM _demo_config)
 UNION ALL
 SELECT 'demo-secretaria', :'demo_secretaria_password_hash', r.id
 FROM public.roles r WHERE r.codigo = 'SECRETARIA' AND r.activo
+  AND r.tenant_id = (SELECT tenant_id FROM _demo_config)
 UNION ALL
 SELECT 'demo-caja', :'demo_caja_password_hash', r.id
-FROM public.roles r WHERE r.codigo = 'CAJA' AND r.activo;
+FROM public.roles r WHERE r.codigo = 'CAJA' AND r.activo
+  AND r.tenant_id = (SELECT tenant_id FROM _demo_config);
 
 DO $$
 BEGIN
@@ -225,13 +232,62 @@ ON CONFLICT (usuario_id, rol_id) DO UPDATE
 SET asignado_at = EXCLUDED.asignado_at,
     asignado_por_usuario_id = EXCLUDED.asignado_por_usuario_id;
 
+INSERT INTO public.tenant_memberships
+    (id, tenant_id, usuario_id, status, security_version, valid_from, created_at, updated_at)
+SELECT (
+           substr(md5('gestudio-membership:' || u.id), 1, 8) || '-' ||
+           substr(md5('gestudio-membership:' || u.id), 9, 4) || '-5' ||
+           substr(md5('gestudio-membership:' || u.id), 14, 3) || '-a' ||
+           substr(md5('gestudio-membership:' || u.id), 18, 3) || '-' ||
+           substr(md5('gestudio-membership:' || u.id), 21, 12)
+       )::uuid,
+       (SELECT tenant_id FROM _demo_config),
+       u.id,
+       'ACTIVE',
+       0,
+       (SELECT anchor_ts FROM _demo_config),
+       (SELECT anchor_ts FROM _demo_config),
+       (SELECT anchor_ts FROM _demo_config)
+FROM public.usuarios u
+WHERE lower(u.nombre_usuario) LIKE 'demo-%'
+ON CONFLICT (tenant_id, usuario_id) DO UPDATE
+SET status = EXCLUDED.status,
+    valid_from = EXCLUDED.valid_from,
+    valid_until = NULL,
+    updated_at = EXCLUDED.updated_at;
+
+DELETE FROM public.tenant_membership_roles mr
+USING public.tenant_memberships m, public.usuarios u, _demo_users_desired d
+WHERE mr.membership_id = m.id
+  AND m.tenant_id = (SELECT tenant_id FROM _demo_config)
+  AND m.usuario_id = u.id
+  AND lower(u.nombre_usuario) = d.username
+  AND mr.role_id <> d.role_id;
+
+INSERT INTO public.tenant_membership_roles
+    (membership_id, tenant_id, role_id, assigned_at, assigned_by_usuario_id)
+SELECT m.id,
+       m.tenant_id,
+       d.role_id,
+       (SELECT anchor_ts FROM _demo_config),
+       (SELECT id FROM public.usuarios WHERE lower(nombre_usuario) = 'demo-superadmin')
+FROM _demo_users_desired d
+JOIN public.usuarios u ON lower(u.nombre_usuario) = d.username
+JOIN public.tenant_memberships m
+  ON m.tenant_id = (SELECT tenant_id FROM _demo_config)
+ AND m.usuario_id = u.id
+ON CONFLICT (membership_id, role_id) DO UPDATE
+SET tenant_id = EXCLUDED.tenant_id,
+    assigned_at = EXCLUDED.assigned_at,
+    assigned_by_usuario_id = EXCLUDED.assigned_by_usuario_id;
+
 -- Catálogos visibles.
-INSERT INTO public.salones (nombre, descripcion, activo)
+INSERT INTO public.salones (tenant_id, nombre, descripcion, activo)
 VALUES
-    ('Sala Principal', 'Salón amplio con piso flotante, espejos y barras móviles.', TRUE),
-    ('Estudio Infantil', 'Espacio climatizado y equipado para grupos infantiles.', TRUE),
-    ('Sala de Ensayo', 'Sala multipropósito para ensayos, talleres y clases especiales.', TRUE)
-ON CONFLICT (nombre) DO UPDATE
+    ('00000000-0000-0000-0000-000000000001', 'Sala Principal', 'Salón amplio con piso flotante, espejos y barras móviles.', TRUE),
+    ('00000000-0000-0000-0000-000000000001', 'Estudio Infantil', 'Espacio climatizado y equipado para grupos infantiles.', TRUE),
+    ('00000000-0000-0000-0000-000000000001', 'Sala de Ensayo', 'Sala multipropósito para ensayos, talleres y clases especiales.', TRUE)
+ON CONFLICT (tenant_id, nombre) DO UPDATE
 SET descripcion = EXCLUDED.descripcion,
     activo = EXCLUDED.activo;
 
@@ -261,10 +317,13 @@ SET apellido = d.apellido,
 FROM _demo_professors_desired d
 WHERE p.nombre = d.nombre;
 
-INSERT INTO public.profesores (nombre, apellido, fecha_nacimiento, telefono, usuario_id, activo, version)
-SELECT d.nombre, d.apellido, d.fecha_nacimiento, d.telefono, NULL, d.activo, 0
+INSERT INTO public.profesores (tenant_id, nombre, apellido, fecha_nacimiento, telefono, usuario_id, activo, version)
+SELECT (SELECT tenant_id FROM _demo_config), d.nombre, d.apellido, d.fecha_nacimiento, d.telefono, NULL, d.activo, 0
 FROM _demo_professors_desired d
-WHERE NOT EXISTS (SELECT 1 FROM public.profesores p WHERE p.nombre = d.nombre);
+WHERE NOT EXISTS (
+    SELECT 1 FROM public.profesores p
+    WHERE p.tenant_id = (SELECT tenant_id FROM _demo_config) AND p.nombre = d.nombre
+);
 
 UPDATE public.observaciones_profesores op
 SET fecha = (SELECT anchor_date - 20 FROM _demo_config),
@@ -274,8 +333,9 @@ WHERE op.profesor_id = p.id
   AND p.nombre = d.nombre
   AND op.observacion = 'Seguimiento pedagógico trimestral al día.';
 
-INSERT INTO public.observaciones_profesores (profesor_id, fecha, observacion, activa)
-SELECT p.id,
+INSERT INTO public.observaciones_profesores (tenant_id, profesor_id, fecha, observacion, activa)
+SELECT (SELECT tenant_id FROM _demo_config),
+       p.id,
        (SELECT anchor_date - 20 FROM _demo_config),
        'Seguimiento pedagógico trimestral al día.',
        TRUE
@@ -288,47 +348,47 @@ WHERE NOT EXISTS (
 );
 
 INSERT INTO public.bonificaciones
-    (descripcion, porcentaje_descuento, valor_fijo, activo, observaciones)
+    (tenant_id, descripcion, porcentaje_descuento, valor_fijo, activo, observaciones)
 VALUES
-    ('Descuento hermanos 10%', 10.0000, 0.00, TRUE, 'Beneficio para dos o más integrantes del mismo grupo familiar.'),
-    ('Beca institucional 25%', 25.0000, 0.00, TRUE, 'Beca parcial otorgada por dirección.'),
-    ('Convenio familiar', 0.0000, 3500.00, TRUE, 'Bonificación fija mensual por convenio.'),
-    ('Promoción apertura 2025', 5.0000, 0.00, FALSE, 'Beneficio histórico no asignable a nuevas inscripciones.')
-ON CONFLICT (descripcion) DO UPDATE
+    ('00000000-0000-0000-0000-000000000001', 'Descuento hermanos 10%', 10.0000, 0.00, TRUE, 'Beneficio para dos o más integrantes del mismo grupo familiar.'),
+    ('00000000-0000-0000-0000-000000000001', 'Beca institucional 25%', 25.0000, 0.00, TRUE, 'Beca parcial otorgada por dirección.'),
+    ('00000000-0000-0000-0000-000000000001', 'Convenio familiar', 0.0000, 3500.00, TRUE, 'Bonificación fija mensual por convenio.'),
+    ('00000000-0000-0000-0000-000000000001', 'Promoción apertura 2025', 5.0000, 0.00, FALSE, 'Beneficio histórico no asignable a nuevas inscripciones.')
+ON CONFLICT (tenant_id, descripcion) DO UPDATE
 SET porcentaje_descuento = EXCLUDED.porcentaje_descuento,
     valor_fijo = EXCLUDED.valor_fijo,
     activo = EXCLUDED.activo,
     observaciones = EXCLUDED.observaciones;
 
 INSERT INTO public.recargos
-    (descripcion, porcentaje, valor_fijo, dia_del_mes_aplicacion, activo)
+    (tenant_id, descripcion, porcentaje, valor_fijo, dia_del_mes_aplicacion, activo)
 VALUES
-    ('Mora por vencimiento 5%', 5.0000, 0.00, 11, TRUE),
-    ('Gastos administrativos', 0.0000, 2500.00, 16, TRUE),
-    ('Recargo extraordinario 2025', 8.0000, 0.00, 20, FALSE)
-ON CONFLICT (descripcion) DO UPDATE
+    ('00000000-0000-0000-0000-000000000001', 'Mora por vencimiento 5%', 5.0000, 0.00, 11, TRUE),
+    ('00000000-0000-0000-0000-000000000001', 'Gastos administrativos', 0.0000, 2500.00, 16, TRUE),
+    ('00000000-0000-0000-0000-000000000001', 'Recargo extraordinario 2025', 8.0000, 0.00, 20, FALSE)
+ON CONFLICT (tenant_id, descripcion) DO UPDATE
 SET porcentaje = EXCLUDED.porcentaje,
     valor_fijo = EXCLUDED.valor_fijo,
     dia_del_mes_aplicacion = EXCLUDED.dia_del_mes_aplicacion,
     activo = EXCLUDED.activo;
 
-INSERT INTO public.metodo_pagos (descripcion, activo, recargo)
+INSERT INTO public.metodo_pagos (tenant_id, descripcion, activo, recargo)
 VALUES
-    ('Efectivo', TRUE, 0.0000),
-    ('Transferencia bancaria', TRUE, 0.0000),
-    ('Tarjeta de débito', TRUE, 0.0000),
-    ('Tarjeta de crédito', TRUE, 3.0000)
-ON CONFLICT (descripcion) DO UPDATE
+    ('00000000-0000-0000-0000-000000000001', 'Efectivo', TRUE, 0.0000),
+    ('00000000-0000-0000-0000-000000000001', 'Transferencia bancaria', TRUE, 0.0000),
+    ('00000000-0000-0000-0000-000000000001', 'Tarjeta de débito', TRUE, 0.0000),
+    ('00000000-0000-0000-0000-000000000001', 'Tarjeta de crédito', TRUE, 3.0000)
+ON CONFLICT (tenant_id, descripcion) DO UPDATE
 SET activo = EXCLUDED.activo,
     recargo = EXCLUDED.recargo;
 
-INSERT INTO public.sub_conceptos (descripcion, activo)
+INSERT INTO public.sub_conceptos (tenant_id, descripcion, activo)
 VALUES
-    ('Indumentaria', TRUE),
-    ('Materiales de clase', TRUE),
-    ('Eventos y talleres', TRUE),
-    ('Trámites administrativos', TRUE)
-ON CONFLICT (descripcion) DO UPDATE SET activo = EXCLUDED.activo;
+    ('00000000-0000-0000-0000-000000000001', 'Indumentaria', TRUE),
+    ('00000000-0000-0000-0000-000000000001', 'Materiales de clase', TRUE),
+    ('00000000-0000-0000-0000-000000000001', 'Eventos y talleres', TRUE),
+    ('00000000-0000-0000-0000-000000000001', 'Trámites administrativos', TRUE)
+ON CONFLICT (tenant_id, descripcion) DO UPDATE SET activo = EXCLUDED.activo;
 
 CREATE TEMP TABLE _demo_concepts_desired (
     seq integer PRIMARY KEY,
@@ -347,11 +407,11 @@ INSERT INTO _demo_concepts_desired VALUES
     (7, 'Trámites administrativos', 'Certificado de alumno regular', 7000.00),
     (8, 'Trámites administrativos', 'Duplicado de credencial', 5000.00);
 
-INSERT INTO public.conceptos (descripcion, precio, sub_concepto_id, activo)
-SELECT d.description, d.price, sc.id, TRUE
+INSERT INTO public.conceptos (tenant_id, descripcion, precio, sub_concepto_id, activo)
+SELECT (SELECT tenant_id FROM _demo_config), d.description, d.price, sc.id, TRUE
 FROM _demo_concepts_desired d
 JOIN public.sub_conceptos sc ON sc.descripcion = d.sub_description
-ON CONFLICT (sub_concepto_id, descripcion) DO UPDATE
+ON CONFLICT (tenant_id, sub_concepto_id, descripcion) DO UPDATE
 SET precio = EXCLUDED.precio,
     activo = EXCLUDED.activo;
 
@@ -373,10 +433,10 @@ INSERT INTO _demo_stocks_desired VALUES
     (6, 'Entrada digital muestra anual', 7500.00, 20, FALSE, '7790000000067');
 
 INSERT INTO public.stocks
-    (nombre, precio, cantidad_actual, requiere_control_de_stock, codigo_barras, activo, version)
-SELECT nombre, precio, cantidad, control, barcode, TRUE, 0
+    (tenant_id, nombre, precio, cantidad_actual, requiere_control_de_stock, codigo_barras, activo, version)
+SELECT (SELECT tenant_id FROM _demo_config), nombre, precio, cantidad, control, barcode, TRUE, 0
 FROM _demo_stocks_desired
-ON CONFLICT (nombre) DO UPDATE
+ON CONFLICT (tenant_id, nombre) DO UPDATE
 SET precio = EXCLUDED.precio,
     cantidad_actual = EXCLUDED.cantidad_actual,
     requiere_control_de_stock = EXCLUDED.requiere_control_de_stock,
@@ -412,29 +472,35 @@ SET salon_id = s.id,
 FROM _demo_disciplines_desired x
 JOIN public.salones s ON s.nombre = x.room_name
 JOIN public.profesores p ON p.nombre = x.professor_name
-WHERE d.nombre = x.nombre;
+WHERE d.tenant_id = (SELECT tenant_id FROM _demo_config)
+  AND d.nombre = x.nombre;
 
 INSERT INTO public.disciplinas
-    (nombre, salon_id, profesor_id, valor_cuota, matricula, clase_suelta, clase_prueba, activo, version)
-SELECT x.nombre, s.id, p.id, x.cuota, x.matricula, 9000.00, 5000.00, TRUE, 0
+    (tenant_id, nombre, salon_id, profesor_id, valor_cuota, matricula, clase_suelta, clase_prueba, activo, version)
+SELECT (SELECT tenant_id FROM _demo_config), x.nombre, s.id, p.id, x.cuota, x.matricula, 9000.00, 5000.00, TRUE, 0
 FROM _demo_disciplines_desired x
 JOIN public.salones s ON s.nombre = x.room_name
 JOIN public.profesores p ON p.nombre = x.professor_name
-WHERE NOT EXISTS (SELECT 1 FROM public.disciplinas d WHERE d.nombre = x.nombre);
+WHERE NOT EXISTS (
+    SELECT 1 FROM public.disciplinas d
+    WHERE d.tenant_id = (SELECT tenant_id FROM _demo_config) AND d.nombre = x.nombre
+);
 
-INSERT INTO public.disciplina_horarios (disciplina_id, dia_semana, horario_inicio, duracion)
-SELECT d.id,
+INSERT INTO public.disciplina_horarios (tenant_id, disciplina_id, dia_semana, horario_inicio, duracion)
+SELECT (SELECT tenant_id FROM _demo_config),
+       d.id,
        CASE x.seq WHEN 1 THEN 'LUNES' WHEN 2 THEN 'MARTES' WHEN 3 THEN 'MIERCOLES'
                   WHEN 4 THEN 'JUEVES' WHEN 5 THEN 'VIERNES' ELSE 'SABADO' END,
        (time '17:00' + (x.seq - 1) * interval '30 minutes')::time,
        1.50
 FROM _demo_disciplines_desired x
 JOIN public.disciplinas d ON d.nombre = x.nombre
-ON CONFLICT (disciplina_id, dia_semana, horario_inicio) DO UPDATE
+ON CONFLICT (tenant_id, disciplina_id, dia_semana, horario_inicio) DO UPDATE
 SET duracion = EXCLUDED.duracion;
 
-INSERT INTO public.disciplina_horarios (disciplina_id, dia_semana, horario_inicio, duracion)
-SELECT d.id,
+INSERT INTO public.disciplina_horarios (tenant_id, disciplina_id, dia_semana, horario_inicio, duracion)
+SELECT (SELECT tenant_id FROM _demo_config),
+       d.id,
        CASE x.seq WHEN 1 THEN 'MIERCOLES' WHEN 2 THEN 'JUEVES' WHEN 3 THEN 'VIERNES'
                   WHEN 4 THEN 'SABADO' ELSE 'MARTES' END,
        (time '18:00' + (x.seq - 1) * interval '20 minutes')::time,
@@ -442,7 +508,7 @@ SELECT d.id,
 FROM _demo_disciplines_desired x
 JOIN public.disciplinas d ON d.nombre = x.nombre
 WHERE x.seq <= 5
-ON CONFLICT (disciplina_id, dia_semana, horario_inicio) DO UPDATE
+ON CONFLICT (tenant_id, disciplina_id, dia_semana, horario_inicio) DO UPDATE
 SET duracion = EXCLUDED.duracion;
 
 CREATE TEMP TABLE _demo_students_desired (
@@ -485,10 +551,11 @@ INSERT INTO _demo_students_desired VALUES
     (28, 'Santiago', 'Villalba', 'santiago.villalba@correo.local', '36592781', NULL);
 
 INSERT INTO public.alumnos
-    (nombre, apellido, fecha_nacimiento, celular1, celular2, email, documento,
+    (tenant_id, nombre, apellido, fecha_nacimiento, celular1, celular2, email, documento,
      fecha_incorporacion, fecha_de_baja, nombre_padres, autorizado_para_salir_solo,
      otras_notas, activo, version)
 SELECT
+    (SELECT tenant_id FROM _demo_config),
     student.nombre,
     student.apellido,
     CASE WHEN student.seq = 1 THEN (SELECT business_date FROM _demo_config) - interval '12 years'
@@ -512,7 +579,7 @@ SELECT
     student.seq <> 28,
     0
 FROM _demo_students_desired student
-ON CONFLICT (documento) WHERE documento IS NOT NULL DO UPDATE
+ON CONFLICT (tenant_id, documento) WHERE documento IS NOT NULL DO UPDATE
 SET nombre = EXCLUDED.nombre,
     apellido = EXCLUDED.apellido,
     fecha_nacimiento = EXCLUDED.fecha_nacimiento,
@@ -559,11 +626,13 @@ JOIN _demo_disciplines_desired dd ON dd.seq = x.discipline_seq
 JOIN public.disciplinas d ON d.nombre = dd.nombre
 LEFT JOIN public.bonificaciones b ON b.descripcion = 'Descuento hermanos 10%'
 WHERE i.alumno_id = a.id
-  AND i.disciplina_id = d.id;
+  AND i.disciplina_id = d.id
+  AND i.tenant_id = (SELECT tenant_id FROM _demo_config);
 
 INSERT INTO public.inscripciones
-    (alumno_id, disciplina_id, bonificacion_id, fecha_inscripcion, fecha_baja, estado, costo_particular, version)
-SELECT a.id,
+    (tenant_id, alumno_id, disciplina_id, bonificacion_id, fecha_inscripcion, fecha_baja, estado, costo_particular, version)
+SELECT (SELECT tenant_id FROM _demo_config),
+       a.id,
        d.id,
        CASE WHEN x.seq % 3 = 0 THEN b.id ELSE NULL END,
        (SELECT anchor_date - (160 + x.seq) FROM _demo_config),
@@ -578,14 +647,16 @@ JOIN public.disciplinas d ON d.nombre = dd.nombre
 LEFT JOIN public.bonificaciones b ON b.descripcion = 'Descuento hermanos 10%'
 WHERE NOT EXISTS (
     SELECT 1 FROM public.inscripciones i
-    WHERE i.alumno_id = a.id AND i.disciplina_id = d.id
+    WHERE i.tenant_id = (SELECT tenant_id FROM _demo_config)
+      AND i.alumno_id = a.id AND i.disciplina_id = d.id
 );
 
 -- Vigencias económicas.
 INSERT INTO public.disciplina_tarifas
-    (disciplina_id, vigente_desde, valor_cuota, matricula, clase_suelta, clase_prueba,
+    (tenant_id, disciplina_id, vigente_desde, valor_cuota, matricula, clase_suelta, clase_prueba,
      motivo, creada_por_usuario_id, created_at, version)
-SELECT d.id,
+SELECT (SELECT tenant_id FROM _demo_config),
+       d.id,
        periods.start_date,
        CASE WHEN periods.current_rate THEN dd.cuota ELSE dd.cuota - 5000.00 END,
        dd.matricula,
@@ -604,7 +675,7 @@ CROSS JOIN LATERAL (
         ((SELECT month_0 FROM _demo_config), TRUE)
 ) AS periods(start_date, current_rate)
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-administrador'
-ON CONFLICT (disciplina_id, vigente_desde) DO UPDATE
+ON CONFLICT (tenant_id, disciplina_id, vigente_desde) DO UPDATE
 SET valor_cuota = EXCLUDED.valor_cuota,
     matricula = EXCLUDED.matricula,
     clase_suelta = EXCLUDED.clase_suelta,
@@ -651,10 +722,11 @@ JOIN public.bonificaciones b ON b.descripcion = 'Beca institucional 25%'
 WHERE e.seq <= 6;
 
 INSERT INTO public.inscripcion_condiciones_economicas
-    (inscripcion_id, vigente_desde, costo_particular, bonificacion_id,
+    (tenant_id, inscripcion_id, vigente_desde, costo_particular, bonificacion_id,
      bonificacion_descripcion_snapshot, bonificacion_porcentaje_snapshot,
      bonificacion_valor_fijo_snapshot, motivo, creada_por_usuario_id, created_at, version)
-SELECT x.enrollment_id,
+SELECT (SELECT tenant_id FROM _demo_config),
+       x.enrollment_id,
        x.start_date,
        x.custom_cost,
        x.bonus_id,
@@ -667,7 +739,7 @@ SELECT x.enrollment_id,
        0
 FROM _demo_conditions_desired x
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-administrador'
-ON CONFLICT (inscripcion_id, vigente_desde) DO UPDATE
+ON CONFLICT (tenant_id, inscripcion_id, vigente_desde) DO UPDATE
 SET costo_particular = EXCLUDED.costo_particular,
     bonificacion_id = EXCLUDED.bonificacion_id,
     bonificacion_descripcion_snapshot = EXCLUDED.bonificacion_descripcion_snapshot,
@@ -705,9 +777,10 @@ JOIN _demo_enrollments_desired desired
 WHERE desired.seq IN (1, 2);
 
 INSERT INTO public.mensualidades
-    (inscripcion_id, bonificacion_id, recargo_id, anio, mes, fecha_generacion,
+    (tenant_id, inscripcion_id, bonificacion_id, recargo_id, anio, mes, fecha_generacion,
      fecha_vencimiento, descripcion, estado, version)
-SELECT x.enrollment_id,
+SELECT (SELECT tenant_id FROM _demo_config),
+       x.enrollment_id,
        CASE WHEN x.seq % 3 = 0 THEN b.id ELSE NULL END,
        CASE WHEN x.seq % 7 = 0 THEN r.id ELSE NULL END,
        x.year_value,
@@ -720,7 +793,7 @@ SELECT x.enrollment_id,
 FROM _demo_monthly_desired x
 LEFT JOIN public.bonificaciones b ON b.descripcion = 'Descuento hermanos 10%'
 LEFT JOIN public.recargos r ON r.descripcion = 'Mora por vencimiento 5%'
-ON CONFLICT (inscripcion_id, anio, mes) DO UPDATE
+ON CONFLICT (tenant_id, inscripcion_id, anio, mes) DO UPDATE
 SET bonificacion_id = EXCLUDED.bonificacion_id,
     recargo_id = EXCLUDED.recargo_id,
     fecha_generacion = EXCLUDED.fecha_generacion,
@@ -728,8 +801,9 @@ SET bonificacion_id = EXCLUDED.bonificacion_id,
     descripcion = EXCLUDED.descripcion,
     estado = EXCLUDED.estado;
 
-INSERT INTO public.matriculas (alumno_id, anio, fecha_emision, estado, version)
-SELECT a.id,
+INSERT INTO public.matriculas (tenant_id, alumno_id, anio, fecha_emision, estado, version)
+SELECT (SELECT tenant_id FROM _demo_config),
+       a.id,
        extract(year FROM (SELECT anchor_date FROM _demo_config))::integer,
        make_date(extract(year FROM (SELECT anchor_date FROM _demo_config))::integer, 2, 15),
        'EMITIDA',
@@ -737,17 +811,18 @@ SELECT a.id,
 FROM public.alumnos a
 JOIN _demo_students_desired student ON student.documento = a.documento
 WHERE student.seq <= 26
-ON CONFLICT (alumno_id, anio) DO UPDATE
+ON CONFLICT (tenant_id, alumno_id, anio) DO UPDATE
 SET fecha_emision = EXCLUDED.fecha_emision,
     estado = EXCLUDED.estado;
 
-INSERT INTO public.asistencias_mensuales (disciplina_id, mes, anio)
-SELECT d.id,
+INSERT INTO public.asistencias_mensuales (tenant_id, disciplina_id, mes, anio)
+SELECT (SELECT tenant_id FROM _demo_config),
+       d.id,
        extract(month FROM (SELECT month_1 FROM _demo_config))::integer,
        extract(year FROM (SELECT month_1 FROM _demo_config))::integer
 FROM public.disciplinas d
 JOIN _demo_disciplines_desired dd ON dd.nombre = d.nombre
-ON CONFLICT (disciplina_id, anio, mes) DO NOTHING;
+ON CONFLICT (tenant_id, disciplina_id, anio, mes) DO NOTHING;
 
 CREATE TEMP TABLE _demo_attendance_enrollments ON COMMIT DROP AS
 SELECT id AS enrollment_id, disciplina_id
@@ -762,8 +837,9 @@ FROM (
 WHERE position <= 3;
 
 INSERT INTO public.asistencias_alumno_mensual
-    (inscripcion_id, asistencia_mensual_id, observacion, activo)
-SELECT e.enrollment_id,
+    (tenant_id, inscripcion_id, asistencia_mensual_id, observacion, activo)
+SELECT (SELECT tenant_id FROM _demo_config),
+       e.enrollment_id,
        am.id,
        'Planilla mensual revisada por secretaría.',
        TRUE
@@ -772,13 +848,14 @@ JOIN public.asistencias_mensuales am
   ON am.disciplina_id = e.disciplina_id
  AND am.anio = extract(year FROM (SELECT month_1 FROM _demo_config))::integer
  AND am.mes = extract(month FROM (SELECT month_1 FROM _demo_config))::integer
-ON CONFLICT (asistencia_mensual_id, inscripcion_id) DO UPDATE
+ON CONFLICT (tenant_id, asistencia_mensual_id, inscripcion_id) DO UPDATE
 SET observacion = EXCLUDED.observacion,
     activo = EXCLUDED.activo;
 
 INSERT INTO public.asistencias_diarias
-    (asistencia_alumno_mensual_id, fecha, estado, vigente)
-SELECT aam.id,
+    (tenant_id, asistencia_alumno_mensual_id, fecha, estado, vigente)
+SELECT (SELECT tenant_id FROM _demo_config),
+       aam.id,
        (SELECT month_1 FROM _demo_config) + days.day_number - 1,
        CASE WHEN (aam.id + days.day_number) % 4 = 0 THEN 'AUSENTE' ELSE 'PRESENTE' END,
        TRUE
@@ -788,15 +865,16 @@ JOIN public.asistencias_mensuales am
   ON am.id = aam.asistencia_mensual_id
  AND am.disciplina_id = e.disciplina_id
 CROSS JOIN (VALUES (5), (12), (19)) AS days(day_number)
-ON CONFLICT (asistencia_alumno_mensual_id, fecha) DO UPDATE
+ON CONFLICT (tenant_id, asistencia_alumno_mensual_id, fecha) DO UPDATE
 SET estado = EXCLUDED.estado,
     vigente = EXCLUDED.vigente;
 
 -- Ventas y cargos. Las claves naturales del namespace reemplazan IDs rígidos.
 INSERT INTO public.ventas_stock
-    (alumno_id, stock_id, cantidad, precio_unitario, fecha, estado,
+    (tenant_id, alumno_id, stock_id, cantidad, precio_unitario, fecha, estado,
      idempotency_key, request_hash, reversal_idempotency_key, reversal_request_hash, version)
-SELECT a.id,
+SELECT (SELECT tenant_id FROM _demo_config),
+       a.id,
        s.id,
        CASE WHEN x.seq IN (2, 4, 6) THEN 2 ELSE 1 END,
        x.precio,
@@ -811,7 +889,7 @@ FROM _demo_stocks_desired x
 JOIN public.stocks s ON s.codigo_barras = x.barcode
 JOIN _demo_students_desired student ON student.seq = x.seq
 JOIN public.alumnos a ON a.documento = student.documento
-ON CONFLICT (idempotency_key) DO UPDATE
+ON CONFLICT (tenant_id, idempotency_key) DO UPDATE
 SET alumno_id = EXCLUDED.alumno_id,
     stock_id = EXCLUDED.stock_id,
     cantidad = EXCLUDED.cantidad,
@@ -839,10 +917,11 @@ JOIN public.disciplinas d ON d.id = i.disciplina_id
 JOIN _demo_disciplines_desired dd ON dd.nombre = d.nombre;
 
 INSERT INTO public.cargos
-    (alumno_id, tipo, descripcion, importe_original, fecha_emision, fecha_vencimiento,
+    (tenant_id, alumno_id, tipo, descripcion, importe_original, fecha_emision, fecha_vencimiento,
      estado, mensualidad_id, matricula_id, concepto_id, venta_stock_id, cargo_origen_id,
      idempotency_key, version, created_at)
-SELECT x.alumno_id,
+SELECT (SELECT tenant_id FROM _demo_config),
+       x.alumno_id,
        'MENSUALIDAD',
        'Cuota ' || x.discipline_name || ' · ' || lpad(x.mes::text, 2, '0') || '/' || x.anio,
        CASE WHEN x.seq <= 10 THEN 24000.00 ELSE 40000.00 END,
@@ -855,7 +934,7 @@ SELECT x.alumno_id,
        0,
        (SELECT anchor_ts FROM _demo_config) + x.seq * interval '1 second'
 FROM _demo_monthly_charge_data x
-ON CONFLICT (idempotency_key) DO UPDATE
+ON CONFLICT (tenant_id, idempotency_key) DO UPDATE
 SET alumno_id = EXCLUDED.alumno_id,
     descripcion = EXCLUDED.descripcion,
     importe_original = EXCLUDED.importe_original,
@@ -866,10 +945,11 @@ SET alumno_id = EXCLUDED.alumno_id,
     created_at = EXCLUDED.created_at;
 
 INSERT INTO public.cargos
-    (alumno_id, tipo, descripcion, importe_original, fecha_emision, fecha_vencimiento,
+    (tenant_id, alumno_id, tipo, descripcion, importe_original, fecha_emision, fecha_vencimiento,
      estado, mensualidad_id, matricula_id, concepto_id, venta_stock_id, cargo_origen_id,
      idempotency_key, version, created_at)
-SELECT m.alumno_id,
+SELECT (SELECT tenant_id FROM _demo_config),
+       m.alumno_id,
        'MATRICULA',
        'Matrícula anual ' || m.anio,
        36000.00,
@@ -882,7 +962,7 @@ SELECT m.alumno_id,
        (SELECT anchor_ts FROM _demo_config) + (100 + row_number() OVER (ORDER BY a.documento)) * interval '1 second'
 FROM public.matriculas m
 JOIN public.alumnos a ON a.id = m.alumno_id AND a.email LIKE '%@correo.local'
-ON CONFLICT (idempotency_key) DO UPDATE
+ON CONFLICT (tenant_id, idempotency_key) DO UPDATE
 SET alumno_id = EXCLUDED.alumno_id,
     descripcion = EXCLUDED.descripcion,
     importe_original = EXCLUDED.importe_original,
@@ -893,10 +973,11 @@ SET alumno_id = EXCLUDED.alumno_id,
     created_at = EXCLUDED.created_at;
 
 INSERT INTO public.cargos
-    (alumno_id, tipo, descripcion, importe_original, fecha_emision, fecha_vencimiento,
+    (tenant_id, alumno_id, tipo, descripcion, importe_original, fecha_emision, fecha_vencimiento,
      estado, mensualidad_id, matricula_id, concepto_id, venta_stock_id, cargo_origen_id,
      idempotency_key, version, created_at)
-SELECT v.alumno_id,
+SELECT (SELECT tenant_id FROM _demo_config),
+       v.alumno_id,
        'VENTA_STOCK',
        'Venta de ' || s.nombre,
        v.cantidad * v.precio_unitario,
@@ -910,7 +991,7 @@ SELECT v.alumno_id,
 FROM public.ventas_stock v
 JOIN public.stocks s ON s.id = v.stock_id
 WHERE v.idempotency_key LIKE 'demo-seed:v1:venta:%'
-ON CONFLICT (idempotency_key) DO UPDATE
+ON CONFLICT (tenant_id, idempotency_key) DO UPDATE
 SET alumno_id = EXCLUDED.alumno_id,
     descripcion = EXCLUDED.descripcion,
     importe_original = EXCLUDED.importe_original,
@@ -921,10 +1002,11 @@ SET alumno_id = EXCLUDED.alumno_id,
     created_at = EXCLUDED.created_at;
 
 INSERT INTO public.cargos
-    (alumno_id, tipo, descripcion, importe_original, fecha_emision, fecha_vencimiento,
+    (tenant_id, alumno_id, tipo, descripcion, importe_original, fecha_emision, fecha_vencimiento,
      estado, mensualidad_id, matricula_id, concepto_id, venta_stock_id, cargo_origen_id,
      idempotency_key, version, created_at)
-SELECT a.id,
+SELECT (SELECT tenant_id FROM _demo_config),
+       a.id,
        'CONCEPTO',
        x.description,
        CASE WHEN x.seq = 1 THEN 12000.00 ELSE 50000.00 END,
@@ -940,7 +1022,7 @@ JOIN public.sub_conceptos sc ON sc.descripcion = x.sub_description
 JOIN public.conceptos c ON c.sub_concepto_id = sc.id AND c.descripcion = x.description
 JOIN _demo_students_desired student ON student.seq = x.seq
 JOIN public.alumnos a ON a.documento = student.documento
-ON CONFLICT (idempotency_key) DO UPDATE
+ON CONFLICT (tenant_id, idempotency_key) DO UPDATE
 SET alumno_id = EXCLUDED.alumno_id,
     descripcion = EXCLUDED.descripcion,
     importe_original = EXCLUDED.importe_original,
@@ -962,10 +1044,11 @@ ORDER BY student.seq, c.idempotency_key
 LIMIT 5;
 
 INSERT INTO public.cargos
-    (alumno_id, tipo, descripcion, importe_original, fecha_emision, fecha_vencimiento,
+    (tenant_id, alumno_id, tipo, descripcion, importe_original, fecha_emision, fecha_vencimiento,
      estado, mensualidad_id, matricula_id, concepto_id, venta_stock_id, cargo_origen_id,
      idempotency_key, version, created_at)
-SELECT x.alumno_id,
+SELECT (SELECT tenant_id FROM _demo_config),
+       x.alumno_id,
        'RECARGO',
        'Recargo por vencimiento · operación ' || lpad(x.seq::text, 2, '0'),
        5000.00,
@@ -977,7 +1060,7 @@ SELECT x.alumno_id,
        0,
        (SELECT anchor_ts FROM _demo_config) + (180 + x.seq) * interval '1 second'
 FROM _demo_surcharge_origins x
-ON CONFLICT (idempotency_key) DO UPDATE
+ON CONFLICT (tenant_id, idempotency_key) DO UPDATE
 SET alumno_id = EXCLUDED.alumno_id,
     descripcion = EXCLUDED.descripcion,
     importe_original = EXCLUDED.importe_original,
@@ -988,11 +1071,12 @@ SET alumno_id = EXCLUDED.alumno_id,
     created_at = EXCLUDED.created_at;
 
 INSERT INTO public.cargo_liquidaciones
-    (cargo_id, periodo_desde, tarifa_disciplina_id, condicion_inscripcion_id,
+    (tenant_id, cargo_id, periodo_desde, tarifa_disciplina_id, condicion_inscripcion_id,
      origen_precio, importe_base, descuento_porcentaje, descuento_importe,
      recargo_porcentaje, recargo_importe, importe_final, formula_version,
      observaciones, calculada_por_usuario_id, created_at)
-SELECT c.id,
+SELECT (SELECT tenant_id FROM _demo_config),
+       c.id,
        date_trunc('month', c.fecha_emision)::date,
        NULL,
        NULL,
@@ -1010,7 +1094,7 @@ SELECT c.id,
 FROM public.cargos c
 JOIN public.alumnos a ON a.id = c.alumno_id AND a.email LIKE '%@correo.local'
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-administrador'
-ON CONFLICT (cargo_id) DO UPDATE
+ON CONFLICT (tenant_id, cargo_id) DO UPDATE
 SET periodo_desde = EXCLUDED.periodo_desde,
     tarifa_disciplina_id = EXCLUDED.tarifa_disciplina_id,
     condicion_inscripcion_id = EXCLUDED.condicion_inscripcion_id,
@@ -1101,10 +1185,11 @@ FROM _demo_application_targets t
 GROUP BY t.payment_no, t.alumno_id;
 
 INSERT INTO public.pagos
-    (alumno_id, metodo_pago_id, usuario_id, fecha, monto_recibido, estado,
+    (tenant_id, alumno_id, metodo_pago_id, usuario_id, fecha, monto_recibido, estado,
      idempotency_key, request_hash, reversal_idempotency_key, reversal_request_hash,
      observaciones, motivo_anulacion, fecha_anulacion, version, created_at)
-SELECT x.alumno_id,
+SELECT (SELECT tenant_id FROM _demo_config),
+       x.alumno_id,
        mp.id,
        u.id,
        (SELECT anchor_date FROM _demo_config) - ((48 - x.payment_no) % 28),
@@ -1128,7 +1213,7 @@ JOIN public.metodo_pagos mp ON mp.descripcion = CASE ordinal.seq
     WHEN 1 THEN 'Efectivo' WHEN 2 THEN 'Transferencia bancaria'
     WHEN 3 THEN 'Tarjeta de débito' ELSE 'Tarjeta de crédito' END
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-caja'
-ON CONFLICT (idempotency_key) DO UPDATE
+ON CONFLICT (tenant_id, idempotency_key) DO UPDATE
 SET alumno_id = EXCLUDED.alumno_id,
     metodo_pago_id = EXCLUDED.metodo_pago_id,
     usuario_id = EXCLUDED.usuario_id,
@@ -1144,9 +1229,10 @@ SET alumno_id = EXCLUDED.alumno_id,
     created_at = EXCLUDED.created_at;
 
 INSERT INTO public.aplicaciones_pago
-    (pago_id, cargo_id, usuario_id, importe_aplicado, estado, fecha,
+    (tenant_id, pago_id, cargo_id, usuario_id, importe_aplicado, estado, fecha,
      motivo_reversion, fecha_reversion, version, created_at)
-SELECT p.id,
+SELECT (SELECT tenant_id FROM _demo_config),
+       p.id,
        t.charge_id,
        u.id,
        t.applied_amount,
@@ -1159,7 +1245,7 @@ SELECT p.id,
 FROM _demo_application_targets t
 JOIN public.pagos p ON p.idempotency_key = 'demo-seed:v1:pago:' || lpad(t.payment_no::text, 3, '0')
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-caja'
-ON CONFLICT (pago_id, cargo_id) DO UPDATE
+ON CONFLICT (tenant_id, pago_id, cargo_id) DO UPDATE
 SET usuario_id = EXCLUDED.usuario_id,
     importe_aplicado = EXCLUDED.importe_aplicado,
     estado = EXCLUDED.estado,
@@ -1212,9 +1298,10 @@ INSERT INTO _demo_credit_originals VALUES
     (10, 'CONSUMO', 3000.00, NULL, 4, NULL);
 
 INSERT INTO public.movimientos_credito
-    (alumno_id, tipo, importe, pago_id, cargo_id, movimiento_revertido_id,
+    (tenant_id, alumno_id, tipo, importe, pago_id, cargo_id, movimiento_revertido_id,
      usuario_id, idempotency_key, request_hash, motivo, created_at)
-SELECT a.id,
+SELECT (SELECT tenant_id FROM _demo_config),
+       a.id,
        x.movement_type,
        x.amount,
        p.id,
@@ -1231,7 +1318,7 @@ JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-caja'
 LEFT JOIN public.pagos p
   ON p.idempotency_key = 'demo-seed:v1:pago:' || lpad(x.payment_no::text, 3, '0')
 LEFT JOIN _demo_credit_context cc ON cc.seq = x.charge_seq
-ON CONFLICT (idempotency_key) DO UPDATE
+ON CONFLICT (tenant_id, idempotency_key) DO UPDATE
 SET alumno_id = EXCLUDED.alumno_id,
     tipo = EXCLUDED.tipo,
     importe = EXCLUDED.importe,
@@ -1244,9 +1331,10 @@ SET alumno_id = EXCLUDED.alumno_id,
     created_at = EXCLUDED.created_at;
 
 INSERT INTO public.movimientos_credito
-    (alumno_id, tipo, importe, pago_id, cargo_id, movimiento_revertido_id,
+    (tenant_id, alumno_id, tipo, importe, pago_id, cargo_id, movimiento_revertido_id,
      usuario_id, idempotency_key, request_hash, motivo, created_at)
-SELECT original.alumno_id,
+SELECT (SELECT tenant_id FROM _demo_config),
+       original.alumno_id,
        'REVERSO',
        original.importe,
        NULL,
@@ -1263,7 +1351,7 @@ FROM (VALUES
 ) AS reversal(seq, key_value, original_key)
 JOIN public.movimientos_credito original ON original.idempotency_key = reversal.original_key
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-caja'
-ON CONFLICT (idempotency_key) DO UPDATE
+ON CONFLICT (tenant_id, idempotency_key) DO UPDATE
 SET alumno_id = EXCLUDED.alumno_id,
     tipo = EXCLUDED.tipo,
     importe = EXCLUDED.importe,
@@ -1327,10 +1415,11 @@ SELECT n AS seq,
 FROM generate_series(1, 7) AS g(n);
 
 INSERT INTO public.egresos
-    (fecha, monto, observaciones, metodo_pago_id, estado, usuario_id,
+    (tenant_id, fecha, monto, observaciones, metodo_pago_id, estado, usuario_id,
      idempotency_key, request_hash, reversal_idempotency_key, reversal_request_hash,
      motivo_anulacion, fecha_anulacion, version)
-SELECT (SELECT anchor_date - (8 - x.seq) FROM _demo_config),
+SELECT (SELECT tenant_id FROM _demo_config),
+       (SELECT anchor_date - (8 - x.seq) FROM _demo_config),
        x.amount,
        CASE x.seq WHEN 1 THEN 'Honorarios de limpieza y mantenimiento.'
                   WHEN 2 THEN 'Compra de insumos de librería.'
@@ -1353,7 +1442,7 @@ FROM _demo_expenses_desired x
 JOIN public.metodo_pagos mp ON mp.descripcion = CASE WHEN x.seq % 2 = 0
     THEN 'Transferencia bancaria' ELSE 'Efectivo' END
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-administrador'
-ON CONFLICT (idempotency_key) DO UPDATE
+ON CONFLICT (tenant_id, idempotency_key) DO UPDATE
 SET fecha = EXCLUDED.fecha,
     monto = EXCLUDED.monto,
     observaciones = EXCLUDED.observaciones,
@@ -1367,9 +1456,10 @@ SET fecha = EXCLUDED.fecha,
     fecha_anulacion = EXCLUDED.fecha_anulacion;
 
 INSERT INTO public.movimientos_caja
-    (tipo, fecha, importe, metodo_pago_id, pago_id, egreso_id,
+    (tenant_id, tipo, fecha, importe, metodo_pago_id, pago_id, egreso_id,
      movimiento_revertido_id, usuario_id, idempotency_key, motivo, created_at)
-SELECT 'INGRESO_PAGO',
+SELECT (SELECT tenant_id FROM _demo_config),
+       'INGRESO_PAGO',
        p.fecha,
        p.monto_recibido,
        p.metodo_pago_id,
@@ -1383,7 +1473,7 @@ SELECT 'INGRESO_PAGO',
 FROM _demo_payments_desired x
 JOIN public.pagos p ON p.idempotency_key = x.idempotency_key
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-caja'
-ON CONFLICT (idempotency_key) DO UPDATE
+ON CONFLICT (tenant_id, idempotency_key) DO UPDATE
 SET tipo = EXCLUDED.tipo,
     fecha = EXCLUDED.fecha,
     importe = EXCLUDED.importe,
@@ -1396,9 +1486,10 @@ SET tipo = EXCLUDED.tipo,
     created_at = EXCLUDED.created_at;
 
 INSERT INTO public.movimientos_caja
-    (tipo, fecha, importe, metodo_pago_id, pago_id, egreso_id,
+    (tenant_id, tipo, fecha, importe, metodo_pago_id, pago_id, egreso_id,
      movimiento_revertido_id, usuario_id, idempotency_key, motivo, created_at)
-SELECT 'REVERSO',
+SELECT (SELECT tenant_id FROM _demo_config),
+       'REVERSO',
        (SELECT anchor_date FROM _demo_config),
        original.importe,
        original.metodo_pago_id,
@@ -1412,7 +1503,7 @@ SELECT 'REVERSO',
 FROM public.movimientos_caja original
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-caja'
 WHERE original.idempotency_key = 'demo-seed:v1:caja:pago:048'
-ON CONFLICT (idempotency_key) DO UPDATE
+ON CONFLICT (tenant_id, idempotency_key) DO UPDATE
 SET tipo = EXCLUDED.tipo,
     fecha = EXCLUDED.fecha,
     importe = EXCLUDED.importe,
@@ -1425,9 +1516,10 @@ SET tipo = EXCLUDED.tipo,
     created_at = EXCLUDED.created_at;
 
 INSERT INTO public.movimientos_caja
-    (tipo, fecha, importe, metodo_pago_id, pago_id, egreso_id,
+    (tenant_id, tipo, fecha, importe, metodo_pago_id, pago_id, egreso_id,
      movimiento_revertido_id, usuario_id, idempotency_key, motivo, created_at)
-SELECT 'EGRESO',
+SELECT (SELECT tenant_id FROM _demo_config),
+       'EGRESO',
        e.fecha,
        e.monto,
        e.metodo_pago_id,
@@ -1441,7 +1533,7 @@ SELECT 'EGRESO',
 FROM _demo_expenses_desired x
 JOIN public.egresos e ON e.idempotency_key = x.key_value
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-administrador'
-ON CONFLICT (idempotency_key) DO UPDATE
+ON CONFLICT (tenant_id, idempotency_key) DO UPDATE
 SET tipo = EXCLUDED.tipo,
     fecha = EXCLUDED.fecha,
     importe = EXCLUDED.importe,
@@ -1454,9 +1546,10 @@ SET tipo = EXCLUDED.tipo,
     created_at = EXCLUDED.created_at;
 
 INSERT INTO public.movimientos_caja
-    (tipo, fecha, importe, metodo_pago_id, pago_id, egreso_id,
+    (tenant_id, tipo, fecha, importe, metodo_pago_id, pago_id, egreso_id,
      movimiento_revertido_id, usuario_id, idempotency_key, motivo, created_at)
-SELECT 'REVERSO',
+SELECT (SELECT tenant_id FROM _demo_config),
+       'REVERSO',
        (SELECT anchor_date FROM _demo_config),
        original.importe,
        original.metodo_pago_id,
@@ -1470,7 +1563,7 @@ SELECT 'REVERSO',
 FROM public.movimientos_caja original
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-administrador'
 WHERE original.idempotency_key = 'demo-seed:v1:caja:egreso:007'
-ON CONFLICT (idempotency_key) DO UPDATE
+ON CONFLICT (tenant_id, idempotency_key) DO UPDATE
 SET tipo = EXCLUDED.tipo,
     fecha = EXCLUDED.fecha,
     importe = EXCLUDED.importe,
@@ -1483,9 +1576,10 @@ SET tipo = EXCLUDED.tipo,
     created_at = EXCLUDED.created_at;
 
 INSERT INTO public.movimientos_caja
-    (tipo, fecha, importe, metodo_pago_id, pago_id, egreso_id,
+    (tenant_id, tipo, fecha, importe, metodo_pago_id, pago_id, egreso_id,
      movimiento_revertido_id, usuario_id, idempotency_key, motivo, created_at)
-SELECT CASE WHEN n <= 3 THEN 'AJUSTE_INGRESO' ELSE 'AJUSTE_EGRESO' END,
+SELECT (SELECT tenant_id FROM _demo_config),
+       CASE WHEN n <= 3 THEN 'AJUSTE_INGRESO' ELSE 'AJUSTE_EGRESO' END,
        (SELECT anchor_date FROM _demo_config),
        (1000 + n * 250)::numeric(19,2),
        mp.id,
@@ -1500,7 +1594,7 @@ SELECT CASE WHEN n <= 3 THEN 'AJUSTE_INGRESO' ELSE 'AJUSTE_EGRESO' END,
 FROM generate_series(1, 4) AS g(n)
 JOIN public.metodo_pagos mp ON mp.descripcion = 'Efectivo'
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-administrador'
-ON CONFLICT (idempotency_key) DO UPDATE
+ON CONFLICT (tenant_id, idempotency_key) DO UPDATE
 SET tipo = EXCLUDED.tipo,
     fecha = EXCLUDED.fecha,
     importe = EXCLUDED.importe,
@@ -1514,9 +1608,10 @@ SET tipo = EXCLUDED.tipo,
 
 -- Libro de stock: cinco ingresos, seis ventas, dos ajustes y una reversión.
 INSERT INTO public.movimientos_stock
-    (stock_id, tipo, cantidad, venta_stock_id, movimiento_revertido_id,
+    (tenant_id, stock_id, tipo, cantidad, venta_stock_id, movimiento_revertido_id,
      usuario_id, idempotency_key, motivo, created_at)
-SELECT s.id,
+SELECT (SELECT tenant_id FROM _demo_config),
+       s.id,
        'INGRESO',
        20,
        NULL,
@@ -1529,7 +1624,7 @@ FROM _demo_stocks_desired x
 JOIN public.stocks s ON s.codigo_barras = x.barcode
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-administrador'
 WHERE x.seq <= 5
-ON CONFLICT (idempotency_key) DO UPDATE
+ON CONFLICT (tenant_id, idempotency_key) DO UPDATE
 SET stock_id = EXCLUDED.stock_id,
     tipo = EXCLUDED.tipo,
     cantidad = EXCLUDED.cantidad,
@@ -1540,9 +1635,10 @@ SET stock_id = EXCLUDED.stock_id,
     created_at = EXCLUDED.created_at;
 
 INSERT INTO public.movimientos_stock
-    (stock_id, tipo, cantidad, venta_stock_id, movimiento_revertido_id,
+    (tenant_id, stock_id, tipo, cantidad, venta_stock_id, movimiento_revertido_id,
      usuario_id, idempotency_key, motivo, created_at)
-SELECT v.stock_id,
+SELECT (SELECT tenant_id FROM _demo_config),
+       v.stock_id,
        'VENTA',
        v.cantidad,
        v.id,
@@ -1554,7 +1650,7 @@ SELECT v.stock_id,
 FROM _demo_stocks_desired x
 JOIN public.ventas_stock v ON v.idempotency_key = 'demo-seed:v1:venta:' || lpad(x.seq::text, 3, '0')
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-administrador'
-ON CONFLICT (idempotency_key) DO UPDATE
+ON CONFLICT (tenant_id, idempotency_key) DO UPDATE
 SET stock_id = EXCLUDED.stock_id,
     tipo = EXCLUDED.tipo,
     cantidad = EXCLUDED.cantidad,
@@ -1565,9 +1661,10 @@ SET stock_id = EXCLUDED.stock_id,
     created_at = EXCLUDED.created_at;
 
 INSERT INTO public.movimientos_stock
-    (stock_id, tipo, cantidad, venta_stock_id, movimiento_revertido_id,
+    (tenant_id, stock_id, tipo, cantidad, venta_stock_id, movimiento_revertido_id,
      usuario_id, idempotency_key, motivo, created_at)
-SELECT s.id,
+SELECT (SELECT tenant_id FROM _demo_config),
+       s.id,
        adjustment.movement_type,
        adjustment.quantity,
        NULL,
@@ -1582,7 +1679,7 @@ FROM (VALUES
 ) AS adjustment(seq, barcode, movement_type, quantity, key_value, reason)
 JOIN public.stocks s ON s.codigo_barras = adjustment.barcode
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-administrador'
-ON CONFLICT (idempotency_key) DO UPDATE
+ON CONFLICT (tenant_id, idempotency_key) DO UPDATE
 SET stock_id = EXCLUDED.stock_id,
     tipo = EXCLUDED.tipo,
     cantidad = EXCLUDED.cantidad,
@@ -1593,9 +1690,10 @@ SET stock_id = EXCLUDED.stock_id,
     created_at = EXCLUDED.created_at;
 
 INSERT INTO public.movimientos_stock
-    (stock_id, tipo, cantidad, venta_stock_id, movimiento_revertido_id,
+    (tenant_id, stock_id, tipo, cantidad, venta_stock_id, movimiento_revertido_id,
      usuario_id, idempotency_key, motivo, created_at)
-SELECT original.stock_id,
+SELECT (SELECT tenant_id FROM _demo_config),
+       original.stock_id,
        'REVERSO',
        original.cantidad,
        NULL,
@@ -1607,7 +1705,7 @@ SELECT original.stock_id,
 FROM public.movimientos_stock original
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-administrador'
 WHERE original.idempotency_key = 'demo-seed:v1:stock:venta:006'
-ON CONFLICT (idempotency_key) DO UPDATE
+ON CONFLICT (tenant_id, idempotency_key) DO UPDATE
 SET stock_id = EXCLUDED.stock_id,
     tipo = EXCLUDED.tipo,
     cantidad = EXCLUDED.cantidad,
@@ -1618,8 +1716,9 @@ SET stock_id = EXCLUDED.stock_id,
     created_at = EXCLUDED.created_at;
 
 -- Recibos históricos y outbox técnica; no se crean archivos físicos.
-INSERT INTO public.recibos (pago_id, storage_key, generado_at, enviado_at)
-SELECT p.id,
+INSERT INTO public.recibos (tenant_id, pago_id, storage_key, generado_at, enviado_at)
+SELECT (SELECT tenant_id FROM _demo_config),
+       p.id,
        'demo/recibos/pago-' || lpad(x.payment_no::text, 3, '0') || '.pdf',
        (SELECT anchor_ts FROM _demo_config) + (600 + x.payment_no) * interval '1 second',
        CASE WHEN x.payment_no % 4 = 0
@@ -1627,15 +1726,16 @@ SELECT p.id,
             ELSE NULL END
 FROM _demo_payments_desired x
 JOIN public.pagos p ON p.idempotency_key = x.idempotency_key
-ON CONFLICT (pago_id) DO UPDATE
+ON CONFLICT (tenant_id, pago_id) DO UPDATE
 SET storage_key = EXCLUDED.storage_key,
     generado_at = EXCLUDED.generado_at,
     enviado_at = EXCLUDED.enviado_at;
 
 INSERT INTO public.recibos_pendientes
-    (pago_id, tipo, estado, intentos, next_attempt_at, idempotency_key,
+    (tenant_id, pago_id, tipo, estado, intentos, next_attempt_at, idempotency_key,
      claim_token, claimed_at, lease_until, ultimo_error, created_at, processed_at)
-SELECT p.id,
+SELECT (SELECT tenant_id FROM _demo_config),
+       p.id,
        'GENERAR_Y_ENVIAR',
        CASE WHEN x.payment_no % 4 = 0 THEN 'COMPLETADO' ELSE 'PENDIENTE' END,
        CASE WHEN x.payment_no % 4 = 0 THEN 1 ELSE 0 END,
@@ -1651,7 +1751,7 @@ SELECT p.id,
             ELSE NULL END
 FROM _demo_payments_desired x
 JOIN public.pagos p ON p.idempotency_key = x.idempotency_key
-ON CONFLICT (pago_id, tipo) DO UPDATE
+ON CONFLICT (tenant_id, pago_id, tipo) DO UPDATE
 SET estado = EXCLUDED.estado,
     intentos = EXCLUDED.intentos,
     next_attempt_at = EXCLUDED.next_attempt_at,
@@ -1774,6 +1874,31 @@ BEGIN
 
     IF actual_counts <> expected_counts THEN
         RAISE EXCEPTION 'Conteos demo inesperados. Esperado=%, actual=%', expected_counts, actual_counts;
+    END IF;
+
+    IF (SELECT count(*)
+        FROM public.tenant_memberships m
+        JOIN public.usuarios u ON u.id = m.usuario_id
+        WHERE m.tenant_id = (SELECT tenant_id FROM _demo_config)
+          AND lower(u.nombre_usuario) LIKE 'demo-%'
+          AND m.status = 'ACTIVE') <> 5
+       OR (SELECT count(*)
+           FROM public.tenant_membership_roles mr
+           JOIN public.tenant_memberships m ON m.id = mr.membership_id
+           JOIN public.usuarios u ON u.id = m.usuario_id
+           WHERE m.tenant_id = (SELECT tenant_id FROM _demo_config)
+             AND lower(u.nombre_usuario) LIKE 'demo-%') <> 5
+       OR EXISTS (
+           SELECT 1
+           FROM public.tenant_memberships m
+           JOIN public.usuarios u ON u.id = m.usuario_id
+           JOIN public.tenant_membership_roles mr ON mr.membership_id = m.id
+           JOIN public.roles r ON r.id = mr.role_id
+           JOIN _demo_users_desired d ON d.username = lower(u.nombre_usuario)
+           WHERE m.tenant_id = (SELECT tenant_id FROM _demo_config)
+             AND r.id <> d.role_id
+       ) THEN
+        RAISE EXCEPTION 'Las identidades demo no tienen exactamente una membership y un rol tenant activo';
     END IF;
 
     SELECT sum(value::integer) INTO direct_total FROM jsonb_each_text(actual_counts);

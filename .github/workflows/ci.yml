@@ -74,6 +74,8 @@ jobs:
           POSTGRES_DB: gestudio_ci
           POSTGRES_USER: gestudio_ci
           POSTGRES_PASSWORD: ci-not-a-production-secret
+          POSTGRES_APP_USER: gestudio_ci_runtime
+          POSTGRES_APP_PASSWORD: ci-not-a-production-runtime-secret
           BACKEND_IMAGE: example.invalid/gestudio-backend:${{ github.sha }}
           FRONTEND_IMAGE: example.invalid/gestudio-frontend:${{ github.sha }}
           JWT_SECRET: ci-only-jwt-secret-with-at-least-32-characters
