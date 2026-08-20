@@ -20,6 +20,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
@@ -79,12 +80,13 @@ public class ControlPlaneSteps {
             throw new IllegalStateException("No se pudo crear el actor BDD");
         }
         Instant now = clock.instant();
+        Timestamp timestamp = Timestamp.from(now);
         jdbc.update("""
                 INSERT INTO platform_admins(usuario_id, active, granted_at,
                                             granted_by_usuario_id, revoked_at,
                                             security_version, mfa_required, updated_at)
                 VALUES (?, TRUE, ?, NULL, NULL, 0, TRUE, ?)
-                """, actorId, now, now);
+                """, actorId, timestamp, timestamp);
         actor = new PlatformPrincipal(actorId, actorUsername, 0, 0,
                 UUID.randomUUID(), now);
     }
