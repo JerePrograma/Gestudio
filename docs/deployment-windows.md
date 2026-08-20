@@ -41,12 +41,18 @@ La primera ejecución:
 3. crea `.gestudio-deploy/config/deploy.env` con secretos aleatorios locales;
 4. valida `docker compose config`;
 5. construye las imágenes backend y frontend;
-6. crea el volumen PostgreSQL y ejecuta Flyway con el migrador;
-7. ejecuta el bootstrap inicial exactamente una vez;
-8. arranca el backend estable con `gestudio_runtime`;
-9. verifica PostgreSQL, Flyway, privilegios, RLS, backend, seguridad anónima,
+6. crea o reconcilia los logins externos de runtime tenant y control-plane;
+7. crea el volumen PostgreSQL y ejecuta Flyway con el migrador;
+8. arranca el backend seedless con `gestudio_runtime` y
+   `gestudio_control_runtime`; el bootstrap queda deshabilitado;
+9. verifica PostgreSQL, Flyway, separación de privilegios, RLS, backend, seguridad anónima,
    frontend y logs;
 10. escribe el último estado exitoso de forma atómica.
+
+Después de un deploy healthy, el primer `SUPERADMIN` se crea mediante el job
+one-shot externo documentado en [Bootstrap inicial](#bootstrap-inicial). Sus
+credenciales, MFA y recovery codes nunca quedan en el entorno del servicio
+ordinario.
 
 El proyecto Compose predeterminado es `gestudio-windows`. Para evitar colisiones,
 no se selecciona un nombre o un puerto alternativo de forma automática.
@@ -118,7 +124,10 @@ credenciales. Una ejecución fallida conserva el último estado exitoso.
 - No hay secretos reales versionados.
 - La primera ejecución genera valores criptográficamente aleatorios cuando
   faltan y los persiste solo en `deploy.env`.
-- Las ejecuciones posteriores reutilizan esos valores y nunca los rotan.
+- Las ejecuciones posteriores reutilizan esos valores y nunca los rotan de
+  forma automática. Una rotación explícita del operador cambia el fingerprint,
+  reconcilia el password del login y converge los servicios sin reemplazar el
+  volumen ni crear un backup de esquema innecesario.
 - Una variable nueva se agrega sin reemplazar las existentes y solo se registra
   su nombre.
 - Los secretos no se imprimen, no se guardan en el estado y se sanitizan en
@@ -127,6 +136,47 @@ credenciales. Una ejecución fallida conserva el último estado exitoso.
 
 `.gitignore` cubre el directorio completo. El preflight también exige que Git
 reconozca la configuración efectiva como ignorada.
+
+## Bootstrap inicial
+
+El servicio ordinario fija `APP_BOOTSTRAP_SUPERADMIN_ENABLED=false`. Una vez que
+el deploy terminó healthy y antes de habilitar tráfico de plataforma, ejecute el
+job one-shot desde una terminal interactiva:
+
+```powershell
+$recoveryCodes = 'C:\ruta-segura\gestudio-platform-recovery-codes.txt'
+pwsh -NoProfile -ExecutionPolicy Bypass `
+  -File .\scripts\ops\bootstrap-platform-admin.ps1 `
+  -EnvFile .\.gestudio-deploy\config\deploy.env `
+  -ProjectName gestudio-windows `
+  -Username '<superadmin-inicial>' `
+  -RecoveryCodesPath $recoveryCodes `
+  -ConfirmBootstrap
+```
+
+El script solicita password, secreto TOTP Base32 y código TOTP como
+`SecureString`; no los agregue a la línea de comandos. Rechaza un claim previo,
+el proyecto protegido `gestudio-remote-demo` y un destino de recovery codes ya
+existente. Sólo informa éxito tras verificar identidad/admin activos, MFA TOTP
+verificado, exactamente diez recovery codes sin usar y cero memberships tenant.
+Copia los códigos antes de eliminar el contenedor temporal, restringe el ACL al
+usuario Windows actual y nunca imprime su contenido. Custodie ese archivo fuera
+del checkout mediante el procedimiento organizacional aprobado.
+
+Si PostgreSQL ya confirmó el bootstrap pero falla el copiado o la protección
+local, el script termina con error, intenta detener y **conserva únicamente ese
+job one-shot**: no vuelva a ejecutar el bootstrap. El error incluye un comando
+sanitizado con `-RecoverJobId <id-completo> -ConfirmRecovery`; ejecútelo con el
+mismo Compose, env y proyecto, y con un `RecoveryCodesPath` que todavía no
+exista. Ese modo no solicita ni acepta username, password, secreto TOTP o código
+TOTP: valida el ID completo, los labels y nombre exactos del job, y el
+claim/MFA/códigos/membership en PostgreSQL. Sólo elimina el contenedor después
+de publicar un archivo con exactamente diez códigos y ACL exclusivo del usuario
+Windows actual. Si la
+recuperación vuelve a fallar, conserva el job y devuelve exit code no cero; no
+inspeccione su entorno ni sus logs porque el contenedor retenido contiene los
+secretos de bootstrap. Recupérelo y elimínelo mediante el mismo comando tan
+pronto como sea operacionalmente posible.
 
 ## Backups y upgrades
 
@@ -140,23 +190,31 @@ launcher conserva volumen, backup y logs, devuelve un código no cero y no hace
 restore automático. La recuperación siempre es una decisión explícita del
 operador mediante el runbook de [backup y restore](operations/backup-restore.md).
 
-El gate automatizado valida un upgrade V7→V11 sobre un volumen aislado: backup
-V7 previo, cuatro migraciones pendientes, datos y ACL conservados, grants del
-migrador conservados, grants del runtime establecidos, RLS `GREEN` y una
-reejecución final sin migraciones ni backup adicional. V7 es un fixture
-histórico anterior a los grants del runtime; V11 siempre arranca con el usuario
-runtime restringido.
+El gate automatizado deriva la última versión del checkout y valida un upgrade
+desde el fixture histórico anterior a V8 sobre un volumen aislado: backup
+previo, sólo migraciones pendientes, datos y ACL conservados, grants del
+migrador conservados, separación de runtimes tenant/control-plane, RLS `GREEN`
+y una reejecución final sin migraciones ni backup adicional. También prueba una
+rotación explícita de la credencial control-plane y su siguiente no-op.
 
 ## Health checks
 
 Un exit code `0` exige todos estos contratos:
 
 - contenedores PostgreSQL, backend y frontend `healthy`;
-- Flyway con versiones contiguas, checksums válidos, sin pendientes, fallos ni
-  versiones duplicadas;
-- runtime sin `SUPERUSER`, `BYPASSRLS`, `CREATEROLE` ni `CREATEDB`;
+- Flyway con historia exacta `V1..Vlatest` o baseline exacta `Blatest`, sin
+  fallos;
+- runtimes tenant y control-plane distintos, cada uno miembro sólo de su rol
+  técnico, sin `SUPERUSER`, `BYPASSRLS`, `CREATEROLE`, `CREATEDB` ni
+  `REPLICATION`;
+- control-plane sin acceso al dominio funcional tenant; su acceso a
+  `tenants`, memberships y roles es el mínimo de provisioning, siempre con
+  target `TenantContext` y RLS. El runtime tenant no tiene DML global sobre
+  `tenants`, `platform_admins`, bootstrap, sesiones/MFA/idempotencia/auditoría
+  de plataforma;
 - health estructural RLS `GREEN` desde V10;
-- un único claim de bootstrap y datos base no duplicados;
+- cero o un claim de bootstrap; si existe, debe enlazar un administrador de
+  plataforma activo;
 - `GET /actuator/health/readiness`: HTTP `200`, JSON con `status=UP`;
 - `GET /api/usuarios/perfil`: HTTP `401`, JSON no vacío y sin HTML/stack trace;
 - frontend: HTTP `2xx` o `3xx` esperado y `text/html`;
@@ -190,7 +248,7 @@ use `down -v`, `volume rm` ni herramientas de prune si necesita conservar datos.
 | `2` | Argumento, plataforma, archivo o preflight inválido |
 | `3` | Configuración incompleta o Compose inválido |
 | `4` | Docker Server, Docker CLI o Compose no disponible |
-| `5` | Build, bootstrap o migración fallida |
+| `5` | Build, reconciliación de roles, Compose o migración fallida |
 | `6` | Health check fallido |
 | `7` | Verificación funcional, Flyway, privilegios, RLS o logs fallida |
 | `8` | Otro despliegue conserva el lock |
@@ -237,8 +295,9 @@ aislados:
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\deploy\test-idempotency.ps1
 ```
 
-Ejecuta dos despliegues idénticos, `--verify-only`, lock concurrente, una ruta
-con espacios, Docker deliberadamente inaccesible y el upgrade V7→V11. La
+Ejecuta dos despliegues idénticos, una rotación de credencial control-plane,
+`--verify-only`, lock concurrente, una ruta con espacios, Docker deliberadamente
+inaccesible y el upgrade histórico hasta la última V local. La
 limpieza enumera contenedores, volúmenes y redes por el label exacto del proyecto
 de prueba. Finalmente compara los IDs de `gestudio-remote-demo` y verifica que
 ningún recurso ajeno existente haya sido eliminado.

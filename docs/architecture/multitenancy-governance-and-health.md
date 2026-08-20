@@ -1,9 +1,9 @@
 # Gobierno, estado y health del multitenancy
 
 > **Documento normativo vivo**  
-> Estado técnico local: `EXECUTED_PASS`
+> Estado técnico actual: `IMPLEMENTED_UNVERIFIED`
 > Rama de referencia: `main`  
-> Última revisión estructural: 2026-08-04
+> Última revisión estructural: 2026-08-13
 > Repositorio: `JerePrograma/Gestudio`
 
 ## 1. Propósito
@@ -25,18 +25,21 @@ Una modificación de código relacionada con tenants que no actualice este docum
 
 ## 2. Veredicto actual
 
-La implementación shared-schema está integrada localmente: control plane,
-memberships, contexto, claims ligados a tenant/membership, backfill, claves
-compuestas, RLS forzado, jobs, archivos, integración Jere y selector frontend.
-La identidad inicial consulta sólo `usuarios`; roles y permisos se cargan
-después de abrir el tenant. Runtime y Flyway usan roles PostgreSQL separados.
+La implementación shared-schema y el control plane están integrados en el
+árbol de trabajo: memberships, contexto, scopes tenant/plataforma, backfill,
+claves compuestas, RLS forzado, jobs, archivos, integración Jere y backoffice.
+La identidad inicial consulta sólo `usuarios`; la autorización tenant se carga
+después de abrir el tenant y la capacidad global proviene exclusivamente de
+`platform_admins`. Runtime tenant, runtime de plataforma y Flyway usan
+credenciales PostgreSQL separadas.
 
-El cierre técnico local está en `EXECUTED_PASS`: PostgreSQL 15 real validó
-V1-V11, V7-V11, Hibernate, RLS con rol runtime no propietario y reutilización
-de conexión; `clean verify` pasó 282 tests y el frontend pasó 166 tests, lint y
-build. Esto no equivale todavía a la certificación absoluta de la sección 18:
-backup/restore multitenant y publicación siguen separados. La demo estable
-sigue en V7 y quedó fuera de estas pruebas.
+La evidencia `EXECUTED_PASS` registrada el 2026-08-04 para V1-V11, 282 tests
+backend y 166 tests frontend es histórica. Desde entonces cambiaron auth, RLS,
+roles runtime y la cadena V12/B12, por lo que no certifica el árbol actual. El
+estado vigente es `IMPLEMENTED_UNVERIFIED` hasta repetir PostgreSQL real,
+fresh/equivalencia/upgrade, autorización adversarial, backup/restore y los
+gates del SHA definitivo. La demo protegida no forma parte de esas pruebas y no
+debe mutarse para obtener evidencia local.
 
 El `tenantId` histórico de `integraciones/jereplatform` continúa siendo una
 identidad externa. La autoridad interna es el UUID de `Tenant` resuelto desde
@@ -225,6 +228,24 @@ permisos); `J` exportación `/api/integraciones/jere-platform/student-source`.
 | `jere_platform_student_export_snapshots` | `StudentSourceExportStore` / JDBC | J | `INTEGRATION_MAPPING` | Sí | mapping externo inmutable | internal tenant + FK mapping; unique tenant/checkpoint; RLS | snapshot histórico A/B |
 | `jere_platform_student_export_pages` | `StudentSourceExportStore` / JDBC | J | `OPERATIONAL` | Sí | FK snapshot, página única | tenant+FK compuesta; RLS | páginas/firma A/B |
 
+### 6.1.1 Addendum de control plane V12/B12
+
+Este addendum describe el árbol actual; su ejecución integral sigue pendiente:
+
+| Tabla / agregado | Clase | Tenant requerido | Frontera | Prueba requerida |
+|---|---|---|---|---|
+| `tenants` | `PLATFORM_SCOPED` | No para listar; sí como target explícito | datasource `gestudio_platform`; nunca habilita lectura funcional global | lifecycle, concurrencia y target RLS |
+| `tenant_memberships` | `SECURITY_GLOBAL` | Sí, por relación | lectura runtime mínima; DML de plataforma con target explícito | alta/revocación, último admin y cruce A/B |
+| `tenant_membership_roles` | `TENANT_OWNED` | Sí | rol runtime tenant bajo RLS; provisioning de plataforma acotado | asignación cross-tenant denegada |
+| `platform_admins` | `PLATFORM_SCOPED` | No | capacidad global versionada, separada de roles tenant | grant/revoke, último admin y revalidación |
+| `platform_refresh_sessions` | `AUTH` | Prohibido | token hash, familia, rotación, reuse y expiración absoluta | scope/audience/replay/revocación |
+| `platform_mfa_credentials` | `AUTH` | Prohibido | secreto cifrado, contador anti-replay y rate limit | TOTP, bloqueo, CAS y ciphertext alterado |
+| `platform_recovery_codes` | `AUTH` | Prohibido | hash one-shot ligado a credencial MFA | consumo atómico y no exposición |
+| `platform_identity_activations` | `AUTH` | No | token sólo hasheado, purpose y expiración | replay, purpose y entrega one-shot |
+| `platform_step_up_challenges` | `AUTH` | Target explícito cuando aplica | proof hash ligado a sesión/acción/target/idempotencia | expiración, binding y consumo único |
+| `platform_idempotency_keys` | `PLATFORM_SCOPED` | Target explícito cuando aplica | operación/key única y hash canónico de request | replay y payload conflictivo |
+| `platform_audit_events` | `AUDIT` | Nullable sólo según semántica de la acción | append-only; escritura de rechazo/fallo en transacción independiente | SUCCESS/DENIED/FAILED, correlación y sin secretos |
+
 Objetos adicionales: `v_cuotas_seguimiento` es una proyección tenant-owned y se
 recreará con joins por tenant y `security_invoker`; los triggers append-only de
 auditoría y cargos permanecen globales en definición, pero protegen filas con
@@ -300,7 +321,7 @@ ADR aceptado: [`adr-0008-shared-schema-multitenancy.md`](adr-0008-shared-schema-
 
 ### Fase 0 — Auditoría e inventario
 
-Estado: `EXECUTED_PASS`
+Estado histórico 2026-08-04: `EXECUTED_PASS`; estado actual: `IMPLEMENTED_UNVERIFIED`.
 
 Entregables:
 
@@ -319,7 +340,7 @@ Evidencia: secciones 6.1/6.2, ADR-0008 y bitácora local del 2026-07-30.
 
 ### Fase 1 — Control plane de tenant
 
-Estado: `EXECUTED_PASS`
+Estado histórico 2026-08-04: `EXECUTED_PASS`; estado actual: `IMPLEMENTED_UNVERIFIED`.
 
 Entregables:
 
@@ -332,7 +353,7 @@ Entregables:
 
 ### Fase 2 — Identidad, sesión y API
 
-Estado: `EXECUTED_PASS`
+Estado histórico 2026-08-04: `EXECUTED_PASS`; estado actual: `IMPLEMENTED_UNVERIFIED`.
 
 Entregables:
 
@@ -345,7 +366,7 @@ Entregables:
 
 ### Fase 3 — Migración de datos y persistencia
 
-Estado: `EXECUTED_PASS`
+Estado histórico 2026-08-04: `EXECUTED_PASS`; estado actual: `IMPLEMENTED_UNVERIFIED`.
 
 Entregables:
 
@@ -359,7 +380,7 @@ Entregables:
 
 ### Fase 4 — Servicios funcionales
 
-Estado: `EXECUTED_PASS`
+Estado histórico 2026-08-04: `EXECUTED_PASS`; estado actual: `IMPLEMENTED_UNVERIFIED`.
 
 Cobertura obligatoria:
 
@@ -376,7 +397,7 @@ Cobertura obligatoria:
 
 ### Fase 5 — Jobs, archivos e integraciones
 
-Estado: `EXECUTED_PASS`
+Estado histórico 2026-08-04: `EXECUTED_PASS`; estado actual: `IMPLEMENTED_UNVERIFIED`.
 
 Entregables:
 
@@ -389,7 +410,7 @@ Entregables:
 
 ### Fase 6 — Frontend
 
-Estado: `EXECUTED_PASS`
+Estado histórico 2026-08-04: `EXECUTED_PASS`; estado actual: `IMPLEMENTED_UNVERIFIED`.
 
 Entregables:
 
@@ -421,24 +442,24 @@ Actualizar esta tabla en cada intervención.
 
 | Capacidad | Estado | Evidencia | Riesgo pendiente |
 |---|---|---|---|
-| Modelo de tenant | `EXECUTED_PASS` | V8, paquete `gestudio.tenancy`, PostgreSQL y `clean verify` | Sin riesgo técnico abierto en el gate local |
-| Membership | `EXECUTED_PASS` | V8, servicios, login multitenant y rol runtime real | Sin riesgo técnico abierto en el gate local |
-| Resolución por request | `EXECUTED_PASS` | `SecurityFilter` revalida tenant/membership/versiones | Sin riesgo técnico abierto en el gate local |
-| Contexto backend | `EXECUTED_PASS` | Mismo `pg_backend_pid` reutilizado sin fuga | Sin riesgo técnico abierto en el gate local |
-| Esquema tenant-aware | `EXECUTED_PASS` | V1-V11 limpio y V7-V11 incremental | Sin riesgo técnico abierto en el gate local |
-| Constraints cross-tenant | `EXECUTED_PASS` | FKs compuestas, checks e índices verificados | Sin riesgo técnico abierto en el gate local |
-| RLS | `EXECUTED_PASS` | `FORCE RLS`, policies, grants y rol no owner reales | Sin riesgo técnico abierto en el gate local |
-| Autenticación tenant-bound | `EXECUTED_PASS` | login, selección, refresh, filtro y revocación reales | Sin riesgo técnico abierto en el gate local |
-| Frontend tenant-aware | `EXECUTED_PASS` | selector, cambio de scope, 166 tests, lint y build | Revalidar si cambia el contrato |
-| Jobs tenant-aware | `EXECUTED_PASS` | `TenantExecutionService`, callers y suite completa | Sin riesgo técnico abierto en el gate local |
-| Archivos tenant-aware | `EXECUTED_PASS` | namespace, migrador y pruebas filesystem/PostgreSQL | Backup/restore multitenant separado |
-| Jere Platform por tenant | `EXECUTED_PASS` | mapping, export y upgrade V7 probados | Sin riesgo técnico abierto en el gate local |
-| Auditoría tenant-aware | `EXECUTED_PASS` | auditoría global/tenant bajo rol runtime y suite completa | Sin riesgo técnico abierto en el gate local |
-| Métricas tenant-safe | `EXECUTED_PASS` | health estructural GREEN y pruebas | Observación en despliegue real pendiente |
-| Pruebas de aislamiento | `EXECUTED_PASS` | Testcontainers PostgreSQL 15 con dos tenants | Sin riesgo técnico abierto en el gate local |
-| Migración de datos | `EXECUTED_PASS` | V1-V11 y estado V7 representativo hasta V11 | Reconciliación productiva depende de datos reales |
-| Backup/restore tenant-aware | `ABSENT` | El gate heredado no certifica namespaces multitenant | Alto |
-| Runbook | `DESIGNED` | Este documento y ADR-0008 | Certificación post-push pendiente |
+| Modelo de tenant | `IMPLEMENTED_UNVERIFIED` | Implementación actual y evidencia V8 histórica | Repetir PostgreSQL real sobre V12/B12 |
+| Membership | `IMPLEMENTED_UNVERIFIED` | Servicios y login implementados; evidencia anterior histórica | Repetir roles runtime y casos adversariales |
+| Resolución por request | `IMPLEMENTED_UNVERIFIED` | `SecurityFilter` revalida tenant/membership/versiones | Repetir matriz HTTP/DB integrada |
+| Contexto backend | `IMPLEMENTED_UNVERIFIED` | `TenantContext` y datasource tenant-aware implementados | Repetir conexión reutilizada y ausencia de fuga |
+| Esquema tenant-aware | `IMPLEMENTED_UNVERIFIED` | V12 forward y B12 baseline presentes | Fresh, equivalencia y upgrade pendientes |
+| Constraints cross-tenant | `IMPLEMENTED_UNVERIFIED` | FKs compuestas, checks e índices presentes | Repetir catálogo y escrituras adversariales |
+| RLS | `IMPLEMENTED_UNVERIFIED` | `ENABLE/FORCE RLS`, policies y grants implementados | Repetir con logins runtime reales |
+| Autenticación tenant-bound | `IMPLEMENTED_UNVERIFIED` | Login, selección, refresh y revocación implementados | Gate integrado actual pendiente |
+| Frontend tenant-aware | `IMPLEMENTED_UNVERIFIED` | Implementación y tests presentes; la suite y el build anteriores fueron invalidados por cambios frontend posteriores | Reejecutar suite, build y E2E browser sobre el árbol estable y el SHA definitivo |
+| Jobs tenant-aware | `IMPLEMENTED_UNVERIFIED` | `TenantExecutionService` y consumidores implementados | Suite backend integral pendiente |
+| Archivos tenant-aware | `IMPLEMENTED_UNVERIFIED` | Namespace y validaciones implementados | Drill backup/restore actual pendiente |
+| Jere Platform por tenant | `IMPLEMENTED_UNVERIFIED` | Mapping/export presentes; evidencia V7 histórica | Upgrade V12 y PostgreSQL actuales pendientes |
+| Auditoría tenant-aware | `IMPLEMENTED_UNVERIFIED` | Auditoría global/tenant y plataforma implementada | Append-only y aislamiento integrados pendientes |
+| Métricas tenant-safe | `IMPLEMENTED_UNVERIFIED` | Health/métricas implementados sin labels PII | Drill actual y observación real pendientes |
+| Pruebas de aislamiento | `IMPLEMENTED_UNVERIFIED` | Casos Testcontainers implementados | Docker no disponible; ejecución pendiente |
+| Migración de datos | `IMPLEMENTED_UNVERIFIED` | V12 preserva por diseño; evidencia V1-V11 histórica | Reconciliación/upgrade actual pendientes |
+| Backup/restore tenant-aware | `IMPLEMENTED_UNVERIFIED` | Drill actualizado para V12/B12 y control plane | Ejecución Docker actual pendiente |
+| Runbook | `IMPLEMENTED_UNVERIFIED` | Este documento, ADR-0008 y ADR-0009 | Completar evidencia y SHA definitivo |
 
 Estados permitidos:
 

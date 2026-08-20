@@ -8,6 +8,7 @@ on:
       - "backend/Dockerfile"
       - "backend/src/main/resources/db/migration/**"
       - "scripts/ops/rollback-backend.ps1"
+      - "scripts/ops/test-rollback-backend-contract.ps1"
       - "scripts/ops/backup-postgres.ps1"
       - "scripts/ops/verify-application-rollback.ps1"
       - "docker-compose.yml"
@@ -19,6 +20,7 @@ on:
       - "backend/Dockerfile"
       - "backend/src/main/resources/db/migration/**"
       - "scripts/ops/rollback-backend.ps1"
+      - "scripts/ops/test-rollback-backend-contract.ps1"
       - "scripts/ops/backup-postgres.ps1"
       - "scripts/ops/verify-application-rollback.ps1"
       - "docker-compose.yml"
@@ -56,6 +58,13 @@ jobs:
             pwsh --version
           } | tee application-rollback.log
 
+      - name: Execute rollback static contract
+        shell: pwsh
+        run: |
+          & pwsh -NoProfile -File ./scripts/ops/test-rollback-backend-contract.ps1 2>&1 | Tee-Object -FilePath application-rollback-contract.log
+          Get-Content application-rollback-contract.log | Add-Content application-rollback.log
+          exit $LASTEXITCODE
+
       - name: Execute disposable rollback drill
         shell: pwsh
         run: |
@@ -71,5 +80,6 @@ jobs:
           path: |
             application-rollback.log
             application-rollback-run.log
+            application-rollback-contract.log
           if-no-files-found: error
           retention-days: 14

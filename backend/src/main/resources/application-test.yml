@@ -8,6 +8,7 @@ spring:
     password: ${SPRING_DATASOURCE_PASSWORD:local-only-test}
   flyway:
     enabled: ${SPRING_FLYWAY_ENABLED:false}
+    baseline-migration-prefix: X_DISABLED_BASELINE
 
 jwt:
   secret: ${JWT_SECRET:test-only-jwt-secret-with-at-least-32-characters}

@@ -1,0 +1,120 @@
+name: Security and Supply Chain
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 6 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-supply-chain-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  codeql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [java-kotlin, javascript-typescript]
+    steps:
+      - name: Checkout exact SHA
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.language == 'java-kotlin' && 'manual' || 'none' }}
+
+      - name: Set up Java 21
+        if: matrix.language == 'java-kotlin'
+        uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+
+      - name: Build Java for CodeQL
+        if: matrix.language == 'java-kotlin'
+        working-directory: backend
+        run: bash ./mvnw -B -ntp -DskipTests package
+
+      - name: Analyze with CodeQL
+        uses: github/codeql-action/analyze@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
+        with:
+          category: /language:${{ matrix.language }}
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout complete history for secret detection
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
+
+      - name: Scan verified and unknown credentials
+        uses: trufflesecurity/trufflehog@6f3c981e7b77f235fd2702dd74af25fc4b72bf11 # v3.96.0
+        with:
+          extra_args: --results=verified,unknown --fail-on-scan-errors
+          version: 3.96.0
+
+  actions-policy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact SHA
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Require immutable action references and explicit workflow permissions
+        shell: pwsh
+        run: ./scripts/codex/verify-actions-policy.ps1
+
+  dependency-review:
+    # This action requires a pull request base/head dependency delta. Current-state
+    # audits on push remain enforced by Quality Fortress (npm audit and OWASP).
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout exact SHA
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@56339e523c0409420f6c2c9a2f4292bbb3c07dd3 # v4.8.0
+        with:
+          fail-on-severity: high
+
+  required-security:
+    if: always()
+    needs: [codeql, secret-scan, actions-policy, dependency-review]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all applicable security jobs
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          CODEQL: ${{ needs.codeql.result }}
+          SECRETS: ${{ needs.secret-scan.result }}
+          ACTIONS: ${{ needs.actions-policy.result }}
+          DEPENDENCIES: ${{ needs.dependency-review.result }}
+        run: |
+          test "$CODEQL" = success
+          test "$SECRETS" = success
+          test "$ACTIONS" = success
+          if [ "$EVENT_NAME" = pull_request ]; then
+            test "$DEPENDENCIES" = success
+          else
+            test "$DEPENDENCIES" = skipped
+          fi

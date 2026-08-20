@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
@@ -22,6 +23,8 @@ public final class RequestCorrelationFilter extends OncePerRequestFilter {
 
     public static final String HEADER_NAME = "X-Request-ID";
     public static final String MDC_KEY = "requestId";
+    public static final String ATTRIBUTE_NAME =
+            "gestudio.infra.observabilidad.RequestCorrelationFilter.correlationId";
 
     private static final Logger log = LoggerFactory.getLogger(RequestCorrelationFilter.class);
     private static final Pattern SAFE_REQUEST_ID =
@@ -32,10 +35,12 @@ public final class RequestCorrelationFilter extends OncePerRequestFilter {
                                     HttpServletResponse response,
                                     FilterChain filterChain)
             throws ServletException, IOException {
-        String requestId = resolveRequestId(request.getHeader(HEADER_NAME));
+        UUID correlationId = resolveRequestId(request.getHeader(HEADER_NAME));
+        String requestId = correlationId.toString();
         long startedAt = System.nanoTime();
         Throwable failure = null;
 
+        request.setAttribute(ATTRIBUTE_NAME, correlationId);
         MDC.put(MDC_KEY, requestId);
         response.setHeader(HEADER_NAME, requestId);
         try {
@@ -52,11 +57,15 @@ public final class RequestCorrelationFilter extends OncePerRequestFilter {
         }
     }
 
-    static String resolveRequestId(String candidate) {
-        if (candidate != null && SAFE_REQUEST_ID.matcher(candidate).matches()) {
-            return candidate;
+    static UUID resolveRequestId(String candidate) {
+        if (candidate == null || !SAFE_REQUEST_ID.matcher(candidate).matches()) {
+            return UUID.randomUUID();
         }
-        return UUID.randomUUID().toString();
+        try {
+            return UUID.fromString(candidate);
+        } catch (IllegalArgumentException ignored) {
+            return UUID.nameUUIDFromBytes(candidate.getBytes(StandardCharsets.UTF_8));
+        }
     }
 
     private static void logApiRequest(HttpServletRequest request,

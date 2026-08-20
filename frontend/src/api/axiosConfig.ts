@@ -4,7 +4,13 @@ import axios, {
   type InternalAxiosRequestConfig,
 } from "axios";
 import { API_BASE_URL } from "../config/environment";
-import { clearAuthSession, getAccessToken, refreshSession } from "./authSession";
+import {
+  clearAuthSession,
+  getAccessToken,
+  getAuthSession,
+  refreshSession,
+} from "./authSession";
+import type { SessionScope } from "../hooks/context/auth-context";
 import {
   resetTenantClientState,
   tenantRequestSignal,
@@ -57,8 +63,26 @@ function isAuthEndpoint(config: InternalAxiosRequestConfig): boolean {
     path === "/api/login/logout" ||
     path === "/login" ||
     path === "/login/refresh" ||
-    path === "/login/logout"
+    path === "/login/logout" ||
+    path === "/api/platform/auth/login" ||
+    path === "/api/platform/auth/refresh" ||
+    path === "/api/platform/auth/logout" ||
+    path === "/platform/auth/login" ||
+    path === "/platform/auth/refresh" ||
+    path === "/platform/auth/logout" ||
+    path === "/api/platform/identity/activate" ||
+    path === "/platform/identity/activate"
   );
+}
+
+function requestScope(config: InternalAxiosRequestConfig): SessionScope {
+  const path = requestPath(config);
+  return path === "/platform" ||
+    path === "/api/platform" ||
+    path.startsWith("/platform/") ||
+    path.startsWith("/api/platform/")
+    ? "PLATFORM"
+    : "TENANT";
 }
 
 function removeAuthorizationHeader(config: InternalAxiosRequestConfig): void {
@@ -85,9 +109,10 @@ function getAuthorizationHeader(config: InternalAxiosRequestConfig): string | nu
   return null;
 }
 
-function redirectToLogin(): void {
-  if (window.location.pathname !== "/login") {
-    window.location.assign("/login");
+function redirectToLogin(scope: SessionScope): void {
+  const loginPath = scope === "PLATFORM" ? "/platform/login" : "/login";
+  if (window.location.pathname !== loginPath) {
+    window.location.assign(loginPath);
   }
 }
 
@@ -102,7 +127,7 @@ api.interceptors.request.use((config) => {
     return config;
   }
 
-  const accessToken = getAccessToken();
+  const accessToken = getAccessToken(requestScope(config));
 
   if (accessToken !== null) {
     setAuthorizationHeader(config, accessToken);
@@ -128,7 +153,12 @@ api.interceptors.response.use(
 
     originalRequest._retry = true;
 
-    const currentAccessToken = getAccessToken();
+    const expectedScope = requestScope(originalRequest);
+    if (getAuthSession().scope !== expectedScope) {
+      return Promise.reject(error);
+    }
+
+    const currentAccessToken = getAccessToken(expectedScope);
     const requestAuthorization = getAuthorizationHeader(originalRequest);
 
     if (
@@ -140,7 +170,7 @@ api.interceptors.response.use(
     }
 
     try {
-      const refreshedSession = await refreshSession();
+      const refreshedSession = await refreshSession(expectedScope);
 
       setAuthorizationHeader(originalRequest, refreshedSession.accessToken);
 
@@ -151,7 +181,7 @@ api.interceptors.response.use(
       }
 
       await clearAuthStorage();
-      redirectToLogin();
+      redirectToLogin(expectedScope);
       return Promise.reject(refreshError);
     }
   },

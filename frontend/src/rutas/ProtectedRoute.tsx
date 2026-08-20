@@ -3,10 +3,13 @@ import LoadingState from "../componentes/comunes/LoadingState";
 import { useAuth } from "../hooks/context/useAuth";
 import type { ReactNode } from "react";
 import type { PermissionCode } from "../config/permissions";
+import type { SessionScope } from "../hooks/context/auth-context";
 
 interface ProtectedRouteProps {
   redirectPath?: string;
   unauthorizedPath?: string;
+  requiredScope?: SessionScope;
+  requiredAuthority?: string;
 
   requiredPermission?: PermissionCode;
   requiredPermissions?: readonly PermissionCode[];
@@ -16,8 +19,10 @@ interface ProtectedRouteProps {
 }
 
 const ProtectedRoute = ({
-  redirectPath = "/login",
+  redirectPath,
   unauthorizedPath = "/unauthorized",
+  requiredScope,
+  requiredAuthority,
   requiredPermission,
   requiredPermissions,
   requiredAnyPermission,
@@ -26,18 +31,32 @@ const ProtectedRoute = ({
   const {
     isAuth,
     loading,
+    scope,
     user,
+    platformUser,
     hasPermission,
     hasAllPermissions,
     hasAnyPermission,
   } = useAuth();
 
-  if (loading || (isAuth && !user)) {
+  if (
+    loading ||
+    (isAuth && scope === "TENANT" && !user) ||
+    (isAuth && scope === "PLATFORM" && !platformUser)
+  ) {
     return <LoadingState message="Cargando perfil..." />;
   }
 
   if (!isAuth) {
-    return <Navigate to={redirectPath} replace />;
+    return <Navigate to={redirectPath ?? (requiredScope === "PLATFORM" ? "/platform/login" : "/login")} replace />;
+  }
+
+  if (requiredScope && scope !== requiredScope) {
+    return <Navigate to={scope === "PLATFORM" ? "/platform/tenants" : "/"} replace />;
+  }
+
+  if (requiredAuthority && !platformUser?.authorities.includes(requiredAuthority)) {
+    return <Navigate to={unauthorizedPath} replace />;
   }
 
   if (requiredPermission && !hasPermission(requiredPermission)) {

@@ -1,0 +1,308 @@
+name: Quality Fortress
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-fortress-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  backend-coverage-static-sbom:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout exact SHA
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 21
+        uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+
+      - name: Coverage, executable Gherkin and backend verification
+        working-directory: backend
+        env:
+          GESTUDIO_HOME: ${{ github.workspace }}
+        run: bash ./mvnw -B -ntp -Pquality-coverage clean verify
+
+      - name: Require backend test, coverage and Gherkin artifacts
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: ./scripts/codex/verify-quality-artifacts.ps1 -Scope BackendCoverage
+
+      - name: Backend diff coverage
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        env:
+          DIFF_COVERAGE_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event_name == 'push' && github.event.before || 'HEAD^' }}
+        run: ./scripts/codex/verify-backend-diff-coverage.ps1 -Base $env:DIFF_COVERAGE_BASE -Minimum 90
+
+      - name: Generate global PMD security, correctness and complexity report
+        if: ${{ !cancelled() }}
+        working-directory: backend
+        run: bash ./mvnw -B -ntp pmd:pmd
+
+      - name: CPD duplication check
+        if: ${{ !cancelled() }}
+        working-directory: backend
+        run: bash ./mvnw -B -ntp pmd:cpd-check
+
+      - name: Enforce PMD baseline and changed-line policy
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        env:
+          STATIC_ANALYSIS_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event_name == 'push' && github.event.before || 'HEAD^' }}
+        run: ./scripts/codex/verify-backend-static-analysis.ps1 -Base $env:STATIC_ANALYSIS_BASE
+
+      - name: Require PMD and CPD artifacts
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: ./scripts/codex/verify-quality-artifacts.ps1 -Scope BackendStatic
+
+      - name: Require parent-generated backend CycloneDX SBOM
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: ./scripts/codex/verify-quality-artifacts.ps1 -Scope BackendSbom
+
+      - name: Upload backend quality reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: backend-quality-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            backend/target/site/jacoco/**
+            backend/target/cucumber-reports/**
+            backend/target/diff-coverage.json
+            backend/target/pmd.xml
+            backend/target/pmd-baseline-status.json
+            backend/target/cpd.xml
+            backend/target/classes/META-INF/sbom/application.cdx.json
+
+  backend-mutation-global:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout exact SHA
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Set up Java 21
+        uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+
+      - name: PIT global mutation score and test strength
+        shell: pwsh
+        env:
+          GESTUDIO_HOME: ${{ github.workspace }}
+        run: ./scripts/codex/quality-fortress.ps1 -Scope BackendMutationGlobal
+
+      - name: Upload global PIT report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: backend-mutation-global-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: backend/target/pit-reports/global/**
+
+  backend-mutation-critical:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact SHA
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Set up Java 21
+        uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+
+      - name: PIT critical security, tenancy and platform packages
+        shell: pwsh
+        env:
+          GESTUDIO_HOME: ${{ github.workspace }}
+        run: ./scripts/codex/quality-fortress.ps1 -Scope BackendMutationCritical
+
+      - name: Upload critical PIT report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: backend-mutation-critical-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: backend/target/pit-reports/critical/**
+
+  frontend-quality-sbom:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact SHA
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node 22
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install locked frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Audit all and production dependencies
+        working-directory: frontend
+        run: |
+          npm audit
+          npm audit --omit=dev
+
+      - name: Lint
+        if: ${{ !cancelled() }}
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Duplication budget
+        if: ${{ !cancelled() }}
+        working-directory: frontend
+        run: npm run quality:duplication
+
+      - name: Require duplication report
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: ./scripts/codex/verify-quality-artifacts.ps1 -Scope FrontendDuplication
+
+      - name: Release coverage
+        if: ${{ !cancelled() }}
+        working-directory: frontend
+        run: npm run test:coverage
+
+      - name: Require release coverage report
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: ./scripts/codex/verify-quality-artifacts.ps1 -Scope FrontendCoverage
+
+      - name: Diff coverage
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        env:
+          DIFF_COVERAGE_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event_name == 'push' && github.event.before || 'HEAD^' }}
+        run: ./scripts/codex/run-frontend-diff-coverage.ps1 -Base $env:DIFF_COVERAGE_BASE
+
+      - name: Require diff coverage report
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: ./scripts/codex/verify-quality-artifacts.ps1 -Scope FrontendDiffCoverage
+
+      - name: Generate frontend CycloneDX SBOM
+        if: ${{ !cancelled() }}
+        working-directory: frontend
+        run: npm run sbom
+
+      - name: Require frontend CycloneDX SBOM
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: ./scripts/codex/verify-quality-artifacts.ps1 -Scope FrontendSbom
+
+      - name: Upload frontend quality reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: frontend-quality-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            frontend/coverage/**
+            frontend/quality-reports/**
+            frontend/frontend-sbom.cdx.json
+
+  dependency-vulnerability-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact SHA
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Set up Java 21
+        uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+
+      - name: OWASP Dependency-Check all backend scopes
+        working-directory: backend
+        run: bash ./mvnw -B -ntp org.owasp:dependency-check-maven:check
+
+      - name: Require non-empty dependency audit reports
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: ./scripts/codex/verify-quality-artifacts.ps1 -Scope BackendDependencyAudit
+
+      - name: Upload dependency audit
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: backend-dependency-audit-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            backend/target/dependency-check-report.html
+            backend/target/dependency-check-report.json
+
+  required-quality:
+    if: always()
+    needs:
+      - backend-coverage-static-sbom
+      - backend-mutation-global
+      - backend-mutation-critical
+      - frontend-quality-sbom
+      - dependency-vulnerability-audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require backend coverage, static analysis and SBOM
+        env:
+          RESULT: ${{ needs.backend-coverage-static-sbom.result }}
+        run: test "$RESULT" = success
+
+      - name: Require global backend mutation
+        env:
+          RESULT: ${{ needs.backend-mutation-global.result }}
+        run: test "$RESULT" = success
+
+      - name: Require critical backend mutation
+        env:
+          RESULT: ${{ needs.backend-mutation-critical.result }}
+        run: test "$RESULT" = success
+
+      - name: Require frontend quality and SBOM
+        env:
+          RESULT: ${{ needs.frontend-quality-sbom.result }}
+        run: test "$RESULT" = success
+
+      - name: Require dependency vulnerability audit
+        env:
+          RESULT: ${{ needs.dependency-vulnerability-audit.result }}
+        run: test "$RESULT" = success

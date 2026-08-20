@@ -1,0 +1,584 @@
+{
+  "schemaVersion": 1,
+  "baseSha": "53547baac50063de85fb694124241d9f58e256a1",
+  "findingCount": 115,
+  "provenance": "Derived from the 2026-08-13 PMD 7.14.0 report after exact de-duplication and restricted to the configured Error Prone, Security, CognitiveComplexity, CyclomaticComplexity and NPathComplexity rules. Only findings outside added/changed line ranges versus origin/main are admitted.",
+  "findings": [
+    {
+      "path": "backend/src/main/java/gestudio/controladores/AutenticacionControlador.java",
+      "rule": "AvoidFieldNameMatchingMethodName",
+      "message": "Field cookie has the same name as a method",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/controladores/ConceptoControlador.java",
+      "rule": "EmptyCatchBlock",
+      "message": "Avoid empty catch blocks",
+      "count": 2
+    },
+    {
+      "path": "backend/src/main/java/gestudio/dto/alumno/AlumnoMapper.java",
+      "rule": "AvoidDuplicateLiterals",
+      "message": "The String literal \"activo\" appears 4 times in this file; the first occurrence is on line 23",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/dto/alumno/AlumnoMapper.java",
+      "rule": "AvoidDuplicateLiterals",
+      "message": "The String literal \"fechaDeBaja\" appears 4 times in this file; the first occurrence is on line 23",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/dto/alumno/AlumnoMapper.java",
+      "rule": "AvoidDuplicateLiterals",
+      "message": "The String literal \"inscripciones\" appears 4 times in this file; the first occurrence is on line 16",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/dto/asistencia/AsistenciaMensualMapper.java",
+      "rule": "AvoidDuplicateLiterals",
+      "message": "The String literal \"disciplina\" appears 6 times in this file; the first occurrence is on line 21",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/dto/concepto/SubConceptoMapper.java",
+      "rule": "AvoidDuplicateLiterals",
+      "message": "The String literal \"descripcion\" appears 6 times in this file; the first occurrence is on line 14",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/dto/concepto/SubConceptoMapper.java",
+      "rule": "AvoidDuplicateLiterals",
+      "message": "The String literal \"toUpperCase\" appears 4 times in this file; the first occurrence is on line 14",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/dto/concepto/SubConceptoMapper.java",
+      "rule": "UseLocaleWithCaseConversions",
+      "message": "When doing a String.toLowerCase()/toUpperCase() call, use a Locale",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/dto/profesor/ProfesorMapper.java",
+      "rule": "AvoidDuplicateLiterals",
+      "message": "The String literal \"fechaNacimiento\" appears 4 times in this file; the first occurrence is on line 17",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/dto/profesor/ProfesorMapper.java",
+      "rule": "AvoidDuplicateLiterals",
+      "message": "The String literal \"telefono\" appears 4 times in this file; the first occurrence is on line 18",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/entidades/Stock.java",
+      "rule": "AvoidFieldNameMatchingTypeName",
+      "message": "It is somewhat confusing to have a field name matching the declaring class name",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/entidades/Usuario.java",
+      "rule": "MissingSerialVersionUID",
+      "message": "Classes implementing Serializable should set a serialVersionUID",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/entidades/Usuario.java",
+      "rule": "NonSerializableClass",
+      "message": "The field 'rol' of serializable class 'gestudio.entidades.Usuario' is of non-serializable type 'gestudio.entidades.Rol'.",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/infra/configuracion/MultitenancyConfigurationGuard.java",
+      "rule": "CyclomaticComplexity",
+      "message": "The constructor 'MultitenancyConfigurationGuard(boolean, String, String, String, String, String, String)' has a cyclomatic complexity of 16.",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/infra/errores/SinStockException.java",
+      "rule": "MissingSerialVersionUID",
+      "message": "Classes implementing Serializable should set a serialVersionUID",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/infra/errores/TratadorDeErrores.java",
+      "rule": "AvoidDuplicateLiterals",
+      "message": "The String literal \"VALIDATION_ERROR\" appears 4 times in this file; the first occurrence is on line 55",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/infra/errores/TratadorDeErrores.java",
+      "rule": "CyclomaticComplexity",
+      "message": "The method 'constraintCode(String)' has a cyclomatic complexity of 12.",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/infra/errores/TratadorDeErrores.java",
+      "rule": "MissingSerialVersionUID",
+      "message": "Classes implementing Serializable should set a serialVersionUID",
+      "count": 7
+    },
+    {
+      "path": "backend/src/main/java/gestudio/infra/seguridad/AutenticacionService.java",
+      "rule": "AvoidDuplicateLiterals",
+      "message": "The String literal \"motivo\" appears 4 times in this file; the first occurrence is on line 63",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/infra/seguridad/AutenticacionService.java",
+      "rule": "CyclomaticComplexity",
+      "message": "The method 'login(LoginRequest, String, String)' has a cyclomatic complexity of 12.",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/infra/seguridad/InvalidTokenException.java",
+      "rule": "MissingSerialVersionUID",
+      "message": "Classes implementing Serializable should set a serialVersionUID",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/infra/seguridad/RefreshSessionService.java",
+      "rule": "AvoidDuplicateLiterals",
+      "message": "The String literal \"familyId\" appears 5 times in this file; the first occurrence is on line 57",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/infra/seguridad/RefreshSessionService.java",
+      "rule": "AvoidDuplicateLiterals",
+      "message": "The String literal \"REFRESH_SESSION\" appears 5 times in this file; the first occurrence is on line 53",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/infra/seguridad/RefreshSessionService.java",
+      "rule": "AvoidDuplicateLiterals",
+      "message": "The String literal \"SEGURIDAD\" appears 5 times in this file; the first occurrence is on line 51",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/infra/seguridad/RefreshTokenReuseException.java",
+      "rule": "MissingSerialVersionUID",
+      "message": "Classes implementing Serializable should set a serialVersionUID",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/infra/seguridad/RemoteDemoProxyTokenFilter.java",
+      "rule": "AvoidLiteralsInIfCondition",
+      "message": "Avoid using literals in if statements",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/infra/seguridad/SecurityConfigurations.java",
+      "rule": "AvoidDuplicateLiterals",
+      "message": "The String literal \"/api/alumnos/**\" appears 4 times in this file; the first occurrence is on line 129",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/infra/seguridad/SecurityConfigurations.java",
+      "rule": "AvoidDuplicateLiterals",
+      "message": "The String literal \"/api/asistencias-diarias/**\" appears 4 times in this file; the first occurrence is on line 171",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/infra/seguridad/SecurityConfigurations.java",
+      "rule": "AvoidDuplicateLiterals",
+      "message": "The String literal \"/api/asistencias-mensuales/**\" appears 4 times in this file; the first occurrence is on line 171",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/infra/seguridad/SecurityConfigurations.java",
+      "rule": "AvoidDuplicateLiterals",
+      "message": "The String literal \"/api/disciplinas/**\" appears 4 times in this file; the first occurrence is on line 153",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/infra/seguridad/SecurityConfigurations.java",
+      "rule": "AvoidDuplicateLiterals",
+      "message": "The String literal \"/api/inscripciones/**\" appears 4 times in this file; the first occurrence is on line 138",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/infra/seguridad/SecurityConfigurations.java",
+      "rule": "AvoidDuplicateLiterals",
+      "message": "The String literal \"/api/profesores/**\" appears 4 times in this file; the first occurrence is on line 162",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/infra/seguridad/SecurityConfigurations.java",
+      "rule": "AvoidDuplicateLiterals",
+      "message": "The String literal \"/api/roles/**\" appears 4 times in this file; the first occurrence is on line 123",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/infra/seguridad/SecurityConfigurations.java",
+      "rule": "AvoidDuplicateLiterals",
+      "message": "The String literal \"/api/stocks/**\" appears 4 times in this file; the first occurrence is on line 211",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/infra/seguridad/SecurityConfigurations.java",
+      "rule": "AvoidDuplicateLiterals",
+      "message": "The String literal \"/api/usuarios/**\" appears 4 times in this file; the first occurrence is on line 119",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/infra/seguridad/SecurityFilter.java",
+      "rule": "CyclomaticComplexity",
+      "message": "The method 'doFilterInternal(HttpServletRequest, HttpServletResponse, FilterChain)' has a cyclomatic complexity of 11.",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/infra/seguridad/SuperadminBootstrapService.java",
+      "rule": "AvoidLiteralsInIfCondition",
+      "message": "Avoid using literals in if statements",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/infra/seguridad/TokenService.java",
+      "rule": "CyclomaticComplexity",
+      "message": "The method 'verify(String)' has a cyclomatic complexity of 27.",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/integraciones/jereplatform/api/StudentSourceExportExceptionHandler.java",
+      "rule": "CyclomaticComplexity",
+      "message": "The method 'handle(StudentSourceExportException)' has a cyclomatic complexity of 13.",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/integraciones/jereplatform/application/StudentSourceExportException.java",
+      "rule": "AvoidFieldNameMatchingMethodName",
+      "message": "Field code has the same name as a method",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/integraciones/jereplatform/application/StudentSourceExportException.java",
+      "rule": "AvoidFieldNameMatchingMethodName",
+      "message": "Field value has the same name as a method",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/integraciones/jereplatform/application/StudentSourceExportException.java",
+      "rule": "MissingSerialVersionUID",
+      "message": "Classes implementing Serializable should set a serialVersionUID",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/integraciones/jereplatform/application/StudentSourceExportService.java",
+      "rule": "AvoidLiteralsInIfCondition",
+      "message": "Avoid using literals in if statements",
+      "count": 3
+    },
+    {
+      "path": "backend/src/main/java/gestudio/integraciones/jereplatform/application/StudentSourceExportService.java",
+      "rule": "CognitiveComplexity",
+      "message": "The method 'createSnapshot(Usuario)' has a cognitive complexity of 15, current threshold is 15",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/integraciones/jereplatform/application/StudentSourceExportService.java",
+      "rule": "CyclomaticComplexity",
+      "message": "The method 'createSnapshot(Usuario)' has a cyclomatic complexity of 12.",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/integraciones/jereplatform/infrastructure/StudentSourceExportSigner.java",
+      "rule": "AvoidLiteralsInIfCondition",
+      "message": "Avoid using literals in if statements",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/servicios/cargo/CargoServicio.java",
+      "rule": "CyclomaticComplexity",
+      "message": "The method 'crearPorConcepto(CargoConceptoRequest, Usuario)' has a cyclomatic complexity of 13.",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/servicios/credito/CreditoServicio.java",
+      "rule": "CyclomaticComplexity",
+      "message": "The method 'consumir(CreditoConsumoRequest, Usuario)' has a cyclomatic complexity of 12.",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/servicios/email/AbstractEmailService.java",
+      "rule": "AvoidFieldNameMatchingMethodName",
+      "message": "Field properties has the same name as a method",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/servicios/email/AbstractEmailService.java",
+      "rule": "CyclomaticComplexity",
+      "message": "The method 'validate(EmailMessage)' has a cyclomatic complexity of 13.",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/servicios/email/EmailDeliveryConfigurationGuard.java",
+      "rule": "CyclomaticComplexity",
+      "message": "The method 'validateSentCopy()' has a cyclomatic complexity of 10.",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/servicios/email/EmailDeliveryConfigurationGuard.java",
+      "rule": "CyclomaticComplexity",
+      "message": "The method 'validateSmtp()' has a cyclomatic complexity of 18.",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/servicios/email/GmailSmtpEmailService.java",
+      "rule": "CyclomaticComplexity",
+      "message": "The method 'deliverValidated(EmailMessage)' has a cyclomatic complexity of 12.",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/servicios/email/ImapSentCopyStrategy.java",
+      "rule": "CloseResource",
+      "message": "Ensure that resources like this Folder object are closed after use",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/servicios/pago/PagoServicio.java",
+      "rule": "CognitiveComplexity",
+      "message": "The method 'registrarPago(PagoRegistroRequest, Usuario)' has a cognitive complexity of 15, current threshold is 15",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/servicios/pago/PagoServicio.java",
+      "rule": "CyclomaticComplexity",
+      "message": "The method 'anularPago(Long, PagoAnulacionRequest, Usuario)' has a cyclomatic complexity of 15.",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/servicios/pago/PagoServicio.java",
+      "rule": "CyclomaticComplexity",
+      "message": "The method 'registrarPago(PagoRegistroRequest, Usuario)' has a cyclomatic complexity of 20.",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/servicios/pdfs/NumberToLetterConverter.java",
+      "rule": "AvoidLiteralsInIfCondition",
+      "message": "Avoid using literals in if statements",
+      "count": 7
+    },
+    {
+      "path": "backend/src/main/java/gestudio/servicios/pdfs/NumberToLetterConverter.java",
+      "rule": "CognitiveComplexity",
+      "message": "The method 'convertir(long)' has a cognitive complexity of 17, current threshold is 15",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/servicios/pdfs/NumberToLetterConverter.java",
+      "rule": "CyclomaticComplexity",
+      "message": "The method 'convertir(long)' has a cyclomatic complexity of 13.",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/servicios/pdfs/PdfService.java",
+      "rule": "AvoidFieldNameMatchingMethodName",
+      "message": "Field ENCABEZADO has the same name as a method",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/servicios/pdfs/PdfService.java",
+      "rule": "UseLocaleWithCaseConversions",
+      "message": "When doing a String.toLowerCase()/toUpperCase() call, use a Locale",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/servicios/pdfs/ReceiptNamespaceMigrator.java",
+      "rule": "AvoidLiteralsInIfCondition",
+      "message": "Avoid using literals in if statements",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/servicios/pdfs/ReceiptNamespaceMigrator.java",
+      "rule": "CyclomaticComplexity",
+      "message": "The method 'migrate(Path, UUID, LegacyReceipt)' has a cyclomatic complexity of 13.",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/servicios/pdfs/ReciboStorageService.java",
+      "rule": "AvoidFieldNameMatchingMethodName",
+      "message": "Field result has the same name as a method",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/servicios/pdfs/ReciboStorageService.java",
+      "rule": "CyclomaticComplexity",
+      "message": "The method 'procesar(Claim)' has a cyclomatic complexity of 13.",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/servicios/pdfs/ReciboStorageService.java",
+      "rule": "MissingSerialVersionUID",
+      "message": "Classes implementing Serializable should set a serialVersionUID",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/servicios/pdfs/ReciboStorageService.java",
+      "rule": "NonSerializableClass",
+      "message": "The field 'result' of serializable class 'gestudio.servicios.pdfs.ReciboStorageService$RetryableEmailDeliveryException' is of non-serializable type 'gestudio.servicios.email.EmailDeliveryResult'.",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/servicios/rol/RolServicio.java",
+      "rule": "AvoidDuplicateLiterals",
+      "message": "The String literal \"Rol no encontrado.\" appears 4 times in this file; the first occurrence is on line 51",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/servicios/rol/RolServicio.java",
+      "rule": "AvoidLiteralsInIfCondition",
+      "message": "Avoid using literals in if statements",
+      "count": 2
+    },
+    {
+      "path": "backend/src/main/java/gestudio/servicios/rol/RolServicio.java",
+      "rule": "UseLocaleWithCaseConversions",
+      "message": "When doing a String.toLowerCase()/toUpperCase() call, use a Locale",
+      "count": 2
+    },
+    {
+      "path": "backend/src/main/java/gestudio/servicios/ScheduledTasks.java",
+      "rule": "AvoidDuplicateLiterals",
+      "message": "The String literal \"${app.time-zone}\" appears 5 times in this file; the first occurrence is on line 48",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/servicios/stock/StockServicio.java",
+      "rule": "AvoidDuplicateLiterals",
+      "message": "The String literal \"Stock no encontrado\" appears 5 times in this file; the first occurrence is on line 126",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/servicios/stock/StockServicio.java",
+      "rule": "CyclomaticComplexity",
+      "message": "The method 'vender(VentaStockRequest, Usuario)' has a cyclomatic complexity of 11.",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/servicios/usuario/UsuarioServicio.java",
+      "rule": "CognitiveComplexity",
+      "message": "The method 'editarUsuario(Long, UsuarioModificacionRequest, Usuario)' has a cognitive complexity of 20, current threshold is 15",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/servicios/usuario/UsuarioServicio.java",
+      "rule": "CyclomaticComplexity",
+      "message": "The method 'editarUsuario(Long, UsuarioModificacionRequest, Usuario)' has a cyclomatic complexity of 20.",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/servicios/usuario/UsuarioServicio.java",
+      "rule": "NPathComplexity",
+      "message": "The method 'editarUsuario(Long, UsuarioModificacionRequest, Usuario)' has an NPath complexity of 62208, current threshold is 200",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/servicios/usuario/UsuarioServicio.java",
+      "rule": "UseLocaleWithCaseConversions",
+      "message": "When doing a String.toLowerCase()/toUpperCase() call, use a Locale",
+      "count": 2
+    },
+    {
+      "path": "backend/src/main/java/gestudio/tarifas/api/TarifaDisciplinaRequest.java",
+      "rule": "AvoidDuplicateLiterals",
+      "message": "The String literal \"0.00\" appears 4 times in this file; the first occurrence is on line 10",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/tarifas/application/CondicionEconomicaServicio.java",
+      "rule": "CyclomaticComplexity",
+      "message": "The method 'crear(Long, CondicionEconomicaRequest, Usuario)' has a cyclomatic complexity of 10.",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/tarifas/application/CondicionEconomicaServicio.java",
+      "rule": "MissingSerialVersionUID",
+      "message": "Classes implementing Serializable should set a serialVersionUID",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/tarifas/application/TarifaDisciplinaServicio.java",
+      "rule": "AvoidFieldNameMatchingMethodName",
+      "message": "Field fecha has the same name as a method",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/tarifas/application/TarifaDisciplinaServicio.java",
+      "rule": "MissingSerialVersionUID",
+      "message": "Classes implementing Serializable should set a serialVersionUID",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/tenancy/TenantAccess.java",
+      "rule": "AvoidLiteralsInIfCondition",
+      "message": "Avoid using literals in if statements",
+      "count": 2
+    },
+    {
+      "path": "backend/src/main/java/gestudio/tenancy/TenantAwareDataSource.java",
+      "rule": "CognitiveComplexity",
+      "message": "The method 'guarded(Connection)' has a cognitive complexity of 20, current threshold is 15",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/tenancy/TenantAwareDataSource.java",
+      "rule": "CyclomaticComplexity",
+      "message": "The method 'invoke(Object, Method, Object[])' has a cyclomatic complexity of 11.",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/tenancy/TenantAwareDataSource.java",
+      "rule": "UseProperClassLoader",
+      "message": "In J2EE, getClassLoader() might not work as expected. Use Thread.currentThread().getContextClassLoader() instead.",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/tenancy/TenantContext.java",
+      "rule": "CompareObjectsWithEquals",
+      "message": "Use equals() to compare object references.",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/tenancy/TenantMembershipManagementService.java",
+      "rule": "CyclomaticComplexity",
+      "message": "The method 'update(Long, Collection<Rol>, Boolean, Usuario)' has a cyclomatic complexity of 14.",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/tenancy/TenantMembershipManagementService.java",
+      "rule": "NPathComplexity",
+      "message": "The method 'update(Long, Collection<Rol>, Boolean, Usuario)' has an NPath complexity of 288, current threshold is 200",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/tenancy/TenantMembershipRepository.java",
+      "rule": "AvoidDuplicateLiterals",
+      "message": "The String literal \"tenantId\" appears 8 times in this file; the first occurrence is on line 25",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/tenancy/TenantMembershipRepository.java",
+      "rule": "AvoidDuplicateLiterals",
+      "message": "The String literal \"userId\" appears 5 times in this file; the first occurrence is on line 26",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/tenancy/TenantMembershipRoleId.java",
+      "rule": "MissingSerialVersionUID",
+      "message": "Classes implementing Serializable should set a serialVersionUID",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/tenancy/TenantProvisioningService.java",
+      "rule": "AvoidDuplicateLiterals",
+      "message": "The String literal \"SEGURIDAD\" appears 4 times in this file; the first occurrence is on line 97",
+      "count": 1
+    },
+    {
+      "path": "backend/src/main/java/gestudio/validaciones/usuarios/ValidadorContrasenaSegura.java",
+      "rule": "AvoidLiteralsInIfCondition",
+      "message": "Avoid using literals in if statements",
+      "count": 1
+    }
+  ]
+}

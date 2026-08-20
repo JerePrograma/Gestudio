@@ -1,7 +1,7 @@
 # Referencia API
 
-> Estado: CONFIRMADO  
-> Última revisión: 2026-07-26  
+> Estado: CONFIRMADO PARA FAMILIAS LEGACY; CONTROL PLANE AGREGADO
+> Última revisión: 2026-08-13
 > Fuentes principales: controladores, `SecurityConfigurations`, `SecurityHttpIntegrationTest`
 
 ## Contrato general
@@ -9,7 +9,8 @@
 - Base local: `http://localhost:8080/api`.
 - Demo local: `http://localhost:18080/api`.
 - JSON UTF-8 salvo PDF/bytes.
-- 146 mappings reales son descubiertos por reflexión en `SecurityHttpIntegrationTest`.
+- Los mappings reales se descubren por reflexión en `SecurityHttpIntegrationTest`;
+  no se mantiene aquí un conteo manual.
 - Toda ruta no declarada bajo `/api/**` queda denegada.
 - El inventario dinámico, no este resumen, es la lista definitiva.
 
@@ -21,6 +22,14 @@
 | POST | `/api/login/refresh` | público, Origin y cookie válidos | rota tokens |
 | POST | `/api/login/logout` | público, Origin válido | revoca y expira cookie |
 | GET | `/api/usuarios/perfil` | autenticado | perfil actual |
+
+La sesión de plataforma usa endpoints separados bajo `/api/platform/auth/**`,
+audiencia/cookie propias y tokens con scope `PLATFORM`. Las familias globales
+son `/api/platform/tenants`, `/api/platform/admins`, `/api/platform/audit`,
+`/api/platform/auth/step-up/challenges` y `/api/platform/activate`. Un token
+tenant recibe `403 TOKEN_SCOPE_FORBIDDEN`; la UI oculta no sustituye esa regla.
+El contrato detallado está en el
+[runbook del control plane](../operations/platform-control-plane-runbook.md).
 
 ## Familias y contratos principales
 

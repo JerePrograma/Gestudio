@@ -25,6 +25,8 @@ import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.intercept.RequestAuthorizationContext;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import gestudio.platform.security.PlatformPrincipal;
+import gestudio.platform.security.PlatformSecurityFilter;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 
 import java.io.IOException;
@@ -84,6 +86,7 @@ public class SecurityConfigurations {
     @Order(2)
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
                                                     SecurityFilter securityFilter,
+                                                    PlatformSecurityFilter platformSecurityFilter,
                                                     AuthenticationEntryPoint authenticationEntryPoint) throws Exception {
         return http
                 .csrf(AbstractHttpConfigurer::disable)
@@ -101,10 +104,15 @@ public class SecurityConfigurations {
                     req.requestMatchers(HttpMethod.POST, "/api/login").permitAll();
                     req.requestMatchers(HttpMethod.POST, "/api/login/refresh").permitAll();
                     req.requestMatchers(HttpMethod.POST, "/api/login/logout").permitAll();
+                    req.requestMatchers(HttpMethod.POST,
+                            "/api/platform/auth/login",
+                            "/api/platform/auth/refresh",
+                            "/api/platform/auth/logout",
+                            "/api/platform/identity/activate").permitAll();
                     req.requestMatchers(HttpMethod.POST, "/api/login/tenant").authenticated();
 
                     req.requestMatchers(HttpMethod.GET, "/api/usuarios/perfil").authenticated();
-                    req.requestMatchers("/api/platform/**").authenticated();
+                    req.requestMatchers("/api/platform/**").hasAuthority(PlatformPrincipal.AUTHORITY);
 
                     req.requestMatchers("/api/observaciones-profesores/**").denyAll();
 
@@ -243,6 +251,7 @@ public class SecurityConfigurations {
 
                     req.anyRequest().denyAll();
                 })
+                .addFilterBefore(platformSecurityFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(securityFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
     }

@@ -15,6 +15,13 @@ import gestudio.infra.configuracion.ConfiguracionCors;
 import gestudio.infra.errores.TratadorDeErrores;
 import gestudio.infra.errores.TratadorDeErrores.OperacionNoPermitidaException;
 import gestudio.infra.observabilidad.RequestCorrelationFilter;
+import gestudio.platform.PlatformMetrics;
+import gestudio.platform.control.PlatformControlPlaneService;
+import gestudio.platform.control.PlatformIdentityActivationService;
+import gestudio.platform.security.PlatformAuthenticationService;
+import gestudio.platform.security.PlatformSecurityProperties;
+import gestudio.platform.security.PlatformStepUpService;
+import gestudio.platform.security.PlatformTokenService;
 import gestudio.repositorios.ReciboRepositorio;
 import gestudio.repositorios.UsuarioRepositorio;
 import gestudio.tenancy.Tenant;
@@ -58,6 +65,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.io.IOException;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.AnnotatedElement;
+import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -112,6 +120,13 @@ class SecurityHttpIntegrationTest {
     @MockitoBean private UsuarioRepositorio usuarioRepositorio;
     @MockitoBean private TenantAccessService tenantAccessService;
     @MockitoBean private TenantMetrics tenantMetrics;
+    @MockitoBean private PlatformMetrics platformMetrics;
+    @MockitoBean private PlatformTokenService platformTokenService;
+    @MockitoBean private PlatformControlPlaneService platformControlPlaneService;
+    @MockitoBean private PlatformAuthenticationService platformAuthenticationService;
+    @MockitoBean private PlatformStepUpService platformStepUpService;
+    @MockitoBean private PlatformIdentityActivationService platformIdentityActivationService;
+    @MockitoBean private PlatformSecurityProperties platformSecurityProperties;
     @MockitoBean private TenantProvisioningService tenantProvisioningService;
     @MockitoBean private RbacService rbacService;
     @MockitoBean private gestudio.auditoria.application.AuditService auditService;
@@ -162,6 +177,8 @@ class SecurityHttpIntegrationTest {
 
     @BeforeEach
     void configureControllerMocks() throws IOException {
+        when(platformTokenService.verify(anyString(), any(TokenType.class)))
+                .thenThrow(new InvalidTokenException());
         when(rbacService.exigirPermiso(any(Usuario.class), anyString(), anyString()))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         when(sourceTenantMapping.current()).thenReturn(Optional.empty());
@@ -647,7 +664,7 @@ class SecurityHttpIntegrationTest {
         List<DiscoveredEndpoint> endpoints = discoverEndpoints();
         List<String> mismatches = new ArrayList<>();
 
-        assertThat(endpoints).hasSize(153);
+        assertThat(endpoints).hasSize(172);
 
         for (DiscoveredEndpoint endpoint : endpoints) {
             if (endpoint.path().startsWith("/api/login")
@@ -846,10 +863,11 @@ class SecurityHttpIntegrationTest {
     void corsRespuestaAutenticadaExponeRequestIdYPermiteCredenciales() throws Exception {
         Usuario user = usuario(15L, "cors", "ADMINISTRADOR", true);
         when(usuarioRepositorio.findByIdConRolesYPermisos(15L)).thenReturn(Optional.of(user));
+        String requestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
         mockMvc.perform(get("/api/usuarios/perfil")
                         .header(HttpHeaders.ORIGIN, "https://app.example.test")
-                        .header(RequestCorrelationFilter.HEADER_NAME, "browser-request-123")
+                        .header(RequestCorrelationFilter.HEADER_NAME, requestId)
                         .header(HttpHeaders.AUTHORIZATION, bearer(accessToken(user))))
                 .andExpect(status().isOk())
                 .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "https://app.example.test"))
@@ -858,7 +876,7 @@ class SecurityHttpIntegrationTest {
                         containsString(HttpHeaders.AUTHORIZATION)))
                 .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS,
                         containsString(RequestCorrelationFilter.HEADER_NAME)))
-                .andExpect(header().string(RequestCorrelationFilter.HEADER_NAME, "browser-request-123"));
+                .andExpect(header().string(RequestCorrelationFilter.HEADER_NAME, requestId));
     }
 
     @Test
@@ -901,6 +919,9 @@ class SecurityHttpIntegrationTest {
         for (var candidate : scanner.findCandidateComponents("gestudio")) {
             try {
                 Class<?> controller = Class.forName(candidate.getBeanClassName());
+                if (isTestClass(controller)) {
+                    continue;
+                }
                 RequestMapping base = AnnotatedElementUtils.findMergedAnnotation(controller, RequestMapping.class);
                 String[] basePaths = paths(base);
 
@@ -933,6 +954,17 @@ class SecurityHttpIntegrationTest {
                 .sorted(Comparator.comparing(DiscoveredEndpoint::path)
                         .thenComparing(endpoint -> endpoint.method().name()))
                 .toList();
+    }
+
+    private static boolean isTestClass(Class<?> type) {
+        var codeSource = type.getProtectionDomain().getCodeSource();
+        if (codeSource == null) return false;
+        try {
+            Path location = Path.of(codeSource.getLocation().toURI()).toAbsolutePath().normalize();
+            return location.endsWith(Path.of("target", "test-classes"));
+        } catch (URISyntaxException exception) {
+            throw new IllegalStateException("No se pudo determinar el origen de " + type.getName(), exception);
+        }
     }
 
     private static MockHttpServletRequestBuilder matrixRequest(DiscoveredEndpoint endpoint) {

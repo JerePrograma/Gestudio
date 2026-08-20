@@ -183,6 +183,7 @@ function Get-LocalMigrationManifest {
         Count = $entries.Count
         LatestVersion = $entries[-1].Version
         LatestScript = $entries[-1].Script
+        BaselineScript = "B$($entries[-1].Version)__gestudio_production_baseline.sql"
         Scripts = @($entries.Script)
     }
 }
@@ -1442,14 +1443,16 @@ try {
     Add-Result -Stage "Flyway mediante backend real" -Result "PASS" -Detail "Backend inició con ddl-auto=validate"
 
     $history = Invoke-Sql -Query "SELECT installed_rank, COALESCE(version,''), description, type, script, COALESCE(checksum::text,''), success FROM flyway_schema_history ORDER BY installed_rank;"
-    Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM flyway_schema_history WHERE success") -Expected ([string]$migrationManifest.Count) -Message "Flyway no aplicó la cantidad esperada de migraciones"
     Assert-Equal -Actual (Invoke-Sql "SELECT max(version::int) FROM flyway_schema_history WHERE success") -Expected ([string]$migrationManifest.LatestVersion) -Message "Flyway no alcanzó la última versión local"
     Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM flyway_schema_history WHERE NOT success") -Expected "0" -Message "Flyway contiene migraciones fallidas"
     Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM flyway_schema_history WHERE lower(script) LIKE '%demo%seed%'") -Expected "0" -Message "Se detectó una migración Flyway demo"
 
     $historyScripts = @((Invoke-Sql "SELECT script FROM flyway_schema_history WHERE success ORDER BY installed_rank;") -split "`r?`n" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
-    Assert-Equal -Actual (@(Compare-Object -ReferenceObject $migrationManifest.Scripts -DifferenceObject $historyScripts).Count) -Expected 0 -Message "flyway_schema_history no coincide con las migraciones locales"
-    Add-Result -Stage "Historial Flyway" -Result "PASS" -Detail "$($migrationManifest.Count) migraciones reales hasta V$($migrationManifest.LatestVersion); manifiesto exacto; ninguna demo"
+    $baselineHistory = $historyScripts.Count -eq 1 -and $historyScripts[0] -eq $migrationManifest.BaselineScript
+    $versionedHistory = $historyScripts.Count -eq $migrationManifest.Count `
+        -and @(Compare-Object -ReferenceObject $migrationManifest.Scripts -DifferenceObject $historyScripts).Count -eq 0
+    Assert-True -Condition ($baselineHistory -or $versionedHistory) -Message "flyway_schema_history no coincide con V1..V$($migrationManifest.LatestVersion) ni B$($migrationManifest.LatestVersion)"
+    Add-Result -Stage "Historial Flyway" -Result "PASS" -Detail "cadena V completa o baseline B$($migrationManifest.LatestVersion); ninguna demo"
     Write-Host "[INFO] flyway_schema_history:`n$history"
 
     $rbacBefore = Get-RbacSnapshot

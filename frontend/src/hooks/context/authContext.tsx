@@ -1,11 +1,12 @@
 import axios from "axios";
-import React, { useEffect, useState, type ReactNode } from "react";
-import { useNavigate } from "react-router";
+import React, { useEffect, useRef, useState, type ReactNode } from "react";
+import { useLocation, useNavigate } from "react-router";
 import api, { clearAuthStorage } from "../../api/axiosConfig";
 import {
   getAuthSession,
   refreshSession,
-  setAuthSession,
+  setPlatformAuthSession,
+  setTenantAuthSession,
   subscribeAuthSession,
 } from "../../api/authSession";
 import {
@@ -14,8 +15,13 @@ import {
   profileHasAnyPermission,
   profileHasPermission,
   isAuthenticatedSession,
+  isPlatformAuthenticatedSession,
+  sanitizePlatformProfile,
   sanitizeUserProfile,
   sanitizeTenantSummary,
+  type PlatformMfaMethod,
+  type PlatformProfile,
+  type SessionScope,
   type TenantSelection,
   type UserProfile,
 } from "./auth-context";
@@ -25,6 +31,12 @@ import { resetTenantClientState } from "../queryClient";
 interface LoginSuccessResponse {
   accessToken: string;
   usuario: unknown;
+}
+
+interface PlatformLoginSuccessResponse {
+  accessToken: string;
+  refreshExpiresAt: string;
+  profile: unknown;
 }
 
 const parseTenantSelection = (value: unknown): TenantSelection | null => {
@@ -45,17 +57,28 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState(getAuthSession);
   const navigate = useNavigate();
+  const location = useLocation();
+  const bootstrapScope = useRef<SessionScope>(
+    location.pathname.startsWith("/platform") ? "PLATFORM" : "TENANT",
+  );
 
-  const isAuth = isAuthenticatedSession(session.accessToken, session.user);
-  const user: UserProfile | null = session.user;
-  const sessionScopeKey = user
-    ? `${user.id}:${user.tenantActivo.id}`
+  const user: UserProfile | null = session.scope === "TENANT" ? session.profile : null;
+  const platformUser: PlatformProfile | null = session.scope === "PLATFORM" ? session.profile : null;
+  const isAuth = session.scope === "TENANT"
+    ? isAuthenticatedSession(session.accessToken, user)
+    : session.scope === "PLATFORM"
+      ? isPlatformAuthenticatedSession(session.accessToken, platformUser)
+      : false;
+  const sessionScopeKey = session.scope === "TENANT"
+    ? `${user?.id}:${user?.tenantActivo.id}`
+    : session.scope === "PLATFORM"
+      ? `platform:${platformUser?.id}`
     : "anonymous";
 
   useEffect(() => subscribeAuthSession(setSession), []);
 
   useEffect(() => {
-    refreshSession()
+    refreshSession(bootstrapScope.current)
       .catch((error) => axios.isCancel(error) ? undefined : clearAuthStorage())
       .finally(() => setLoading(false));
   }, []);
@@ -79,7 +102,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
         throw new Error("La sesión no corresponde a la organización seleccionada");
       }
 
-      setAuthSession(data.accessToken, profile);
+      setTenantAuthSession(data.accessToken, profile);
       return null;
     } catch (error) {
       const selection = axios.isAxiosError(error) && error.response?.status === 409
@@ -91,7 +114,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
     }
   };
 
+  const platformLogin = async (
+    nombreUsuario: string,
+    contrasena: string,
+    metodo: PlatformMfaMethod,
+    codigo: string,
+  ): Promise<void> => {
+    await clearAuthStorage();
+    const { data } = await api.post<PlatformLoginSuccessResponse>(
+      "/platform/auth/login",
+      { nombreUsuario, contrasena, metodo, codigo },
+      { withCredentials: true },
+    );
+    const profile = sanitizePlatformProfile(data.profile);
+    setPlatformAuthSession(data.accessToken, profile);
+  };
+
   const switchTenant = async (tenantId: string): Promise<void> => {
+    if (session.scope !== "TENANT") {
+      throw new Error("La sesión de plataforma no puede cambiar de organización");
+    }
+
     const allowed = user?.tenantsDisponibles.some(
       (tenant) => tenant.id === tenantId && tenant.estado === "ACTIVE",
     );
@@ -113,20 +156,26 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
         throw new Error("La sesión no corresponde a la organización seleccionada");
       }
 
-      setAuthSession(data.accessToken, profile);
+      setTenantAuthSession(data.accessToken, profile);
     } finally {
       setLoading(false);
     }
   };
 
   const logout = async (): Promise<void> => {
+    const logoutScope = session.scope;
     setLoading(true);
     try {
       await resetTenantClientState();
-      await api.post("/login/logout", {}, { withCredentials: true });
+      if (logoutScope) {
+        const endpoint = logoutScope === "PLATFORM"
+          ? "/platform/auth/logout"
+          : "/login/logout";
+        await api.post(endpoint, {}, { withCredentials: true });
+      }
     } finally {
       await clearAuthStorage();
-      navigate("/login");
+      navigate(logoutScope === "PLATFORM" ? "/platform/login" : "/login");
       setLoading(false);
     }
   };
@@ -145,11 +194,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
       value={{
         isAuth,
         loading,
+        scope: session.scope,
+        profile: session.profile,
         login,
+        platformLogin,
         switchTenant,
         logout,
         accessToken: session.accessToken,
         user,
+        platformUser,
         hasPermission,
         hasAllPermissions,
         hasAnyPermission,

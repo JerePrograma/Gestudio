@@ -129,6 +129,47 @@ function Invoke-CheckedNative {
     if (-not [string]::IsNullOrWhiteSpace($text)) { Write-Host (ConvertTo-SanitizedText $text) }
 }
 
+function Assert-LocalDockerTarget {
+    param([Parameter(Mandatory)][string] $ProjectName)
+
+    if ($ProjectName -ceq 'gestudio-remote-demo') {
+        throw (New-DeployFailure -Message 'El proyecto gestudio-remote-demo esta protegido.' -ExitCode 10)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($env:DOCKER_HOST)) {
+        throw (New-DeployFailure -Message 'DOCKER_HOST no esta permitido para este launcher local.' -ExitCode 4)
+    }
+    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+        throw (New-DeployFailure -Message 'Docker CLI no esta disponible; Docker Desktop no se iniciara automaticamente.' -ExitCode 4)
+    }
+
+    $context = Invoke-CheckedNative -FilePath 'docker' -Arguments @('context', 'show') -FailureExitCode 4 -Capture
+    if ([string]::IsNullOrWhiteSpace($context) -or $context -match '(?i)(prod|production|stage|staging|remote|demo)') {
+        throw (New-DeployFailure -Message "El contexto Docker '$context' no esta permitido para un despliegue local." -ExitCode 4)
+    }
+
+    $endpointJson = Invoke-CheckedNative -FilePath 'docker' -Arguments @(
+        'context', 'inspect', $context, '--format', '{{json .Endpoints.docker.Host}}'
+    ) -FailureExitCode 4 -Capture
+    try { $endpoint = [string]($endpointJson | ConvertFrom-Json) }
+    catch { throw (New-DeployFailure -Message 'No se pudo interpretar el endpoint del contexto Docker.' -ExitCode 4) }
+    $allowedEndpoints = @(
+        'npipe:////./pipe/docker_engine',
+        'npipe:////./pipe/dockerDesktopLinuxEngine',
+        'unix:///var/run/docker.sock'
+    )
+    if (-not ($allowedEndpoints -contains $endpoint)) {
+        throw (New-DeployFailure -Message "El endpoint Docker '$endpoint' no es local." -ExitCode 4)
+    }
+
+    $osType = Invoke-CheckedNative -FilePath 'docker' -Arguments @(
+        '--context', $context, 'info', '--format', '{{.OSType}}'
+    ) -FailureExitCode 4 -Capture
+    if ($osType -cne 'linux') {
+        throw (New-DeployFailure -Message "El daemon Docker debe ser Linux; OSType='$osType'." -ExitCode 4)
+    }
+    return $context
+}
+
 function Get-Sha256Text {
     param([Parameter(Mandatory)][string] $Text)
 
@@ -147,6 +188,15 @@ function New-SecureHexSecret {
     $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
     try { $rng.GetBytes($buffer) } finally { $rng.Dispose() }
     return ([BitConverter]::ToString($buffer)).Replace('-', '').ToLowerInvariant()
+}
+
+function New-SecureBase64Secret {
+    param([int] $Bytes = 32)
+
+    $buffer = New-Object byte[] $Bytes
+    $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+    try { $rng.GetBytes($buffer) } finally { $rng.Dispose() }
+    return [Convert]::ToBase64String($buffer)
 }
 
 function Read-EnvValues {
@@ -193,8 +243,8 @@ function Get-TemplateContent {
     param([Parameter(Mandatory)][string] $TemplatePath, [switch] $DryRun)
 
     $secretKeys = @(
-        'POSTGRES_PASSWORD', 'POSTGRES_APP_PASSWORD', 'JWT_SECRET',
-        'APP_OBSERVABILITY_METRICS_TOKEN', 'APP_BOOTSTRAP_SUPERADMIN_PASSWORD'
+        'POSTGRES_PASSWORD', 'POSTGRES_APP_PASSWORD', 'POSTGRES_CONTROL_PASSWORD', 'JWT_SECRET',
+        'APP_OBSERVABILITY_METRICS_TOKEN', 'APP_PLATFORM_MFA_ENCRYPTION_KEY'
     )
     $lines = New-Object System.Collections.Generic.List[string]
     foreach ($line in [IO.File]::ReadAllLines($TemplatePath)) {
@@ -203,7 +253,11 @@ function Get-TemplateContent {
         if ($separator -gt 0) {
             $name = $line.Substring(0, $separator).Trim()
             if ($name -in $secretKeys -and [string]::IsNullOrEmpty($line.Substring($separator + 1))) {
-                $value = if ($DryRun) { 'dry-run-not-persisted-' + ('0' * 40) } else { New-SecureHexSecret }
+                $value = if ($name -eq 'APP_PLATFORM_MFA_ENCRYPTION_KEY') {
+                    if ($DryRun) { 'bG9jYWwtb25seS1tZmEta2V5LTMyLWJ5dGUtdmFsdWU=' } else { New-SecureBase64Secret }
+                }
+                elseif ($DryRun) { 'dry-run-not-persisted-' + ('0' * 40) }
+                else { New-SecureHexSecret }
                 $updated = "$name=$value"
             }
         }
@@ -231,9 +285,11 @@ function Ensure-EffectiveConfiguration {
         if ($effective.ContainsKey($name)) { continue }
         $value = $template[$name]
         if ([string]::IsNullOrEmpty($value) -and $name -in @(
-            'POSTGRES_PASSWORD', 'POSTGRES_APP_PASSWORD', 'JWT_SECRET',
-            'APP_OBSERVABILITY_METRICS_TOKEN', 'APP_BOOTSTRAP_SUPERADMIN_PASSWORD')) {
-            $value = New-SecureHexSecret
+            'POSTGRES_PASSWORD', 'POSTGRES_APP_PASSWORD', 'POSTGRES_CONTROL_PASSWORD', 'JWT_SECRET',
+            'APP_OBSERVABILITY_METRICS_TOKEN', 'APP_PLATFORM_MFA_ENCRYPTION_KEY')) {
+            $value = if ($name -eq 'APP_PLATFORM_MFA_ENCRYPTION_KEY') {
+                New-SecureBase64Secret
+            } else { New-SecureHexSecret }
         }
         $content += [Environment]::NewLine + "$name=$value"
         $added.Add($name)
@@ -249,11 +305,16 @@ function Assert-Configuration {
 
     $required = @(
         'COMPOSE_PROJECT_NAME', 'POSTGRES_DB', 'POSTGRES_USER', 'POSTGRES_PASSWORD',
-        'POSTGRES_APP_USER', 'POSTGRES_APP_PASSWORD', 'POSTGRES_PORT', 'BACKEND_PORT',
+        'POSTGRES_APP_USER', 'POSTGRES_APP_PASSWORD', 'POSTGRES_CONTROL_USER',
+        'POSTGRES_CONTROL_PASSWORD', 'POSTGRES_PORT', 'BACKEND_PORT',
         'FRONTEND_PORT', 'BACKEND_IMAGE', 'FRONTEND_IMAGE', 'VITE_API_BASE_URL',
         'SPRING_PROFILES_ACTIVE', 'JWT_SECRET', 'JWT_ISSUER', 'APP_CORS_ALLOWED_ORIGINS',
-        'APP_OBSERVABILITY_METRICS_TOKEN', 'APP_BOOTSTRAP_SUPERADMIN_ENABLED',
-        'APP_BOOTSTRAP_SUPERADMIN_USERNAME', 'APP_BOOTSTRAP_SUPERADMIN_PASSWORD'
+        'APP_OBSERVABILITY_METRICS_TOKEN', 'JWT_PLATFORM_AUDIENCE',
+        'APP_PLATFORM_ACCESS_TOKEN_TTL', 'APP_PLATFORM_REFRESH_TOKEN_TTL',
+        'APP_PLATFORM_STEP_UP_TTL', 'APP_PLATFORM_MFA_ENCRYPTION_KEY',
+        'APP_PLATFORM_MFA_KEY_VERSION', 'APP_PLATFORM_REFRESH_COOKIE_NAME',
+        'APP_PLATFORM_REFRESH_COOKIE_SECURE', 'APP_PLATFORM_REFRESH_COOKIE_SAME_SITE',
+        'APP_PLATFORM_REFRESH_COOKIE_PATH'
     )
     foreach ($name in $required) {
         if (-not $Configuration.ContainsKey($name) -or [string]::IsNullOrWhiteSpace($Configuration[$name]) -or
@@ -261,22 +322,54 @@ function Assert-Configuration {
             throw (New-DeployFailure -Message "Configuracion incompleta: $name" -ExitCode 3)
         }
     }
+    if (-not $Configuration.ContainsKey('APP_PLATFORM_REFRESH_COOKIE_DOMAIN')) {
+        throw (New-DeployFailure -Message 'Configuracion incompleta: APP_PLATFORM_REFRESH_COOKIE_DOMAIN' -ExitCode 3)
+    }
     if ($Configuration['COMPOSE_PROJECT_NAME'] -notmatch '^[a-z0-9][a-z0-9_-]{2,62}$' -or
         $Configuration['COMPOSE_PROJECT_NAME'] -eq 'gestudio-remote-demo') {
         throw (New-DeployFailure -Message 'COMPOSE_PROJECT_NAME es invalido o esta reservado.' -ExitCode 3)
     }
-    if ($Configuration['POSTGRES_USER'] -ceq $Configuration['POSTGRES_APP_USER']) {
-        throw (New-DeployFailure -Message 'Los usuarios migrador y runtime deben ser distintos.' -ExitCode 3)
+    $databaseUsers = @(
+        $Configuration['POSTGRES_USER'],
+        $Configuration['POSTGRES_APP_USER'],
+        $Configuration['POSTGRES_CONTROL_USER']
+    )
+    if (@($databaseUsers | ForEach-Object { $_.ToLowerInvariant() } | Select-Object -Unique).Count -ne 3) {
+        throw (New-DeployFailure -Message 'Los usuarios migrador, tenant runtime y control-plane deben ser distintos.' -ExitCode 3)
     }
-    foreach ($name in @('POSTGRES_PASSWORD', 'POSTGRES_APP_PASSWORD', 'JWT_SECRET',
-        'APP_OBSERVABILITY_METRICS_TOKEN', 'APP_BOOTSTRAP_SUPERADMIN_PASSWORD')) {
+    $reservedDatabaseRoles = @('postgres', 'gestudio_app', 'gestudio_platform')
+    if ($Configuration['POSTGRES_USER'].ToLowerInvariant() -in @('gestudio_app', 'gestudio_platform') -or
+        $Configuration['POSTGRES_APP_USER'].ToLowerInvariant() -in $reservedDatabaseRoles -or
+        $Configuration['POSTGRES_CONTROL_USER'].ToLowerInvariant() -in $reservedDatabaseRoles) {
+        throw (New-DeployFailure -Message 'Los logins PostgreSQL no pueden reutilizar roles técnicos congelados ni el superusuario postgres.' -ExitCode 3)
+    }
+    foreach ($name in @('POSTGRES_PASSWORD', 'POSTGRES_APP_PASSWORD', 'POSTGRES_CONTROL_PASSWORD', 'JWT_SECRET',
+        'APP_OBSERVABILITY_METRICS_TOKEN')) {
         $bytes = [Text.Encoding]::UTF8.GetByteCount($Configuration[$name])
-        if ($bytes -lt 16 -or ($name -eq 'APP_BOOTSTRAP_SUPERADMIN_PASSWORD' -and $bytes -gt 72)) {
+        if ($bytes -lt 16) {
             throw (New-DeployFailure -Message "El secreto $name no cumple la longitud minima." -ExitCode 3)
         }
     }
-    if ($Configuration['APP_BOOTSTRAP_SUPERADMIN_ENABLED'] -cne 'false') {
-        throw (New-DeployFailure -Message 'El bootstrap debe quedar deshabilitado en la configuracion persistente.' -ExitCode 3)
+    $databasePasswords = @(
+        $Configuration['POSTGRES_PASSWORD'],
+        $Configuration['POSTGRES_APP_PASSWORD'],
+        $Configuration['POSTGRES_CONTROL_PASSWORD']
+    )
+    if (@($databasePasswords | Select-Object -Unique).Count -ne 3) {
+        throw (New-DeployFailure -Message 'Las tres credenciales PostgreSQL deben ser independientes.' -ExitCode 3)
+    }
+    try {
+        $mfaKey = [Convert]::FromBase64String($Configuration['APP_PLATFORM_MFA_ENCRYPTION_KEY'])
+    }
+    catch {
+        throw (New-DeployFailure -Message 'APP_PLATFORM_MFA_ENCRYPTION_KEY debe ser Base64 valido.' -ExitCode 3)
+    }
+    if ($mfaKey.Length -ne 32 -or $Configuration['APP_PLATFORM_MFA_ENCRYPTION_KEY'] -ceq $Configuration['JWT_SECRET']) {
+        throw (New-DeployFailure -Message 'MFA exige una clave AES-256 Base64 independiente de JWT_SECRET.' -ExitCode 3)
+    }
+    $mfaKeyVersion = 0
+    if (-not [int]::TryParse($Configuration['APP_PLATFORM_MFA_KEY_VERSION'], [ref]$mfaKeyVersion) -or $mfaKeyVersion -lt 1) {
+        throw (New-DeployFailure -Message 'APP_PLATFORM_MFA_KEY_VERSION debe ser un entero positivo.' -ExitCode 3)
     }
     if ($Configuration['SPRING_PROFILES_ACTIVE'] -cne 'dev') {
         throw (New-DeployFailure -Message 'Este launcher local de Windows requiere SPRING_PROFILES_ACTIVE=dev.' -ExitCode 3)
@@ -320,34 +413,75 @@ function Restore-ConfigurationEnvironment {
     $script:environmentApplied = $false
 }
 
+function Test-ExcludedDeploymentInput {
+    param([Parameter(Mandatory)][string] $RelativePath)
+
+    $path = $RelativePath.Replace('\', '/').TrimStart('/')
+    if ($path -match '^backend/(target|\.idea)(/|$)' -or
+        $path -match '^backend/.+\.iml$' -or
+        $path -match '^backend/.+\.log$' -or
+        $path -match '^backend/(.*/)?\.env[^/]*$') {
+        return $true
+    }
+    if ($path -match '^frontend/(node_modules|dist|\.vite|\.wrangler|coverage|quality-reports|lcov-report|playwright-report|test-results)(/|$)' -or
+        $path -match '^frontend/frontend-sbom\.cdx\.json$' -or
+        $path -match '^frontend/.+\.tsbuildinfo$' -or
+        $path -match '^frontend/.+\.trace\.zip$' -or
+        $path -match '^frontend/.+\.log$' -or
+        $path -match '^frontend/(.*/)?\.env[^/]*$') {
+        return $true
+    }
+    return $false
+}
+
 function Get-InputHash {
     param([Parameter(Mandatory)][string] $RepositoryRoot, [Parameter(Mandatory)][string[]] $RelativeRoots)
 
     $records = New-Object System.Collections.Generic.List[string]
-    foreach ($relativeRoot in $RelativeRoots) {
-        $absolute = Join-Path $RepositoryRoot $relativeRoot
-        if (-not (Test-Path -LiteralPath $absolute)) { continue }
-        $item = Get-Item -LiteralPath $absolute
-        $files = if ($item.PSIsContainer) { @(Get-ChildItem -LiteralPath $absolute -Recurse -File) } else { @($item) }
-        foreach ($file in $files) {
-            if ($file.FullName -match '[\\/](target|node_modules|dist)[\\/]') { continue }
-            $relative = $file.FullName.Substring($RepositoryRoot.TrimEnd('\').Length).TrimStart('\', '/').Replace('\', '/')
-            $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    $candidatePaths = New-Object System.Collections.Generic.List[string]
+    if (Test-Path -LiteralPath (Join-Path $RepositoryRoot '.git')) {
+        $pathSpecs = @($RelativeRoots | ForEach-Object { $_.Replace('\', '/') })
+        $tracked = Invoke-CheckedNative -FilePath 'git' -Arguments (@(
+            '-c', 'core.quotepath=false', '-C', $RepositoryRoot, 'ls-files', '--cached', '--'
+        ) + $pathSpecs) -FailureExitCode 2 -Capture
+        foreach ($relative in ($tracked -split "`r?`n")) {
+            if (-not [string]::IsNullOrWhiteSpace($relative)) { $candidatePaths.Add($relative) }
+        }
+    }
+    else {
+        foreach ($relativeRoot in $RelativeRoots) {
+            $absoluteRoot = Join-Path $RepositoryRoot $relativeRoot
+            if (-not (Test-Path -LiteralPath $absoluteRoot)) { continue }
+            $item = Get-Item -LiteralPath $absoluteRoot
+            $files = if ($item.PSIsContainer) { @(Get-ChildItem -LiteralPath $absoluteRoot -Recurse -File) } else { @($item) }
+            foreach ($file in $files) {
+                $relative = $file.FullName.Substring($RepositoryRoot.TrimEnd('\').Length).TrimStart('\', '/').Replace('\', '/')
+                $candidatePaths.Add($relative)
+            }
+        }
+    }
+
+    foreach ($relative in @($candidatePaths | Sort-Object -Unique)) {
+        if (Test-ExcludedDeploymentInput -RelativePath $relative) { continue }
+        $absolute = Join-Path $RepositoryRoot ($relative.Replace('/', '\'))
+        if (Test-Path -LiteralPath $absolute -PathType Leaf) {
+            $hash = (Get-FileHash -LiteralPath $absolute -Algorithm SHA256).Hash.ToLowerInvariant()
             $records.Add("$relative|$hash")
         }
     }
     return Get-Sha256Text -Text ((@($records | Sort-Object -Unique)) -join "`n")
 }
 
-function Get-NonSecretConfigurationHash {
+function Get-DeploymentConfigurationHash {
     param([Parameter(Mandatory)][hashtable] $Configuration)
 
     $records = @(
         $Configuration.GetEnumerator() |
-            Where-Object { $_.Key -notmatch '(?i)(PASSWORD|SECRET|TOKEN|CREDENTIAL|KEY)' } |
             Sort-Object Key |
             ForEach-Object { '{0}={1}' -f $_.Key, $_.Value }
     )
+    # Sólo el digest se incorpora al fingerprint persistido; los valores nunca se registran.
+    # Esto hace que una rotación de credenciales fuerce la convergencia de roles y servicios.
     return Get-Sha256Text -Text ($records -join "`n")
 }
 
@@ -358,7 +492,7 @@ function Get-DeploymentFingerprints {
     $frontend = Get-InputHash -RepositoryRoot $RepositoryRoot -RelativeRoots @('frontend')
     $compose = Get-InputHash -RepositoryRoot $RepositoryRoot -RelativeRoots @('docker-compose.yml')
     $migrations = Get-InputHash -RepositoryRoot $RepositoryRoot -RelativeRoots @('backend\src\main\resources\db\migration')
-    $configurationHash = Get-NonSecretConfigurationHash -Configuration $Configuration
+    $configurationHash = Get-DeploymentConfigurationHash -Configuration $Configuration
     $overall = Get-Sha256Text -Text (@($Commit, $backend, $frontend, $compose, $migrations, $configurationHash) -join "`n")
     return [pscustomobject]@{
         overall = $overall
@@ -446,14 +580,38 @@ function Assert-PortsAvailable {
     }
 }
 
-function Get-BootstrapClaimCount {
-    param([Parameter(Mandatory)][string] $DatabaseContainer)
+function Initialize-DatabaseRuntimeRoles {
+    Write-Status INFO 'Reconciliando roles PostgreSQL runtime sin modificar datos de negocio'
+    $null = Invoke-Compose -Arguments @(
+        'exec', '-T', 'db', 'sh', '/docker-entrypoint-initdb.d/10-create-application-role.sh'
+    ) -Capture -FailureExitCode 5
+    Write-Status PASS 'Roles tenant runtime y control-plane reconciliados'
+}
 
-    $exists = Invoke-DeploymentSql -ContainerId $DatabaseContainer -Role migration `
-        -Sql "SELECT coalesce(to_regclass('public.bootstrap_ejecuciones')::text, '');"
-    if ([string]::IsNullOrWhiteSpace($exists)) { return 0 }
-    return [int](Invoke-DeploymentSql -ContainerId $DatabaseContainer -Role migration `
-        -Sql "SELECT count(*) FROM bootstrap_ejecuciones WHERE tipo = 'SUPERADMIN_INICIAL';")
+function Get-DatabaseInitializationState {
+    param([Parameter(Mandatory)][string] $ContainerId)
+
+    $sql = @'
+SELECT
+  (to_regclass('public.flyway_schema_history') IS NOT NULL)::int::text || '|' ||
+  (SELECT count(*) FROM pg_catalog.pg_class c
+   JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+   WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p'))::text;
+'@
+    $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($sql))
+    $raw = Invoke-CheckedNative -FilePath 'docker' -Arguments @(
+        'exec', $ContainerId, 'sh', '-ec',
+        'printf "%s" "$1" | base64 -d | psql --no-psqlrc --tuples-only --no-align --set ON_ERROR_STOP=1 --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" --file=-',
+        'sh', $encoded
+    ) -FailureExitCode 9 -Capture
+    $parts = $raw.Trim().Split('|')
+    if ($parts.Count -ne 2) {
+        throw (New-DeployFailure -Message "No se pudo clasificar el estado PostgreSQL: $raw" -ExitCode 10)
+    }
+    return [pscustomobject]@{
+        HasFlywayHistory = $parts[0] -ceq '1'
+        PublicTableCount = [int]$parts[1]
+    }
 }
 
 function Invoke-VerifiedBackup {
@@ -576,13 +734,9 @@ try {
             -FailureExitCode 2 -Capture
     }
 
-    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-        throw (New-DeployFailure -Message 'Docker CLI no esta disponible; Docker Desktop no se iniciara automaticamente.' -ExitCode 4)
-    }
+    $dockerContext = Assert-LocalDockerTarget -ProjectName $script:projectName
     $null = Invoke-CheckedNative -FilePath 'docker' -Arguments @('version') -FailureExitCode 4 -Capture
-    $null = Invoke-CheckedNative -FilePath 'docker' -Arguments @('info') -FailureExitCode 4 -Capture
     $composeVersion = Invoke-CheckedNative -FilePath 'docker' -Arguments @('compose', 'version') -FailureExitCode 4 -Capture
-    $dockerContext = Invoke-CheckedNative -FilePath 'docker' -Arguments @('context', 'show') -FailureExitCode 4 -Capture
 
     $configResult = $null
     if ($mode -eq 'deploy') {
@@ -607,8 +761,9 @@ try {
     $script:projectName = $configuration['COMPOSE_PROJECT_NAME']
     $script:secretValues = @(
         $configuration['POSTGRES_PASSWORD'], $configuration['POSTGRES_APP_PASSWORD'],
+        $configuration['POSTGRES_CONTROL_PASSWORD'],
         $configuration['JWT_SECRET'], $configuration['APP_OBSERVABILITY_METRICS_TOKEN'],
-        $configuration['APP_BOOTSTRAP_SUPERADMIN_PASSWORD']
+        $configuration['APP_PLATFORM_MFA_ENCRYPTION_KEY']
     )
 
     $fingerprints = Get-DeploymentFingerprints -RepositoryRoot $repoRoot -Configuration $configuration -Commit $commit
@@ -655,12 +810,13 @@ try {
     $frontendBuild = $null -eq $previousState -or $commitChanged -or [string]$previousState.frontendFingerprint -cne $fingerprints.frontend -or
         -not (Test-ImageExists -Image $configuration['FRONTEND_IMAGE'])
     $migrationChanged = $null -ne $previousState -and [string]$previousState.migrationFingerprint -cne $fingerprints.migrations
+    $backupStateRequiresInspection = $hasResources -and ($migrationChanged -or $null -eq $previousState)
     $fingerprintChanged = $null -eq $previousState -or [string]$previousState.fingerprint -cne $fingerprints.overall
 
     if ($mode -eq 'dry-run') {
         Write-Status INFO ('Plan: configuracion={0}; backup={1}; build={2}; compose-up={3}; verificacion=si' -f `
             ($(if (Test-Path -LiteralPath (Join-Path $stateRoot 'config\deploy.env')) { 'reutilizar' } else { 'crear' })),
-            ($(if ($migrationChanged -and $hasResources) { 'si' } else { 'no' })),
+            ($(if ($backupStateRequiresInspection) { 'inspeccionar/si si existe Flyway' } else { 'no' })),
             ((@($(if ($backendBuild) { 'backend' }), $(if ($frontendBuild) { 'frontend' })) | Where-Object { $_ }) -join ','),
             ($(if ($fingerprintChanged) { 'si' } else { 'solo ante drift seguro' })))
         Write-Status PASS 'Dry run finalizado sin mutaciones'
@@ -705,14 +861,25 @@ try {
         if ($null -ne $previousState -and $null -ne $previousState.lastBackupPath) {
             $lastBackupPath = [string]$previousState.lastBackupPath
         }
-        if ($migrationChanged -and $hasResources) {
+        if ($backupStateRequiresInspection) {
             if ([string]::IsNullOrWhiteSpace($dbContainer)) {
                 $null = Invoke-Compose -Arguments @('up', '-d', '--no-deps', 'db') -Capture -FailureExitCode 9
                 $dbContainer = Invoke-Compose -Arguments @('ps', '-q', 'db') -Capture -FailureExitCode 9
             }
+            else {
+                $null = Invoke-Compose -Arguments @('start', 'db') -Capture -FailureExitCode 9
+            }
             $null = Wait-DeploymentServiceHealthy -ContainerId $dbContainer -ProjectName $script:projectName `
                 -Service db -TimeoutSeconds 120
-            $lastBackupPath = Invoke-VerifiedBackup -OutputDirectory $backupsRoot
+            $databaseState = Get-DatabaseInitializationState -ContainerId $dbContainer
+            if ($databaseState.HasFlywayHistory) {
+                $lastBackupPath = Invoke-VerifiedBackup -OutputDirectory $backupsRoot
+            }
+            elseif ($databaseState.PublicTableCount -gt 0) {
+                throw (New-DeployFailure `
+                    -Message 'Hay tablas públicas sin historial Flyway; se rechaza mutar un estado no soportado.' `
+                    -ExitCode 10)
+            }
         }
 
         if ($backendBuild) {
@@ -726,32 +893,11 @@ try {
             Write-Status PASS 'Imagen frontend construida'
         }
 
-        if ([string]::IsNullOrWhiteSpace($dbContainer)) {
-            $null = Invoke-Compose -Arguments @('up', '-d', '--no-deps', 'db') -Capture -FailureExitCode 5
-            $dbContainer = Invoke-Compose -Arguments @('ps', '-q', 'db') -Capture -FailureExitCode 5
-        }
+        $null = Invoke-Compose -Arguments @('up', '-d', '--no-deps', 'db') -Capture -FailureExitCode 5
+        $dbContainer = Invoke-Compose -Arguments @('ps', '-q', 'db') -Capture -FailureExitCode 5
         $null = Wait-DeploymentServiceHealthy -ContainerId $dbContainer -ProjectName $script:projectName `
             -Service db -TimeoutSeconds 120
-
-        $claimCount = Get-BootstrapClaimCount -DatabaseContainer $dbContainer
-        if ($claimCount -eq 0) {
-            if ($null -ne $previousState) {
-                throw (New-DeployFailure -Message 'Falta el bootstrap registrado por el estado previo.' -ExitCode 10)
-            }
-            Write-Status INFO 'Ejecutando bootstrap inicial aislado y de una sola vez'
-            $null = Invoke-Compose -Arguments @(
-                'run', '--rm', '--no-deps', '-e', 'APP_BOOTSTRAP_SUPERADMIN_ENABLED=true',
-                'backend', '--spring.main.web-application-type=none', '--app.scheduling-enabled=false'
-            ) -Capture -FailureExitCode 5
-            $claimCount = Get-BootstrapClaimCount -DatabaseContainer $dbContainer
-            if ($claimCount -ne 1) {
-                throw (New-DeployFailure -Message 'El bootstrap no produjo exactamente un claim.' -ExitCode 5)
-            }
-            Write-Status PASS 'Bootstrap inicial creado sin persistir la bandera habilitada'
-        }
-        elseif ($claimCount -ne 1) {
-            throw (New-DeployFailure -Message "Cantidad invalida de claims bootstrap: $claimCount" -ExitCode 10)
-        }
+        Initialize-DatabaseRuntimeRoles
 
         Write-Status INFO 'Convergiendo servicios con Docker Compose'
         $null = Invoke-Compose -Arguments @('up', '-d', '--no-build') -Capture -FailureExitCode 5

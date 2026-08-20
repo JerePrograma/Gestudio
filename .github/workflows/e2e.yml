@@ -1,0 +1,86 @@
+name: Control Plane E2E
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gestudio-control-plane-e2e-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  control-plane-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout verified SHA
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Set up Node 22
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install locked frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install pinned Chromium runtime
+        working-directory: frontend
+        run: npm exec -- playwright install --with-deps chromium
+
+      - name: Validate E2E TypeScript and discovery
+        working-directory: frontend
+        env:
+          GESTUDIO_E2E_BASE_URL: http://127.0.0.1:18081
+          GESTUDIO_E2E_API_URL: http://127.0.0.1:18080/api
+          GESTUDIO_E2E_COMPOSE_PROJECT: gestudio-e2e-000000000000
+          GESTUDIO_E2E_RUN_ID: "000000000000"
+          GESTUDIO_E2E_BOOTSTRAP_COUNTER: "1"
+          GESTUDIO_E2E_PLATFORM_USERNAME: static.e2e.platform
+          GESTUDIO_E2E_PLATFORM_PASSWORD: static-not-used
+          GESTUDIO_E2E_PLATFORM_TOTP_SECRET: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+          GESTUDIO_E2E_ALPHA_CODE: static-alpha-e2e
+          GESTUDIO_E2E_ALPHA_NAME: Escuela Danza Marcos Paz
+          GESTUDIO_E2E_ALPHA_USERNAME: static.alpha.admin
+          GESTUDIO_E2E_ALPHA_PASSWORD: static-not-used
+          GESTUDIO_E2E_BETA_CODE: static-beta-e2e
+          GESTUDIO_E2E_BETA_NAME: Escuela Beta E2E
+          GESTUDIO_E2E_BETA_USERNAME: static.beta.admin
+          GESTUDIO_E2E_BETA_PASSWORD: static-not-used
+        run: |
+          npm run e2e:typecheck
+          npm run e2e:list
+
+      - name: Run isolated fresh control-plane E2E
+        shell: pwsh
+        run: ./scripts/e2e/run-control-plane.ps1
+
+      - name: Upload sanitized E2E result
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: control-plane-e2e-${{ github.sha }}
+          path: |
+            artifacts/e2e/result.json
+            artifacts/e2e/playwright.log
+          if-no-files-found: error
+          retention-days: 14
+
+  required-e2e:
+    if: always()
+    needs: control-plane-e2e
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce E2E result
+        env:
+          E2E_RESULT: ${{ needs.control-plane-e2e.result }}
+        run: test "$E2E_RESULT" = success

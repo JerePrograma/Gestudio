@@ -45,6 +45,43 @@ function Invoke-Native {
     if (-not [string]::IsNullOrWhiteSpace($text)) { Write-Host $text }
 }
 
+function Assert-LocalDockerTarget {
+    param([Parameter(Mandatory)][string] $ProjectName)
+
+    if ($ProjectName -ceq 'gestudio-remote-demo') {
+        throw 'El proyecto gestudio-remote-demo está protegido.'
+    }
+    if (-not [string]::IsNullOrWhiteSpace($env:DOCKER_HOST)) {
+        throw 'DOCKER_HOST no está permitido para este gate Docker local.'
+    }
+    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+        throw 'Docker CLI no está disponible.'
+    }
+
+    $context = Invoke-Native docker @('context', 'show') -Capture
+    if ([string]::IsNullOrWhiteSpace($context) -or $context -match '(?i)(prod|production|stage|staging|remote|demo)') {
+        throw "El contexto Docker '$context' no está permitido para este gate local."
+    }
+    $endpointJson = Invoke-Native docker @(
+        'context', 'inspect', $context, '--format', '{{json .Endpoints.docker.Host}}'
+    ) -Capture
+    try { $endpoint = [string]($endpointJson | ConvertFrom-Json) }
+    catch { throw 'No se pudo interpretar el endpoint del contexto Docker.' }
+    $allowedEndpoints = @(
+        'npipe:////./pipe/docker_engine',
+        'npipe:////./pipe/dockerDesktopLinuxEngine',
+        'unix:///var/run/docker.sock'
+    )
+    if (-not ($allowedEndpoints -contains $endpoint)) {
+        throw "El endpoint Docker '$endpoint' no es local."
+    }
+    $osType = Invoke-Native docker @('--context', $context, 'info', '--format', '{{.OSType}}') -Capture
+    if ($osType -cne 'linux') {
+        throw "El daemon Docker debe ser Linux; OSType='$osType'."
+    }
+    return $context
+}
+
 function Get-TextHash {
     param([Parameter(Mandatory)][string] $Text)
     $sha = [Security.Cryptography.SHA256]::Create()
@@ -59,6 +96,13 @@ function New-SyntheticSecret {
     $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
     try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
     return ([BitConverter]::ToString($bytes)).Replace('-', '').ToLowerInvariant()
+}
+
+function New-SyntheticBase64Key {
+    $bytes = New-Object byte[] 32
+    $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+    try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
+    return [Convert]::ToBase64String($bytes)
 }
 
 function Get-FreePorts {
@@ -161,6 +205,8 @@ function New-TestConfiguration {
         POSTGRES_PASSWORD = New-SyntheticSecret
         POSTGRES_APP_USER = 'gestudio_runtime'
         POSTGRES_APP_PASSWORD = New-SyntheticSecret
+        POSTGRES_CONTROL_USER = 'gestudio_control_runtime'
+        POSTGRES_CONTROL_PASSWORD = New-SyntheticSecret
         POSTGRES_PORT = [string]$Ports[0]
         BACKEND_PORT = [string]$Ports[1]
         FRONTEND_PORT = [string]$Ports[2]
@@ -169,11 +215,10 @@ function New-TestConfiguration {
         VITE_API_BASE_URL = "http://127.0.0.1:$($Ports[1])/api"
         JWT_SECRET = New-SyntheticSecret
         JWT_ISSUER = $ProjectName
+        APP_PLATFORM_MFA_ENCRYPTION_KEY = New-SyntheticBase64Key
         APP_CORS_ALLOWED_ORIGINS = "http://127.0.0.1:$($Ports[2])"
         APP_OBSERVABILITY_METRICS_TOKEN = New-SyntheticSecret
         APP_SECURITY_REFRESH_COOKIE_NAME = "${ProjectName}_refresh"
-        APP_BOOTSTRAP_SUPERADMIN_USERNAME = 'synthetic-admin'
-        APP_BOOTSTRAP_SUPERADMIN_PASSWORD = (New-SyntheticSecret).Substring(0, 64)
     }
     $lines = foreach ($line in [IO.File]::ReadAllLines((Join-Path $SourceRoot 'scripts\deploy\deploy.env.example'))) {
         $separator = $line.IndexOf('=')
@@ -235,10 +280,13 @@ function Get-ProjectIds {
 }
 
 function Invoke-DatabaseQuery {
-    param([Parameter(Mandatory)][string] $ContainerId, [Parameter(Mandatory)][string] $Sql, [ValidateSet('migration', 'runtime')][string] $Role = 'migration')
+    param([Parameter(Mandatory)][string] $ContainerId, [Parameter(Mandatory)][string] $Sql, [ValidateSet('migration', 'runtime', 'control')][string] $Role = 'migration')
     $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Sql))
     $shell = if ($Role -eq 'runtime') {
         'printf "%s" "$1" | base64 -d | PGPASSWORD="$POSTGRES_APP_PASSWORD" psql --no-psqlrc -h 127.0.0.1 -U "$POSTGRES_APP_USER" -d "$POSTGRES_DB" -Atq -f -'
+    }
+    elseif ($Role -eq 'control') {
+        'printf "%s" "$1" | base64 -d | PGPASSWORD="$POSTGRES_CONTROL_PASSWORD" psql --no-psqlrc -h 127.0.0.1 -U "$POSTGRES_CONTROL_USER" -d "$POSTGRES_DB" -Atq -f -'
     }
     else {
         'printf "%s" "$1" | base64 -d | PGPASSWORD="$POSTGRES_PASSWORD" psql --no-psqlrc -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atq -f -'
@@ -260,7 +308,10 @@ function Get-DeploymentSnapshot {
     $network = Invoke-Native -FilePath 'docker' -Arguments @(
         'inspect', '--format', '{{range $name, $value := .NetworkSettings.Networks}}{{$name}}{{end}}', $db
     ) -Capture
-    $secretNames = @('POSTGRES_PASSWORD', 'POSTGRES_APP_PASSWORD', 'JWT_SECRET', 'APP_OBSERVABILITY_METRICS_TOKEN', 'APP_BOOTSTRAP_SUPERADMIN_PASSWORD')
+    $secretNames = @(
+        'POSTGRES_PASSWORD', 'POSTGRES_APP_PASSWORD', 'POSTGRES_CONTROL_PASSWORD',
+        'JWT_SECRET', 'APP_PLATFORM_MFA_ENCRYPTION_KEY', 'APP_OBSERVABILITY_METRICS_TOKEN'
+    )
     $secretLines = [IO.File]::ReadAllLines($configPath) | Where-Object {
         $name = ($_ -split '=', 2)[0]
         $name -in $secretNames
@@ -278,6 +329,8 @@ function Get-DeploymentSnapshot {
             tenants = [int]$state.bootstrap.tenants
             memberships = [int]$state.bootstrap.memberships
             bootstrapUsers = [int]$state.bootstrap.bootstrapUsers
+            bootstrapLinkedAdmins = [int]$state.bootstrap.bootstrapLinkedAdmins
+            platformAdmins = [int]$state.bootstrap.platformAdmins
             roles = [int]$state.bootstrap.roles
             permissions = [int]$state.bootstrap.permissions
             membershipRoles = [int]$state.bootstrap.membershipRoles
@@ -303,6 +356,23 @@ function Assert-SnapshotStable {
     Assert-Equal $Before.fingerprint $After.fingerprint 'Cambio el fingerprint.'
     Assert-Equal $Before.flyway $After.flyway 'Cambio el historial Flyway.'
     Assert-Equal $Before.bootstrap $After.bootstrap 'Cambiaron los datos bootstrap.'
+}
+
+function Set-TestEnvironmentValue {
+    param(
+        [Parameter(Mandatory)][string] $Path,
+        [Parameter(Mandatory)][string] $Name,
+        [Parameter(Mandatory)][string] $Value
+    )
+
+    $content = [IO.File]::ReadAllText($Path)
+    $pattern = '(?m)^' + [regex]::Escape($Name) + '=.*$'
+    $matcher = [regex]::new($pattern)
+    if (-not $matcher.IsMatch($content)) {
+        throw "No existe $Name en la configuración sintética."
+    }
+    $updated = $matcher.Replace($content, "$Name=$Value", 1)
+    [IO.File]::WriteAllText($Path, $updated, [Text.UTF8Encoding]::new($false))
 }
 
 function Get-ProjectSnapshot {
@@ -378,6 +448,25 @@ function Invoke-IdempotencyScenario {
     Assert-Equal '' (Invoke-Native git @('-C', $sourceRoot, 'status', '--porcelain') -Capture) 'El despliegue modifico archivos versionados.'
     $secondDuration = [Math]::Round($watch.Elapsed.TotalSeconds, 2)
 
+    $generatedArtifacts = [ordered]@{
+        'frontend\coverage\synthetic-coverage.json' = '{"generated":true}'
+        'frontend\quality-reports\synthetic-report.json' = '{"generated":true}'
+        'frontend\frontend-sbom.cdx.json' = '{"bomFormat":"CycloneDX"}'
+        'frontend\e2e\tsconfig.tsbuildinfo' = 'synthetic generated build metadata'
+    }
+    foreach ($entry in $generatedArtifacts.GetEnumerator()) {
+        $artifactPath = Join-Path $sourceRoot $entry.Key
+        [IO.Directory]::CreateDirectory((Split-Path $artifactPath -Parent)) | Out-Null
+        [IO.File]::WriteAllText($artifactPath, [string]$entry.Value, [Text.UTF8Encoding]::new($false))
+    }
+    Assert-Equal '' (Invoke-Native git @('-C', $sourceRoot, 'status', '--porcelain') -Capture) `
+        'Los artefactos generados no quedaron ignorados por Git.'
+    $null = Invoke-Launcher -SourceRoot $sourceRoot
+    $afterGeneratedArtifacts = Get-DeploymentSnapshot -ProjectName $project -StateRoot $stateRoot
+    Assert-SnapshotStable -Before $second -After $afterGeneratedArtifacts
+    Assert-Equal $backupCount @(Get-ChildItem -LiteralPath $backupRoot -Directory -ErrorAction SilentlyContinue).Count `
+        'Los artefactos generados cambiaron el plan o crearon un backup.'
+
     $beforeVerifyStateHash = $second.stateHash
     $watch.Restart()
     $null = Invoke-Launcher -SourceRoot $sourceRoot -Mode '--verify-only'
@@ -408,6 +497,35 @@ function Invoke-IdempotencyScenario {
     }
     Assert-SnapshotStable -Before $verified -After (Get-DeploymentSnapshot -ProjectName $project -StateRoot $stateRoot)
 
+    $dbBeforeRotation = Invoke-Native docker @(
+        'ps', '--filter', "label=com.docker.compose.project=$project",
+        '--filter', 'label=com.docker.compose.service=db', '-q'
+    ) -Capture
+    $controlPasswordHashBefore = Invoke-DatabaseQuery -ContainerId $dbBeforeRotation `
+        -Sql "SELECT rolpassword FROM pg_catalog.pg_authid WHERE rolname = 'gestudio_control_runtime';"
+    Set-TestEnvironmentValue -Path $configPath -Name 'POSTGRES_CONTROL_PASSWORD' -Value (New-SyntheticSecret)
+    $null = Invoke-Launcher -SourceRoot $sourceRoot
+    $rotated = Get-DeploymentSnapshot -ProjectName $project -StateRoot $stateRoot
+    $dbAfterRotation = Invoke-Native docker @(
+        'ps', '--filter', "label=com.docker.compose.project=$project",
+        '--filter', 'label=com.docker.compose.service=db', '-q'
+    ) -Capture
+    $controlPasswordHashAfter = Invoke-DatabaseQuery -ContainerId $dbAfterRotation `
+        -Sql "SELECT rolpassword FROM pg_catalog.pg_authid WHERE rolname = 'gestudio_control_runtime';"
+    if ($controlPasswordHashBefore -ceq $controlPasswordHashAfter) {
+        throw 'La rotación no cambió el hash SCRAM del login control-plane.'
+    }
+    if ($verified.secretHash -ceq $rotated.secretHash -or $verified.fingerprint -ceq $rotated.fingerprint) {
+        throw 'La rotación no cambió secretos y fingerprint como se esperaba.'
+    }
+    Assert-Equal $verified.volume $rotated.volume 'La rotación reemplazó el volumen PostgreSQL.'
+    Assert-Equal $verified.flyway $rotated.flyway 'La rotación cambió Flyway.'
+    Assert-Equal $verified.bootstrap $rotated.bootstrap 'La rotación cambió el bootstrap.'
+    Assert-Equal $backupCount @(Get-ChildItem -LiteralPath $backupRoot -Directory -ErrorAction SilentlyContinue).Count `
+        'La rotación de credenciales creó un backup de esquema innecesario.'
+    $null = Invoke-Launcher -SourceRoot $sourceRoot
+    Assert-SnapshotStable -Before $rotated -After (Get-DeploymentSnapshot -ProjectName $project -StateRoot $stateRoot)
+
     $stateHashBeforeInvalidDocker = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $stateRoot 'state\deployment.json')).Hash
     $resourceBeforeInvalidDocker = Get-ProjectSnapshot -ProjectName $project
     $invalidDockerExit = Invoke-Launcher -SourceRoot $sourceRoot -Mode '--verify-only' `
@@ -416,7 +534,7 @@ function Invoke-IdempotencyScenario {
     Assert-Equal $stateHashBeforeInvalidDocker $stateHashAfterInvalidDocker 'Docker inaccesible modifico el estado exitoso.'
     Assert-Equal $resourceBeforeInvalidDocker (Get-ProjectSnapshot -ProjectName $project) 'Docker inaccesible modifico recursos.'
 
-    Write-TestStatus PASS 'Idempotencia, verify-only, lock, ruta con espacios y Docker inaccesible verificados'
+    Write-TestStatus PASS 'Idempotencia, rotación, verify-only, lock, ruta con espacios y Docker inaccesible verificados'
     return [ordered]@{
         project = $project
         sourcePath = $sourceRoot
@@ -424,13 +542,20 @@ function Invoke-IdempotencyScenario {
         dryRun = [ordered]@{ durationSeconds = $dryRunDuration; exitCode = 0; resourcesCreated = 0; configUnchanged = $true }
         first = [ordered]@{ durationSeconds = $firstDuration; fingerprint = $first.fingerprint; volume = $first.volume; secretHash = $first.secretHash; flyway = $first.flyway; bootstrap = $first.bootstrap; containers = $first.containers }
         second = [ordered]@{ durationSeconds = $secondDuration; fingerprint = $second.fingerprint; volume = $second.volume; secretHash = $second.secretHash; flyway = $second.flyway; bootstrap = $second.bootstrap; containers = $second.containers }
+        generatedArtifacts = [ordered]@{ ignored = $true; fingerprintStable = $true; backupCountStable = $true }
         verifyOnly = [ordered]@{ durationSeconds = $verifyDuration; stateUnchanged = $true }
         concurrency = [ordered]@{ competingExitCode = $secondLockExit; ownerExitCode = 0 }
+        credentialRotation = [ordered]@{ controlPlane = $true; volumePreserved = $true; flywayPreserved = $true; reexecutionStable = $true }
         invalidDocker = [ordered]@{ exitCode = $invalidDockerExit; stateUnchanged = $true; resourcesUnchanged = $true }
     }
 }
 
 function Invoke-UpgradeScenario {
+    $currentVersions = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'backend/src/main/resources/db/migration') -Filter 'V*__*.sql' -File | ForEach-Object {
+        if ($_.Name -match '^V(?<version>[0-9]+)__') { [int]$matches.version }
+    } | Sort-Object)
+    if ($currentVersions.Count -eq 0) { throw 'No se pudo derivar la versión Flyway actual.' }
+    $currentLatest = $currentVersions[-1]
     $v8Commit = (Invoke-Native git @(
         '-C', $repoRoot, 'log', '-1', '--diff-filter=A', '--format=%H', '--',
         'backend/src/main/resources/db/migration/V8__tenant_control_plane.sql'
@@ -438,7 +563,7 @@ function Invoke-UpgradeScenario {
     if ([string]::IsNullOrWhiteSpace($v8Commit)) { throw 'No se pudo derivar el commit que introdujo V8.' }
     $baseCommit = (Invoke-Native git @('-C', $repoRoot, 'rev-parse', "${v8Commit}^") -Capture).Trim()
     $baseRoot = Join-Path $testRoot 'Upgrade Base V7'
-    $currentRoot = Join-Path $testRoot 'Upgrade Current V11'
+    $currentRoot = Join-Path $testRoot "Upgrade Current V$currentLatest"
     New-BaseSources -Destination $baseRoot -Commit $baseCommit
     Copy-WorkingSources -Destination $currentRoot
 
@@ -450,7 +575,11 @@ function Invoke-UpgradeScenario {
 
     $null = Invoke-Launcher -SourceRoot $baseRoot -StateRoot $stateRoot
     $base = Get-DeploymentSnapshot -ProjectName $project -StateRoot $stateRoot
-    Assert-Equal '7|7' $base.flyway 'La version base no quedo en V7.'
+    $baseFlywayParts = $base.flyway.Split('|')
+    if ($baseFlywayParts.Count -ne 2 -or $baseFlywayParts[0] -ne $baseFlywayParts[1]) {
+        throw "La versión histórica base no quedó en una cadena V completa: $($base.flyway)"
+    }
+    $baseVersion = [int]$baseFlywayParts[1]
     $db = Invoke-Native docker @('ps', '--filter', "label=com.docker.compose.project=$project", '--filter', 'label=com.docker.compose.service=db', '-q') -Capture
     $sentinel = "UPGRADE_SENTINEL_$runId"
     $null = Invoke-DatabaseQuery -ContainerId $db -Sql "INSERT INTO metodo_pagos(descripcion, activo, recargo) VALUES ('$sentinel', true, 0);"
@@ -462,13 +591,15 @@ function Invoke-UpgradeScenario {
     $null = Invoke-Launcher -SourceRoot $currentRoot -StateRoot $stateRoot
     $upgraded = Get-DeploymentSnapshot -ProjectName $project -StateRoot $stateRoot
     $db = Invoke-Native docker @('ps', '--filter', "label=com.docker.compose.project=$project", '--filter', 'label=com.docker.compose.service=db', '-q') -Capture
-    Assert-Equal '11|11' $upgraded.flyway 'El upgrade no convergio a V11.'
+    Assert-Equal "$currentLatest|$currentLatest" $upgraded.flyway "El upgrade no convergió a V$currentLatest."
     Assert-Equal $base.volume $upgraded.volume 'El upgrade reemplazo el volumen PostgreSQL.'
     Assert-Equal $base.secretHash $upgraded.secretHash 'El upgrade roto secretos.'
     Assert-Equal '1' (Invoke-DatabaseQuery -ContainerId $db -Sql "SELECT count(*) FROM metodo_pagos WHERE descripcion = '$sentinel';") 'El upgrade no conservo los datos representativos.'
     Assert-Equal $databaseAclBefore (Invoke-DatabaseQuery -ContainerId $db -Sql "SELECT coalesce(datacl::text, '') FROM pg_database WHERE datname = current_database();") 'El upgrade cambio las ACL de la base.'
     Assert-Equal 't' (Invoke-DatabaseQuery -ContainerId $db -Sql "SELECT has_table_privilege('gestudio_migrator','public.metodo_pagos','SELECT,INSERT,UPDATE,DELETE');") 'El upgrade no conservo los grants del migrador.'
     Assert-Equal 't' (Invoke-DatabaseQuery -ContainerId $db -Sql "SELECT has_table_privilege('gestudio_runtime','public.metodo_pagos','SELECT,INSERT,UPDATE,DELETE');") 'El upgrade no establecio los grants runtime.'
+    Assert-Equal 'f' (Invoke-DatabaseQuery -ContainerId $db -Sql "SELECT has_table_privilege('gestudio_control_runtime','public.metodo_pagos','SELECT');") 'El runtime de control-plane obtuvo acceso al dominio tenant.'
+    Assert-Equal 't' (Invoke-DatabaseQuery -ContainerId $db -Sql "SELECT has_table_privilege('gestudio_control_runtime','public.tenants','SELECT') AND has_table_privilege('gestudio_control_runtime','public.tenants','INSERT') AND has_table_privilege('gestudio_control_runtime','public.tenants','UPDATE');") 'Faltan grants mínimos del runtime de control-plane.'
     Assert-Equal 'GREEN' (Invoke-DatabaseQuery -ContainerId $db -Role runtime -Sql 'SELECT status FROM public.v_multitenancy_migration_health;') 'RLS no quedo GREEN.'
     $backupCountAfter = @(Get-ChildItem -LiteralPath (Join-Path $stateRoot 'backups') -Directory -ErrorAction SilentlyContinue).Count
     Assert-Equal ($backupCountBefore + 1) $backupCountAfter 'El upgrade no creo exactamente un backup.'
@@ -476,7 +607,7 @@ function Invoke-UpgradeScenario {
         throw 'El backup del upgrade no quedo registrado o no existe.'
     }
     $manifest = ConvertFrom-Json ([IO.File]::ReadAllText((Join-Path $upgraded.lastBackupPath 'manifest.json')))
-    Assert-Equal 7 ([int]$manifest.flywayLatestVersion) 'El backup no corresponde al estado V7 previo.'
+    Assert-Equal $baseVersion ([int]$manifest.flywayLatestVersion) 'El backup no corresponde al estado histórico previo.'
 
     $null = Invoke-Launcher -SourceRoot $currentRoot -StateRoot $stateRoot
     $third = Get-DeploymentSnapshot -ProjectName $project -StateRoot $stateRoot
@@ -484,11 +615,11 @@ function Invoke-UpgradeScenario {
     Assert-Equal $backupCountAfter @(Get-ChildItem -LiteralPath (Join-Path $stateRoot 'backups') -Directory).Count 'La reejecucion posterior creo otro backup.'
     Assert-Equal '1' (Invoke-DatabaseQuery -ContainerId $db -Sql "SELECT count(*) FROM metodo_pagos WHERE descripcion = '$sentinel';") 'La reejecucion duplico o elimino datos.'
 
-    Write-TestStatus PASS 'Upgrade V7 a V11 con backup, ACL, grants, datos y RLS verificado'
+    Write-TestStatus PASS "Upgrade V$baseVersion a V$currentLatest con backup, ACL, grants, datos y RLS verificado"
     return [ordered]@{
         project = $project
-        baseVersion = 7
-        finalVersion = 11
+        baseVersion = $baseVersion
+        finalVersion = $currentLatest
         volumeBefore = $base.volume
         volumeAfter = $upgraded.volume
         secretHashBefore = $base.secretHash
@@ -498,6 +629,7 @@ function Invoke-UpgradeScenario {
         databaseAclPreserved = $true
         migratorGrantsPreserved = $true
         runtimeGrantsEstablished = $true
+        controlPlaneLeastPrivilege = $true
         dataPreserved = $true
         rls = 'GREEN'
         finalReexecutionStable = $true
@@ -506,6 +638,7 @@ function Invoke-UpgradeScenario {
 
 try {
     Write-TestStatus INFO "Inicio de gate Docker aislado $runId"
+    $null = Assert-LocalDockerTarget -ProjectName "gestudio-idempotency-$runId"
     $null = Invoke-Native docker @('version') -Capture
     $null = Invoke-Native docker @('compose', 'version') -Capture
     $protectedBefore = Get-ProjectSnapshot -ProjectName 'gestudio-remote-demo'

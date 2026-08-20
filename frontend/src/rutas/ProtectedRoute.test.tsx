@@ -6,7 +6,9 @@ import { PERMISSIONS } from "../config/permissions";
 const auth = vi.hoisted(() => ({
   isAuth: false,
   loading: false,
+  scope: null as null | "TENANT" | "PLATFORM",
   user: null as null | { roles: string[]; permisos: string[] },
+  platformUser: null as null | { authorities: string[] },
   hasPermission: vi.fn<(permission: string) => boolean>(),
   hasAllPermissions: vi.fn<(permissions: readonly string[]) => boolean>(),
   hasAnyPermission: vi.fn<(permissions: readonly string[]) => boolean>(),
@@ -33,7 +35,9 @@ describe("ProtectedRoute", () => {
   beforeEach(() => {
     auth.isAuth = false;
     auth.loading = false;
+    auth.scope = null;
     auth.user = null;
+    auth.platformUser = null;
     vi.clearAllMocks();
   });
 
@@ -77,6 +81,170 @@ describe("ProtectedRoute", () => {
     renderRoute(required);
     expect(screen.getByText("Contenido privado")).toBeVisible();
     expect(auth.hasAllPermissions).toHaveBeenLastCalledWith(required);
+  });
+
+  it("separa las rutas PLATFORM de las sesiones tenant", () => {
+    auth.isAuth = true;
+    auth.scope = "TENANT";
+    auth.user = { roles: ["ADMINISTRADOR"], permisos: [] };
+
+    const denied = render(
+      <MemoryRouter initialEntries={["/private"]}>
+        <Routes>
+          <Route element={<ProtectedRoute requiredScope="PLATFORM" requiredAuthority="PLATFORM_SUPERADMIN" />}>
+            <Route path="/private" element={<p>Control plane</p>} />
+          </Route>
+          <Route path="/" element={<p>Inicio tenant</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("Inicio tenant")).toBeVisible();
+    denied.unmount();
+
+    auth.scope = "PLATFORM";
+    auth.user = null;
+    auth.platformUser = { authorities: ["PLATFORM_SUPERADMIN"] };
+    render(
+      <MemoryRouter initialEntries={["/private"]}>
+        <Routes>
+          <Route element={<ProtectedRoute requiredScope="PLATFORM" requiredAuthority="PLATFORM_SUPERADMIN" />}>
+            <Route path="/private" element={<p>Control plane</p>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("Control plane")).toBeVisible();
+  });
+
+  it.each([
+    ["carga inicial", { loading: true, scope: null, user: null, platformUser: null }],
+    ["perfil tenant pendiente", { loading: false, scope: "TENANT" as const, user: null, platformUser: null }],
+    ["perfil platform pendiente", { loading: false, scope: "PLATFORM" as const, user: null, platformUser: null }],
+  ])("mantiene el contenido desmontado durante %s", (_name, state) => {
+    auth.isAuth = state.scope !== null;
+    auth.loading = state.loading;
+    auth.scope = state.scope;
+    auth.user = state.user;
+    auth.platformUser = state.platformUser;
+
+    renderRoute();
+
+    expect(screen.getByText("Cargando perfil...")).toBeVisible();
+    expect(screen.queryByText("Contenido privado")).not.toBeInTheDocument();
+  });
+
+  it("usa el login de plataforma por defecto y respeta un redirect explícito", () => {
+    const platformLogin = render(
+      <MemoryRouter initialEntries={["/private"]}>
+        <Routes>
+          <Route path="/private" element={<ProtectedRoute requiredScope="PLATFORM" />} />
+          <Route path="/platform/login" element={<p>Login plataforma</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("Login plataforma")).toBeVisible();
+    platformLogin.unmount();
+
+    render(
+      <MemoryRouter initialEntries={["/private"]}>
+        <Routes>
+          <Route path="/private" element={<ProtectedRoute redirectPath="/ingreso-especial" />} />
+          <Route path="/ingreso-especial" element={<p>Ingreso especial</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("Ingreso especial")).toBeVisible();
+  });
+
+  it("devuelve una sesión PLATFORM al control plane si intenta entrar al scope tenant", () => {
+    auth.isAuth = true;
+    auth.scope = "PLATFORM";
+    auth.platformUser = { authorities: ["PLATFORM_SUPERADMIN"] };
+
+    render(
+      <MemoryRouter initialEntries={["/private"]}>
+        <Routes>
+          <Route path="/private" element={<ProtectedRoute requiredScope="TENANT" />} />
+          <Route path="/platform/tenants" element={<p>Inicio plataforma</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("Inicio plataforma")).toBeVisible();
+  });
+
+  it("deniega autoridad platform ausente con la ruta segura configurada", () => {
+    auth.isAuth = true;
+    auth.scope = "PLATFORM";
+    auth.platformUser = { authorities: ["PLATFORM_SUPPORT"] };
+
+    render(
+      <MemoryRouter initialEntries={["/private"]}>
+        <Routes>
+          <Route
+            path="/private"
+            element={(
+              <ProtectedRoute
+                requiredScope="PLATFORM"
+                requiredAuthority="PLATFORM_SUPERADMIN"
+                unauthorizedPath="/platform/forbidden"
+              />
+            )}
+          />
+          <Route path="/platform/forbidden" element={<p>Plataforma denegada</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("Plataforma denegada")).toBeVisible();
+  });
+
+  it("evalúa permisos unitarios y alternativos antes de montar children", () => {
+    auth.isAuth = true;
+    auth.scope = "TENANT";
+    auth.user = { roles: [], permisos: [] };
+
+    auth.hasPermission.mockReturnValueOnce(false);
+    const singleDenied = render(
+      <MemoryRouter initialEntries={["/private"]}>
+        <Routes>
+          <Route
+            path="/private"
+            element={<ProtectedRoute requiredPermission={PERMISSIONS.APP_ACCESS}>Privado unitario</ProtectedRoute>}
+          />
+          <Route path="/unauthorized" element={<p>Sin permiso unitario</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("Sin permiso unitario")).toBeVisible();
+    singleDenied.unmount();
+
+    auth.hasPermission.mockReturnValueOnce(true);
+    const singleAllowed = render(
+      <MemoryRouter initialEntries={["/private"]}>
+        <Routes>
+          <Route
+            path="/private"
+            element={<ProtectedRoute requiredPermission={PERMISSIONS.APP_ACCESS}>Privado unitario</ProtectedRoute>}
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("Privado unitario")).toBeVisible();
+    singleAllowed.unmount();
+
+    auth.hasAnyPermission.mockReturnValueOnce(false);
+    render(
+      <MemoryRouter initialEntries={["/private"]}>
+        <Routes>
+          <Route element={<ProtectedRoute requiredAnyPermission={[PERMISSIONS.PAGOS_REGISTRAR]} />}>
+            <Route path="/private" element={<p>Privado alternativo</p>} />
+          </Route>
+          <Route path="/unauthorized" element={<p>Sin permiso alternativo</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("Sin permiso alternativo")).toBeVisible();
   });
 
   it.each([

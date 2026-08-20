@@ -22,6 +22,17 @@ const securityHeaders = [
   "Permissions-Policy",
 ];
 
+const headersForPagesRule = (source, rule) => {
+  const lines = source.split(/\r?\n/);
+  const ruleIndex = lines.indexOf(rule);
+  assert.notEqual(ruleIndex, -1, `Falta la regla ${rule} en _headers`);
+  const headers = [];
+  for (let index = ruleIndex + 1; index < lines.length && lines[index].startsWith("  "); index += 1) {
+    headers.push(lines[index]);
+  }
+  return headers;
+};
+
 test("production security policy is defined once at the Nginx boundary", () => {
   assert.doesNotMatch(index, /Content-Security-Policy|unpkg\.com|<script>(.|\n)*?<\/script>/);
   assert.doesNotMatch(index, /skip-link|<main/);
@@ -37,13 +48,46 @@ test("security headers apply to every Nginx response", () => {
   }
 });
 
+test("activation responses use no-referrer without shadowing other Nginx headers", () => {
+  const referrerMap = nginx.match(
+    /map \$request_uri \$gestudio_referrer_policy \{(?<body>[\s\S]*?)\}/,
+  )?.groups?.body;
+  assert.ok(referrerMap, "Falta el mapa de Referrer-Policy por ruta");
+  assert.match(referrerMap, /^\s*default "strict-origin-when-cross-origin";$/m);
+  assert.ok(
+    referrerMap.includes('~^/platform/activate(?:/)?(?:[?]|$) "no-referrer";'),
+    "La política específica debe usar el URI original y cubrir query/slash sin ampliar la ruta",
+  );
+  assert.match(
+    nginx,
+    /add_header Referrer-Policy \$gestudio_referrer_policy always;/,
+  );
+  for (const header of securityHeaders.filter((header) => header !== "Referrer-Policy")) {
+    assert.equal(
+      (nginx.match(new RegExp(`add_header ${header} `, "g")) ?? []).length,
+      1,
+      `${header} debe conservar una única definición heredable`,
+    );
+  }
+});
+
 test("Cloudflare Pages template preserves the security and cache contracts", () => {
   assert.equal(
     pagesHeaders.split(API_ORIGIN_PLACEHOLDER).length - 1,
     1,
   );
+  const globalHeaders = headersForPagesRule(pagesHeaders, "/*");
   for (const header of securityHeaders) {
-    assert.match(pagesHeaders, new RegExp(`^  ${header}:`, "m"));
+    assert.ok(
+      globalHeaders.some((line) => line.startsWith(`  ${header}:`)),
+      `La regla global perdió ${header}`,
+    );
+  }
+  for (const activationPath of ["/platform/activate", "/platform/activate/"]) {
+    assert.deepEqual(
+      headersForPagesRule(pagesHeaders, activationPath),
+      ["  Referrer-Policy: no-referrer"],
+    );
   }
   assert.match(pagesHeaders, /script-src 'self';/);
   assert.doesNotMatch(pagesHeaders, /unsafe-eval|script-src[^;]*unsafe-inline/);

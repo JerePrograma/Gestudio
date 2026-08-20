@@ -1,13 +1,16 @@
 # Riesgos conocidos y deuda técnica
 
 > Estado: CONFIRMADO  
-> Última revisión: 2026-07-30
+> Última revisión: 2026-08-13
 > Fuentes principales: código, pruebas, handoff, configuración e issues de GitHub
 
 ## Registro priorizado
 
 | Prioridad | Hallazgo | Evidencia | Impacto | Recomendación |
 |---|---|---|---|---|
+| Alta | Control plane V12/B12 sin gate integrado actual | contrato vivo / ADR-0009 | seguridad/release | ejecutar PostgreSQL, Gherkin, PIT, E2E y drills sobre el SHA definitivo |
+| Alta | Docker local indisponible y demo protegida no inspeccionable | `desktop-linux` sin daemon | evidencia operativa | no mutar la demo; recuperar el daemon de forma autorizada y usar proyectos efímeros |
+| Alta | SAST y secret scan pendientes del SHA final | workflows no publicados | supply chain | ejecutar CodeQL/TruffleHog y revisar resultados del mismo SHA |
 | Alta | Producción no acreditada | handoff / [#23](https://github.com/JerePrograma/Gestudio/issues/23) | seguridad/operación | validar TLS, secretos, storage, monitorización y restore |
 | Alta | Transporte Jere no desplegado | integración v1 / [#25](https://github.com/JerePrograma/Gestudio/issues/25) | integración | smoke autorizado y runbook operativo |
 | Alta | Gmail real no conectado ni desplegado | handoff / runbook email / [#23](https://github.com/JerePrograma/Gestudio/issues/23) | comunicación | OAuth2/credenciales autorizadas, staging, DNS y prueba controlada |

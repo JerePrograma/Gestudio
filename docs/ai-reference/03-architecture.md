@@ -1,8 +1,13 @@
 # Arquitectura
 
 > Estado: CONFIRMADO  
-> Última revisión: 2026-07-24  
+> Última revisión: 2026-08-13
 > Fuentes principales: `../../AGENTS.md`, `../../backend/pom.xml`, `../../frontend/package.json`, código
+
+> Addendum: el control plane V12/B12 conserva este monolito modular, pero agrega
+> scopes PLATFORM/TENANT, datasource PostgreSQL dedicado y backoffice global.
+> Ver [ADR-0009](../architecture/adr-0009-platform-control-plane.md) y el
+> [contrato vivo](../../GESTUDIO_FINALIZACION_SUPERADMIN_MEGAPROMPT.md).
 
 ## Estilo arquitectónico
 

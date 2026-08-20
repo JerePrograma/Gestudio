@@ -90,35 +90,49 @@ function Read-DeploymentEnvFile {
     return $values
 }
 
-function Get-ExpectedMigrationVersions {
+function Get-ExpectedMigrationManifest {
     param([Parameter(Mandatory)][string] $RepositoryRoot)
 
     $migrationRoot = Join-Path $RepositoryRoot 'backend\src\main\resources\db\migration'
-    $versions = @(
+    $versioned = @(
         Get-ChildItem -LiteralPath $migrationRoot -File |
             Where-Object { $_.Name -match '^V([0-9]+)__.+\.sql$' } |
-            ForEach-Object { [int]$Matches[1] } |
-            Sort-Object
+            ForEach-Object { [pscustomobject]@{ version = [int]$Matches[1]; script = $_.Name } } |
+            Sort-Object version
     )
-    if ($versions.Count -eq 0) { throw 'No se encontraron migraciones Flyway versionadas.' }
-    for ($index = 0; $index -lt $versions.Count; $index++) {
-        if ($versions[$index] -ne ($index + 1)) {
+    if ($versioned.Count -eq 0) { throw 'No se encontraron migraciones Flyway versionadas.' }
+    for ($index = 0; $index -lt $versioned.Count; $index++) {
+        if ($versioned[$index].version -ne ($index + 1)) {
             throw "El historial Flyway no es contiguo en V$($index + 1)."
         }
     }
-    return $versions
+    $latest = $versioned[-1].version
+    $baselines = @(Get-ChildItem -LiteralPath $migrationRoot -File | Where-Object {
+        $_.Name -match '^B([0-9]+)__.+\.sql$'
+    } | ForEach-Object { [pscustomobject]@{ version = [int]$Matches[1]; script = $_.Name } })
+    if ($baselines.Count -gt 1 -or ($baselines.Count -eq 1 -and $baselines[0].version -ne $latest)) {
+        throw 'La baseline Flyway debe ser única y corresponder a la última versión.'
+    }
+    return [pscustomobject]@{
+        versioned = $versioned
+        baseline = if ($baselines.Count -eq 1) { $baselines[0] } else { $null }
+        latest = $latest
+    }
 }
 
 function Invoke-DeploymentSql {
     param(
         [Parameter(Mandatory)][string] $ContainerId,
-        [Parameter(Mandatory)][ValidateSet('migration', 'runtime')][string] $Role,
+        [Parameter(Mandatory)][ValidateSet('migration', 'runtime', 'control')][string] $Role,
         [Parameter(Mandatory)][string] $Sql
     )
 
     $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Sql))
     if ($Role -eq 'runtime') {
         $command = 'printf "%s" "$1" | base64 -d | PGPASSWORD="$POSTGRES_APP_PASSWORD" psql --no-psqlrc --tuples-only --no-align --set ON_ERROR_STOP=1 --username="$POSTGRES_APP_USER" --dbname="$POSTGRES_DB" --file=-'
+    }
+    elseif ($Role -eq 'control') {
+        $command = 'printf "%s" "$1" | base64 -d | PGPASSWORD="$POSTGRES_CONTROL_PASSWORD" psql --no-psqlrc --tuples-only --no-align --set ON_ERROR_STOP=1 --username="$POSTGRES_CONTROL_USER" --dbname="$POSTGRES_DB" --file=-'
     }
     else {
         $command = 'printf "%s" "$1" | base64 -d | PGPASSWORD="$POSTGRES_PASSWORD" psql --no-psqlrc --tuples-only --no-align --set ON_ERROR_STOP=1 --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" --file=-'
@@ -245,9 +259,9 @@ function Invoke-GestudioDeploymentVerification {
         $StatusWriter = { param($level, $message) Write-Host "[$level] $message" }
     }
 
-    $expectedVersions = @(Get-ExpectedMigrationVersions -RepositoryRoot $RepositoryRoot)
-    $expectedLatest = $expectedVersions[-1]
-    $expectedVersionList = ($expectedVersions | ForEach-Object { [string]$_ }) -join ','
+    $migrationManifest = Get-ExpectedMigrationManifest -RepositoryRoot $RepositoryRoot
+    $expectedVersions = @($migrationManifest.versioned)
+    $expectedLatest = [int]$migrationManifest.latest
 
     $containerIds = @{}
     $containers = @{}
@@ -279,39 +293,112 @@ function Invoke-GestudioDeploymentVerification {
         }
     }
 
-    $flywaySql = @'
-SELECT count(*) FILTER (WHERE success)::text || '|' ||
-       coalesce(max(version::int) FILTER (WHERE success), 0)::text || '|' ||
-       count(*) FILTER (WHERE NOT success)::text || '|' ||
-       coalesce(string_agg(version, ',' ORDER BY installed_rank) FILTER (WHERE success), '') || '|' ||
-       (SELECT count(*) FROM (
-          SELECT version FROM flyway_schema_history WHERE success GROUP BY version HAVING count(*) <> 1
-        ) duplicates)::text
-FROM flyway_schema_history;
-'@
+    $flywaySql = "SELECT version || '|' || type || '|' || script FROM flyway_schema_history WHERE success ORDER BY installed_rank;"
     $flywayRaw = Invoke-DeploymentSql -ContainerId $containerIds.db -Role migration -Sql $flywaySql
-    $flyway = $flywayRaw.Trim().Split('|')
-    if ($flyway.Count -ne 5 -or
-        [int]$flyway[0] -ne $expectedVersions.Count -or
-        [int]$flyway[1] -ne $expectedLatest -or
-        [int]$flyway[2] -ne 0 -or
-        $flyway[3] -cne $expectedVersionList -or
-        [int]$flyway[4] -ne 0) {
-        throw (New-DeploymentFailure -Message "Flyway no converge al historial esperado V1-V${expectedLatest}: $flywayRaw" -ExitCode 7)
+    $failedMigrations = [int](Invoke-DeploymentSql -ContainerId $containerIds.db -Role migration `
+        -Sql 'SELECT count(*) FROM flyway_schema_history WHERE NOT success;')
+    $installed = @(($flywayRaw -split "`r?`n") | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object {
+        $parts = $_.Split('|', 3)
+        if ($parts.Count -ne 3) { throw "Fila Flyway inválida: $_" }
+        [pscustomobject]@{ version = [int]$parts[0]; type = $parts[1]; script = $parts[2] }
+    })
+    $versionedHistory = $installed.Count -eq $expectedVersions.Count
+    if ($versionedHistory) {
+        for ($index = 0; $index -lt $expectedVersions.Count; $index++) {
+            $versionedHistory = $versionedHistory -and
+                $installed[$index].version -eq $expectedVersions[$index].version -and
+                $installed[$index].type -ceq 'SQL' -and
+                $installed[$index].script -ceq $expectedVersions[$index].script
+        }
     }
-    & $StatusWriter 'PASS' "Flyway V1-V$expectedLatest sin pendientes ni duplicados"
+    $baselineHistory = $null -ne $migrationManifest.baseline -and $installed.Count -eq 1 -and
+        $installed[0].version -eq $expectedLatest -and
+        $installed[0].type -ceq 'SQL_BASELINE' -and
+        $installed[0].script -ceq $migrationManifest.baseline.script
+    if ($failedMigrations -ne 0 -or (-not $versionedHistory -and -not $baselineHistory)) {
+        throw (New-DeploymentFailure -Message "Flyway no converge a V1-V${expectedLatest} ni a la baseline B${expectedLatest}: $flywayRaw" -ExitCode 7)
+    }
+    $flywayMode = if ($baselineHistory) { 'BASELINE' } else { 'VERSIONED' }
+    & $StatusWriter 'PASS' "Flyway $flywayMode converge a versión $expectedLatest"
 
     $runtimeRaw = Invoke-DeploymentSql -ContainerId $containerIds.db -Role runtime -Sql @'
 SELECT current_user || '|' || rolsuper::text || '|' || rolbypassrls::text || '|' ||
-       rolcreaterole::text || '|' || rolcreatedb::text
+       rolcreaterole::text || '|' || rolcreatedb::text || '|' || rolreplication::text
 FROM pg_roles WHERE rolname = current_user;
 '@
     $runtime = $runtimeRaw.Trim().Split('|')
-    if ($runtime.Count -ne 5 -or $runtime[0] -cne $Configuration['POSTGRES_APP_USER'] -or
-        @($runtime[1..4] | Where-Object { $_ -cne 'false' }).Count -ne 0) {
+    if ($runtime.Count -ne 6 -or $runtime[0] -cne $Configuration['POSTGRES_APP_USER'] -or
+        @($runtime[1..5] | Where-Object { $_ -cne 'false' }).Count -ne 0) {
         throw (New-DeploymentFailure -Message 'El usuario runtime tiene identidad o privilegios PostgreSQL indebidos.' -ExitCode 7)
     }
-    & $StatusWriter 'PASS' 'Usuario runtime sin SUPERUSER, BYPASSRLS, CREATEROLE ni CREATEDB'
+    & $StatusWriter 'PASS' 'Usuario runtime sin SUPERUSER, BYPASSRLS, CREATEROLE, CREATEDB ni REPLICATION'
+
+    $controlRaw = Invoke-DeploymentSql -ContainerId $containerIds.db -Role control -Sql @'
+SELECT current_user || '|' || rolsuper::text || '|' || rolbypassrls::text || '|' ||
+       rolcreaterole::text || '|' || rolcreatedb::text || '|' || rolreplication::text
+FROM pg_roles WHERE rolname = current_user;
+'@
+    $control = $controlRaw.Trim().Split('|')
+    if ($control.Count -ne 6 -or $control[0] -cne $Configuration['POSTGRES_CONTROL_USER'] -or
+        @($control[1..5] | Where-Object { $_ -cne 'false' }).Count -ne 0) {
+        throw (New-DeploymentFailure -Message 'El runtime de control-plane tiene privilegios PostgreSQL indebidos.' -ExitCode 7)
+    }
+    & $StatusWriter 'PASS' 'Runtime de control-plane sin SUPERUSER, BYPASSRLS, CREATEROLE, CREATEDB ni REPLICATION'
+
+    if ($expectedLatest -ge 12) {
+        $leastPrivilege = (Invoke-DeploymentSql -ContainerId $containerIds.db -Role migration -Sql @"
+SELECT
+  (SELECT (count(*) = 1 AND bool_and(parent.rolname = 'gestudio_platform'))::text
+   FROM pg_catalog.pg_auth_members memberships
+   JOIN pg_catalog.pg_roles member ON member.oid = memberships.member
+   JOIN pg_catalog.pg_roles parent ON parent.oid = memberships.roleid
+   WHERE member.rolname = '$($Configuration['POSTGRES_CONTROL_USER'])') || '|' ||
+  (SELECT (count(*) = 1 AND bool_and(parent.rolname = 'gestudio_app'))::text
+   FROM pg_catalog.pg_auth_members memberships
+   JOIN pg_catalog.pg_roles member ON member.oid = memberships.member
+   JOIN pg_catalog.pg_roles parent ON parent.oid = memberships.roleid
+   WHERE member.rolname = '$($Configuration['POSTGRES_APP_USER'])') || '|' ||
+  (NOT EXISTS (
+     SELECT 1 FROM pg_catalog.pg_roles technical
+     WHERE technical.rolname IN ('gestudio_app', 'gestudio_platform')
+       AND (technical.rolcanlogin OR technical.rolsuper OR technical.rolcreaterole OR
+            technical.rolcreatedb OR technical.rolinherit OR technical.rolreplication OR technical.rolbypassrls)
+   ) AND NOT EXISTS (
+     SELECT 1
+     FROM pg_catalog.pg_auth_members memberships
+     JOIN pg_catalog.pg_roles member ON member.oid = memberships.member
+     WHERE member.rolname IN ('gestudio_app', 'gestudio_platform')
+   ))::text || '|' ||
+  (has_table_privilege('$($Configuration['POSTGRES_CONTROL_USER'])', 'public.tenants', 'SELECT') AND
+   has_table_privilege('$($Configuration['POSTGRES_CONTROL_USER'])', 'public.tenants', 'INSERT') AND
+   has_table_privilege('$($Configuration['POSTGRES_CONTROL_USER'])', 'public.tenants', 'UPDATE'))::text || '|' ||
+  (has_table_privilege('$($Configuration['POSTGRES_CONTROL_USER'])', 'public.alumnos', 'SELECT') OR
+   has_table_privilege('$($Configuration['POSTGRES_CONTROL_USER'])', 'public.alumnos', 'INSERT') OR
+   has_table_privilege('$($Configuration['POSTGRES_CONTROL_USER'])', 'public.alumnos', 'UPDATE') OR
+   has_table_privilege('$($Configuration['POSTGRES_CONTROL_USER'])', 'public.alumnos', 'DELETE'))::text || '|' ||
+  (has_table_privilege('$($Configuration['POSTGRES_CONTROL_USER'])', 'public.pagos', 'SELECT') OR
+   has_table_privilege('$($Configuration['POSTGRES_CONTROL_USER'])', 'public.pagos', 'INSERT') OR
+   has_table_privilege('$($Configuration['POSTGRES_CONTROL_USER'])', 'public.pagos', 'UPDATE') OR
+   has_table_privilege('$($Configuration['POSTGRES_CONTROL_USER'])', 'public.pagos', 'DELETE'))::text || '|' ||
+  (has_table_privilege('$($Configuration['POSTGRES_APP_USER'])', 'public.tenants', 'INSERT') OR
+   has_table_privilege('$($Configuration['POSTGRES_APP_USER'])', 'public.tenants', 'UPDATE') OR
+   has_table_privilege('$($Configuration['POSTGRES_APP_USER'])', 'public.tenants', 'DELETE'))::text || '|' ||
+  (SELECT count(*)
+   FROM pg_catalog.pg_class object
+   JOIN pg_catalog.pg_namespace namespace ON namespace.oid = object.relnamespace
+   JOIN pg_catalog.pg_roles owner ON owner.oid = object.relowner
+   WHERE namespace.nspname = 'public'
+     AND owner.rolname IN ('$($Configuration['POSTGRES_APP_USER'])', '$($Configuration['POSTGRES_CONTROL_USER'])'))::text;
+"@).Trim().Split('|')
+        if ($leastPrivilege.Count -ne 8 -or $leastPrivilege[0] -cne 'true' -or
+            $leastPrivilege[1] -cne 'true' -or $leastPrivilege[2] -cne 'true' -or
+            $leastPrivilege[3] -cne 'true' -or $leastPrivilege[4] -cne 'false' -or
+            $leastPrivilege[5] -cne 'false' -or $leastPrivilege[6] -cne 'false' -or
+            $leastPrivilege[7] -cne '0') {
+            throw (New-DeploymentFailure -Message 'La frontera SQL entre tenant runtime y control-plane no cumple mínimo privilegio.' -ExitCode 7)
+        }
+        & $StatusWriter 'PASS' 'DML control-plane separado del runtime tenant'
+    }
 
     if ($expectedLatest -ge 10) {
         $rlsHealth = Invoke-DeploymentSql -ContainerId $containerIds.db -Role runtime `
@@ -325,11 +412,10 @@ FROM pg_roles WHERE rolname = current_user;
     $bootstrap = [ordered]@{
         tenants = 0
         memberships = 0
-        bootstrapUsers = [int](Invoke-DeploymentSql -ContainerId $containerIds.db -Role migration -Sql @'
-SELECT count(*) FROM bootstrap_ejecuciones b
-JOIN usuarios u ON u.id = b.usuario_id
-WHERE b.tipo = 'SUPERADMIN_INICIAL';
-'@)
+        platformAdmins = 0
+        bootstrapUsers = [int](Invoke-DeploymentSql -ContainerId $containerIds.db -Role migration `
+            -Sql "SELECT count(*) FROM bootstrap_ejecuciones WHERE tipo = 'SUPERADMIN_INICIAL';")
+        bootstrapLinkedAdmins = 0
         roles = [int](Invoke-DeploymentSql -ContainerId $containerIds.db -Role migration -Sql 'SELECT count(*) FROM roles;')
         permissions = 0
         membershipRoles = 0
@@ -341,11 +427,20 @@ WHERE b.tipo = 'SUPERADMIN_INICIAL';
         $bootstrap.tenants = [int](Invoke-DeploymentSql -ContainerId $containerIds.db -Role migration -Sql 'SELECT count(*) FROM tenants;')
         $bootstrap.memberships = [int](Invoke-DeploymentSql -ContainerId $containerIds.db -Role migration -Sql 'SELECT count(*) FROM tenant_memberships;')
         $bootstrap.membershipRoles = [int](Invoke-DeploymentSql -ContainerId $containerIds.db -Role migration -Sql 'SELECT count(*) FROM tenant_membership_roles;')
+        $bootstrap.platformAdmins = [int](Invoke-DeploymentSql -ContainerId $containerIds.db -Role migration -Sql 'SELECT count(*) FROM platform_admins WHERE active;')
+        $bootstrap.bootstrapLinkedAdmins = [int](Invoke-DeploymentSql -ContainerId $containerIds.db -Role migration -Sql @'
+SELECT count(*)
+FROM bootstrap_ejecuciones b
+JOIN usuarios u ON u.id = b.usuario_id AND u.activo
+JOIN platform_admins pa ON pa.usuario_id = u.id AND pa.active
+WHERE b.tipo = 'SUPERADMIN_INICIAL';
+'@)
     }
-    if ($bootstrap.bootstrapUsers -ne 1 -or ($expectedLatest -ge 8 -and ($bootstrap.tenants -lt 1 -or $bootstrap.memberships -lt 1))) {
-        throw (New-DeploymentFailure -Message 'El bootstrap inicial no esta completo o no es unico.' -ExitCode 7)
+    if ($bootstrap.bootstrapUsers -gt 1 -or ($expectedLatest -ge 8 -and
+        $bootstrap.bootstrapLinkedAdmins -ne $bootstrap.bootstrapUsers)) {
+        throw (New-DeploymentFailure -Message 'El estado one-shot del bootstrap de plataforma es inválido.' -ExitCode 7)
     }
-    & $StatusWriter 'PASS' 'Bootstrap unico verificado'
+    & $StatusWriter 'PASS' "Bootstrap externo compatible (claims=$($bootstrap.bootstrapUsers))"
 
     $backendBase = "http://127.0.0.1:$($Configuration['BACKEND_PORT'])"
     $frontendBase = "http://127.0.0.1:$($Configuration['FRONTEND_PORT'])"
@@ -387,7 +482,8 @@ WHERE b.tipo = 'SUPERADMIN_INICIAL';
     return [pscustomobject]@{
         flyway = [pscustomobject]@{
             version = $expectedLatest
-            successfulCount = $expectedVersions.Count
+            successfulCount = $installed.Count
+            mode = $flywayMode
             pending = 0
             valid = $true
         }

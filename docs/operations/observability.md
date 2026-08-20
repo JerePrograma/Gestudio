@@ -8,6 +8,7 @@ Incluye:
 
 - liveness y readiness de Spring Boot Actuator;
 - métricas de la frontera de email sin PII;
+- métricas de negocio y seguridad del control plane con cardinalidad acotada;
 - readiness vinculada a PostgreSQL y espacio en disco;
 - métricas Prometheus protegidas por token externo;
 - correlación `X-Request-ID`;
@@ -162,6 +163,62 @@ liveness/readiness; un bloqueo externo no baja la salud general.
 `pwsh -NoProfile -File .\scripts\ops\verify-email-delivery.ps1` valida métricas y
 sanitización sin red Gmail y deja evidencia fuera del repositorio.
 
+## Métricas del control plane
+
+El backend publica el contrato mínimo del control plane en estos contadores:
+
+```text
+gestudio_platform_tenant_events_total
+gestudio_platform_membership_events_total
+gestudio_platform_bootstrap_events_total
+gestudio_platform_mfa_events_total
+gestudio_platform_auth_failures_total
+gestudio_platform_authorization_denials_total
+gestudio_platform_provisioning_failures_total
+```
+
+Cubren creación y cambios de estado de tenants; creación, cambio de estado y
+cambio de roles de memberships; bootstrap inicial; MFA; fallos de autenticación;
+cruces de scope rechazados; y fallos atómicos de provisioning. Un replay
+idempotente no vuelve a incrementar una métrica de éxito. Los éxitos se emiten
+después de que la transacción retorna confirmada y cada fallo se registra una
+sola vez por operación.
+
+Las únicas etiquetas posibles son valores allowlist de:
+
+```text
+event, result, method, operation, reason, source_scope, target_scope, resource
+```
+
+No se usan como etiquetas: tenant ID o código, membership ID, usuario,
+correlation ID, IP, user-agent, excepción, password, token, código de
+recuperación ni secreto MFA. El correlation ID permanece en auditoría y logs
+sanitizados para investigar una señal sin convertirlo en una dimensión
+Prometheus de alta cardinalidad.
+
+Consultas PromQL iniciales:
+
+```promql
+sum by (event) (rate(gestudio_platform_tenant_events_total[5m]))
+sum by (result) (increase(gestudio_platform_bootstrap_events_total[15m]))
+sum by (method, result) (rate(gestudio_platform_mfa_events_total[5m]))
+sum by (operation, reason) (rate(gestudio_platform_auth_failures_total[5m]))
+sum by (source_scope, target_scope) (
+  rate(gestudio_platform_authorization_denials_total{reason="cross_scope"}[5m])
+)
+sum by (resource, reason) (increase(gestudio_platform_provisioning_failures_total[15m]))
+```
+
+Alertas recomendadas cuando exista un Alertmanager o equivalente real:
+
+- cualquier bootstrap `failed` o más de un bootstrap `success` en una ventana;
+- provisioning failure sostenido o cualquier failure `database`;
+- aumento abrupto de MFA `rate_limited` o auth failures;
+- cruces de scope sostenidos en cualquiera de las dos direcciones.
+
+Estas son reglas de diseño; no se afirma entrega de alertas hasta configurar y
+probar el backend de alertas del ambiente destino.
+
 ## Comandos Docker
 
 Estado:
@@ -207,12 +264,13 @@ El drill crea un proyecto Compose aislado y demuestra:
 7. Prometheus rechazado con token incorrecto;
 8. Prometheus accesible con token exacto;
 9. métricas JVM y de proceso presentes;
-10. request ID seguro propagado;
-11. request ID ausente generado;
-12. request ID inseguro reemplazado;
-13. línea HTTP correlacionada;
-14. secretos conocidos ausentes de logs;
-15. cleanup sin contenedores, redes ni volúmenes residuales.
+10. los siete contadores obligatorios del control plane presentes aun en cero;
+11. request ID seguro propagado;
+12. request ID ausente generado;
+13. request ID inseguro reemplazado;
+14. línea HTTP correlacionada;
+15. secretos conocidos ausentes de logs;
+16. cleanup sin contenedores, redes ni volúmenes residuales.
 
 Workflow permanente:
 
@@ -326,9 +384,13 @@ El gate técnico se considera cerrado únicamente cuando código, pruebas y dril
 
 Producción permanece en `NO-GO` hasta una autorización separada.
 
-## Evidencia local 2026-07-22
+## Evidencia histórica 2026-07-22
 
 `pwsh -NoProfile -File .\scripts\ops\verify-observability.ps1` terminó con
 8/8 pasos, 0 fallos, exit 0 y 39,8 s. Validó readiness/liveness, Prometheus
 fail-closed y autenticado, request ID generado/saneado, redacción, perfil hostil
 y cleanup sin contenedores, redes o volúmenes residuales.
+
+El script, las métricas del control plane, las migraciones y el runtime cambiaron
+después de esa fecha. La corrida se conserva como antecedente y no certifica el
+árbol ni el SHA actuales; el drill debe repetirse en un proyecto Compose aislado.

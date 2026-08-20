@@ -38,6 +38,15 @@ $jwtSecret = ([BitConverter]::ToString($jwtSecretBytes) -replace '-', '').ToLowe
 $backendImage = "gestudio-backend:backup-verify-$suffix"
 $receiptFile = "backup-verify-$suffix.txt"
 $marker = "GESTUDIO_BACKUP_VERIFY_$suffix"
+$fixtureTenantId = [Guid]::NewGuid().ToString()
+$fixtureTenantCode = "backup-$suffix"
+$fixtureMembershipId = [Guid]::NewGuid().ToString()
+$fixtureMfaId = [Guid]::NewGuid().ToString()
+$fixtureRecoveryId = [Guid]::NewGuid().ToString()
+$fixtureAuditCorrelationId = [Guid]::NewGuid().ToString()
+$fixtureRoleCode = "BACKUP_$($suffix.ToUpperInvariant())"
+$fixtureTenantUsername = "backup_tenant_$suffix"
+$fixturePlatformUsername = "backup_platform_$suffix"
 $stackAttempted = $false
 $passes = 0
 $failures = 0
@@ -70,6 +79,45 @@ function Invoke-Native {
     return $code
 }
 
+function Assert-LocalDockerTarget {
+    param([Parameter(Mandatory)][string] $ProjectName)
+
+    if ($ProjectName -ceq 'gestudio-remote-demo') {
+        throw 'El proyecto gestudio-remote-demo está protegido.'
+    }
+    if (-not [string]::IsNullOrWhiteSpace($env:DOCKER_HOST)) {
+        throw 'DOCKER_HOST no está permitido para este drill descartable.'
+    }
+    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+        throw 'Docker CLI no está disponible.'
+    }
+
+    $context = Invoke-Native -FilePath 'docker' -Arguments @('context', 'show') -Capture
+    if ([string]::IsNullOrWhiteSpace($context) -or $context -match '(?i)(prod|production|stage|staging|remote|demo)') {
+        throw "El contexto Docker '$context' no está permitido para este drill descartable."
+    }
+    $endpointJson = Invoke-Native -FilePath 'docker' -Arguments @(
+        'context', 'inspect', $context, '--format', '{{json .Endpoints.docker.Host}}'
+    ) -Capture
+    try { $endpoint = [string]($endpointJson | ConvertFrom-Json) }
+    catch { throw 'No se pudo interpretar el endpoint del contexto Docker.' }
+    $allowedEndpoints = @(
+        'npipe:////./pipe/docker_engine',
+        'npipe:////./pipe/dockerDesktopLinuxEngine',
+        'unix:///var/run/docker.sock'
+    )
+    if (-not ($allowedEndpoints -contains $endpoint)) {
+        throw "El endpoint Docker '$endpoint' no es local."
+    }
+    $osType = Invoke-Native -FilePath 'docker' -Arguments @(
+        '--context', $context, 'info', '--format', '{{.OSType}}'
+    ) -Capture
+    if ($osType -cne 'linux') {
+        throw "El daemon Docker debe ser Linux; OSType='$osType'."
+    }
+    return $context
+}
+
 function Compose-Prefix {
     return @(
         'compose', '-f', (Resolve-Path -LiteralPath $ComposeFile).Path,
@@ -90,6 +138,14 @@ function Get-FreePort {
     finally { $listener.Stop() }
 }
 
+function New-RandomHex {
+    param([int] $Bytes = 24)
+    $value = New-Object byte[] $Bytes
+    $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+    try { $rng.GetBytes($value) } finally { $rng.Dispose() }
+    return ([BitConverter]::ToString($value) -replace '-', '').ToLowerInvariant()
+}
+
 function Get-LocalMigrationManifest {
     $migrationRoot = Join-Path $script:repoRoot 'backend/src/main/resources/db/migration'
     $entries = @(Get-ChildItem -LiteralPath $migrationRoot -Filter 'V*__*.sql' -File | ForEach-Object {
@@ -108,11 +164,22 @@ function Get-LocalMigrationManifest {
             throw 'La cadena Flyway local no es contigua desde V1.'
         }
     }
+    $baselines = @(Get-ChildItem -LiteralPath $migrationRoot -Filter 'B*__*.sql' -File | ForEach-Object {
+        if ($_.Name -notmatch '^B(?<version>[0-9]+)__.+\.sql$') {
+            throw "Nombre de baseline Flyway inválido: $($_.Name)"
+        }
+        [pscustomobject]@{ Version = [int]$matches.version; Script = $_.Name }
+    })
+    if ($baselines.Count -gt 1 -or ($baselines.Count -eq 1 -and $baselines[0].Version -ne $entries[-1].Version)) {
+        throw 'La baseline Flyway debe ser única y corresponder a la última versión.'
+    }
 
     return [pscustomobject]@{
         Count = $entries.Count
         LatestVersion = $entries[-1].Version
         Scripts = @($entries.Script)
+        Entries = $entries
+        Baseline = if ($baselines.Count -eq 1) { $baselines[0] } else { $null }
     }
 }
 
@@ -164,6 +231,152 @@ function Assert-Equal {
 function Assert-True {
     param([bool] $Condition, [Parameter(Mandatory)][string] $Message)
     if (-not $Condition) { throw $Message }
+}
+
+function Assert-FlywayHistory {
+    param([Parameter(Mandatory)][string] $Database, [Parameter(Mandatory)] $Manifest)
+
+    $failed = [int](Invoke-Sql -Database $Database -Sql 'SELECT count(*) FROM flyway_schema_history WHERE NOT success;')
+    $raw = Invoke-Sql -Database $Database -Sql "SELECT version || '|' || type || '|' || script FROM flyway_schema_history WHERE success ORDER BY installed_rank;"
+    $installed = @(($raw -split "`r?`n") | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object {
+        $parts = $_.Split('|', 3)
+        [pscustomobject]@{ Version = [int]$parts[0]; Type = $parts[1]; Script = $parts[2] }
+    })
+    $versioned = $installed.Count -eq $Manifest.Entries.Count
+    if ($versioned) {
+        for ($index = 0; $index -lt $Manifest.Entries.Count; $index++) {
+            $versioned = $versioned -and
+                $installed[$index].Version -eq $Manifest.Entries[$index].Version -and
+                $installed[$index].Type -ceq 'SQL' -and
+                $installed[$index].Script -ceq $Manifest.Entries[$index].Script
+        }
+    }
+    $baseline = $null -ne $Manifest.Baseline -and $installed.Count -eq 1 -and
+        $installed[0].Version -eq $Manifest.LatestVersion -and
+        $installed[0].Type -ceq 'SQL_BASELINE' -and
+        $installed[0].Script -ceq $Manifest.Baseline.Script
+    Assert-True -Condition ($failed -eq 0 -and ($versioned -or $baseline)) `
+        -Message "Historial Flyway inválido en '$Database': $raw"
+    return [pscustomobject]@{
+        Count = $installed.Count
+        LatestVersion = $Manifest.LatestVersion
+        Mode = if ($baseline) { 'BASELINE' } else { 'VERSIONED' }
+    }
+}
+
+function Assert-ControlPlaneDatabaseContract {
+    param([Parameter(Mandatory)][string] $Database)
+
+    $contract = (Invoke-Sql -Database $Database -Sql @"
+SELECT
+  pg_has_role('gestudio_backup_control', 'gestudio_platform', 'MEMBER')::text || '|' ||
+  (has_table_privilege('gestudio_backup_control', 'public.tenants', 'SELECT') AND
+   has_table_privilege('gestudio_backup_control', 'public.tenants', 'INSERT') AND
+   has_table_privilege('gestudio_backup_control', 'public.tenants', 'UPDATE'))::text || '|' ||
+  has_table_privilege('gestudio_backup_control', 'public.alumnos', 'SELECT')::text || '|' ||
+  (has_table_privilege('gestudio_backup_runtime', 'public.tenants', 'INSERT') OR
+   has_table_privilege('gestudio_backup_runtime', 'public.tenants', 'UPDATE') OR
+   has_table_privilege('gestudio_backup_runtime', 'public.tenants', 'DELETE'))::text || '|' ||
+  (SELECT count(*) FROM pg_catalog.pg_class c
+   JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+   JOIN pg_catalog.pg_roles r ON r.oid = c.relowner
+   WHERE n.nspname = 'public'
+     AND r.rolname IN ('gestudio_backup_runtime', 'gestudio_backup_control'))::text;
+"@).Trim()
+    Assert-Equal -Actual $contract -Expected 'true|true|false|false|0' `
+        -Message "Contrato de ownership/grants inválido en '$Database'"
+}
+
+function New-ControlPlaneFixture {
+    param([Parameter(Mandatory)][string] $Database)
+
+    Invoke-Sql -Database $Database -Sql @"
+INSERT INTO tenants(id, code, name, status)
+VALUES ('$fixtureTenantId', '$fixtureTenantCode', 'Backup restore verification', 'ACTIVE');
+
+INSERT INTO roles(tenant_id, descripcion, codigo, nombre, descripcion_funcional, sistema, editable, activo)
+VALUES ('$fixtureTenantId', '$fixtureRoleCode', '$fixtureRoleCode', 'Backup role',
+        'Synthetic backup role', false, true, true);
+
+INSERT INTO usuarios(nombre_usuario, contrasena, rol_id, activo)
+SELECT '$fixtureTenantUsername', 'synthetic-not-a-login-hash', id, true
+FROM roles WHERE tenant_id = '$fixtureTenantId' AND codigo = '$fixtureRoleCode';
+
+INSERT INTO usuario_roles(usuario_id, rol_id)
+SELECT u.id, r.id
+FROM usuarios u
+JOIN roles r ON r.tenant_id = '$fixtureTenantId' AND r.codigo = '$fixtureRoleCode'
+WHERE u.nombre_usuario = '$fixtureTenantUsername';
+
+INSERT INTO tenant_memberships(id, tenant_id, usuario_id, status)
+SELECT '$fixtureMembershipId', '$fixtureTenantId', id, 'ACTIVE'
+FROM usuarios WHERE nombre_usuario = '$fixtureTenantUsername';
+
+INSERT INTO tenant_membership_roles(membership_id, tenant_id, role_id)
+SELECT '$fixtureMembershipId', '$fixtureTenantId', id
+FROM roles WHERE tenant_id = '$fixtureTenantId' AND codigo = '$fixtureRoleCode';
+
+INSERT INTO usuarios(nombre_usuario, contrasena, rol_id, activo)
+VALUES ('$fixturePlatformUsername', 'synthetic-not-a-login-hash', NULL, true);
+
+INSERT INTO platform_admins(usuario_id)
+SELECT id FROM usuarios WHERE nombre_usuario = '$fixturePlatformUsername';
+
+INSERT INTO platform_mfa_credentials(
+    id, usuario_id, method, secret_ciphertext, key_version, verified_at)
+SELECT '$fixtureMfaId', id, 'TOTP', decode('0011223344556677', 'hex'), 1, CURRENT_TIMESTAMP
+FROM usuarios WHERE nombre_usuario = '$fixturePlatformUsername';
+
+INSERT INTO platform_recovery_codes(id, credential_id, code_hash)
+VALUES ('$fixtureRecoveryId', '$fixtureMfaId', repeat('$suffix', 8));
+
+INSERT INTO platform_audit_events(
+    actor_usuario_id, actor_username_snapshot, actor_type, session_scope,
+    mfa_method, step_up, action, target_type, target_id, target_tenant_id,
+    correlation_id, result, metadata)
+SELECT id, nombre_usuario, 'PLATFORM', 'PLATFORM', 'TOTP', true,
+       'BACKUP_RESTORE_VERIFY', 'TENANT', '$fixtureTenantId', '$fixtureTenantId',
+       '$fixtureAuditCorrelationId', 'SUCCESS', '{"synthetic":true}'::jsonb
+FROM usuarios WHERE nombre_usuario = '$fixturePlatformUsername';
+"@ | Out-Null
+}
+
+function Assert-ControlPlaneFixture {
+    param([Parameter(Mandatory)][string] $Database)
+
+    $fixture = (Invoke-Sql -Database $Database -Sql @"
+SELECT
+  (SELECT count(*) FROM tenants WHERE id = '$fixtureTenantId')::text || '|' ||
+  (SELECT count(*)
+   FROM tenant_memberships membership
+   JOIN tenant_membership_roles membership_role
+     ON membership_role.membership_id = membership.id
+    AND membership_role.tenant_id = membership.tenant_id
+   JOIN roles role ON role.id = membership_role.role_id
+   JOIN usuarios user_identity ON user_identity.id = membership.usuario_id
+   WHERE membership.id = '$fixtureMembershipId'
+     AND role.codigo = '$fixtureRoleCode'
+     AND user_identity.nombre_usuario = '$fixtureTenantUsername')::text || '|' ||
+  (SELECT count(*)
+   FROM platform_admins admin
+   JOIN usuarios user_identity ON user_identity.id = admin.usuario_id
+   JOIN platform_mfa_credentials credential ON credential.usuario_id = admin.usuario_id
+   JOIN platform_recovery_codes recovery ON recovery.credential_id = credential.id
+   WHERE user_identity.nombre_usuario = '$fixturePlatformUsername'
+     AND admin.active
+     AND credential.id = '$fixtureMfaId'
+     AND credential.verified_at IS NOT NULL
+     AND credential.revoked_at IS NULL
+     AND recovery.id = '$fixtureRecoveryId'
+     AND recovery.used_at IS NULL)::text || '|' ||
+  (SELECT count(*) FROM platform_audit_events
+   WHERE correlation_id = '$fixtureAuditCorrelationId'
+     AND action = 'BACKUP_RESTORE_VERIFY'
+     AND target_tenant_id = '$fixtureTenantId')::text || '|' ||
+  public.gestudio_multitenancy_health();
+"@).Trim()
+    Assert-Equal -Actual $fixture -Expected '1|1|1|1|GREEN' `
+        -Message "Fixture de control-plane incompleta en '$Database'"
 }
 
 function Assert-Throws {
@@ -315,6 +528,10 @@ $environment = [ordered]@{
     POSTGRES_DB = $sourceDatabase
     POSTGRES_USER = $postgresUser
     POSTGRES_PASSWORD = $postgresPassword
+    POSTGRES_APP_USER = 'gestudio_backup_runtime'
+    POSTGRES_APP_PASSWORD = (New-RandomHex -Bytes 24)
+    POSTGRES_CONTROL_USER = 'gestudio_backup_control'
+    POSTGRES_CONTROL_PASSWORD = (New-RandomHex -Bytes 24)
     POSTGRES_PORT = $dbPort
     BACKEND_PORT = $backendPort
     FRONTEND_PORT = (Get-FreePort)
@@ -330,12 +547,16 @@ $environment = [ordered]@{
     APP_LOCAL_ADMIN_PASSWORD_RESET_PASSWORD = ''
     JWT_SECRET = $jwtSecret
     JWT_ISSUER = 'gestudio-backup-verify'
+    JWT_PLATFORM_AUDIENCE = 'gestudio-backup-platform-web'
+    APP_PLATFORM_MFA_ENCRYPTION_KEY = 'MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY='
+    APP_PLATFORM_REFRESH_COOKIE_SECURE = 'false'
     APP_TIME_ZONE = 'America/Argentina/Buenos_Aires'
     APP_CORS_ALLOWED_ORIGINS = "http://127.0.0.1:$backendPort"
     APP_JERE_PLATFORM_STUDENT_EXPORT_ENABLED = 'false'
 }
 $previousProcessEnvironment = @{}
 
+$null = Assert-LocalDockerTarget -ProjectName $project
 try {
     $migrationManifest = Get-LocalMigrationManifest
     foreach ($entry in $environment.GetEnumerator()) {
@@ -359,13 +580,15 @@ try {
         $backendContainer = Wait-ServiceHealthy -Service 'backend'
         Pass 'Stack descartable healthy'
 
-        $flyway = Invoke-Sql -Database $sourceDatabase -Sql "SELECT count(*)::text || '|' || max(version::int)::text FROM flyway_schema_history WHERE success"
-        Assert-Equal -Actual $flyway.Trim() -Expected "$($migrationManifest.Count)|$($migrationManifest.LatestVersion)" -Message 'Flyway origen inválido'
-        Pass "Flyway V1-V$($migrationManifest.LatestVersion) en origen"
+        $sourceFlyway = Assert-FlywayHistory -Database $sourceDatabase -Manifest $migrationManifest
+        Assert-ControlPlaneDatabaseContract -Database $sourceDatabase
+        Pass "Flyway $($sourceFlyway.Mode) en versión $($migrationManifest.LatestVersion)"
 
-        $studentResult = Invoke-Sql -Database $sourceDatabase -Sql "INSERT INTO alumnos(nombre, apellido, fecha_incorporacion, activo) VALUES ('Backup', '$marker', DATE '2026-07-20', true) RETURNING id"
+        New-ControlPlaneFixture -Database $sourceDatabase
+        $studentResult = Invoke-Sql -Database $sourceDatabase -Sql "INSERT INTO alumnos(tenant_id, nombre, apellido, fecha_incorporacion, activo) VALUES ('$fixtureTenantId', 'Backup', '$marker', DATE '2026-07-20', true) RETURNING id"
         $studentId = (($studentResult -split "`r?`n") | Select-Object -First 1).Trim()
         Assert-True -Condition ($studentId -match '^[0-9]+$') -Message "La inserción no devolvió un ID numérico: $studentResult"
+        Assert-ControlPlaneFixture -Database $sourceDatabase
         Invoke-Native -FilePath 'docker' -Arguments @(
             'exec', $backendContainer, 'sh', '-ec',
             'printf "%s" "$1" > "/app/data/receipts/$2"',
@@ -385,10 +608,12 @@ try {
 
         $manifestPath = Join-Path $backupDirectory 'manifest.json'
         $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-        Assert-Equal -Actual $manifest.formatVersion -Expected 2 -Message 'Formato de manifiesto inválido'
+        Assert-Equal -Actual $manifest.formatVersion -Expected 3 -Message 'Formato de manifiesto inválido'
         Assert-True -Condition ([string]$manifest.backupSetId -cmatch '^[a-f0-9]{32}$') -Message 'backupSetId inválido'
         Assert-Equal -Actual $manifest.flywayLatestVersion -Expected $migrationManifest.LatestVersion -Message 'Flyway del manifiesto inválido'
-        Assert-Equal -Actual $manifest.flywaySuccessfulCount -Expected $migrationManifest.Count -Message 'Cantidad Flyway del manifiesto inválida'
+        Assert-Equal -Actual $manifest.flywaySuccessfulCount -Expected $sourceFlyway.Count -Message 'Cantidad Flyway del manifiesto inválida'
+        Assert-Equal -Actual $manifest.flywayMode -Expected $sourceFlyway.Mode -Message 'Modo Flyway del manifiesto inválido'
+        Assert-Equal -Actual @($manifest.flywayHistory).Count -Expected $sourceFlyway.Count -Message 'Historial Flyway exacto ausente del manifiesto'
         Assert-Equal -Actual $manifest.applicationConsistent -Expected $true -Message 'El backup no quedó marcado como consistente'
         Assert-True -Condition (-not [string]::IsNullOrWhiteSpace($manifest.gitHead)) -Message 'El manifiesto no registró Git HEAD.'
         Pass 'Backup y manifiesto verificados'
@@ -566,6 +791,7 @@ try {
         } -MessageContains 'otro conjunto de backup' `
           -FailureMessage 'El archivo de recibos perteneciente a otro backup no fue rechazado'
         Assert-Equal -Actual (Invoke-Sql -Database $sourceDatabase -Sql "SELECT count(*) FROM alumnos WHERE apellido = '$marker'").Trim() -Expected 1 -Message 'Una validación adversarial alteró la base origen'
+        Assert-Equal -Actual (Invoke-Sql -Database $sourceDatabase -Sql "SELECT count(*) FROM tenants WHERE id = '$fixtureTenantId'").Trim() -Expected 1 -Message 'Una validación adversarial alteró el tenant origen'
         Pass 'Traversal, rutas absolutas, miembros externos, links y tar malformado rechazados'
         Pass 'Archivo de recibos de otro conjunto rechazado antes de mutar datos'
 
@@ -603,8 +829,13 @@ try {
         $backendContainer = Wait-ServiceHealthy -Service 'backend'
 
         Assert-Equal -Actual (Invoke-Sql -Database $targetDatabase -Sql "SELECT count(*) FROM alumnos WHERE apellido = '$marker'").Trim() -Expected 1 -Message 'El alumno no fue restaurado en destino'
+        Assert-Equal -Actual (Invoke-Sql -Database $targetDatabase -Sql "SELECT count(*) FROM tenants WHERE id = '$fixtureTenantId'").Trim() -Expected 1 -Message 'El tenant de control-plane no fue restaurado en destino'
         Assert-Equal -Actual (Invoke-Sql -Database $sourceDatabase -Sql "SELECT count(*) FROM alumnos WHERE apellido = '$marker'").Trim() -Expected 1 -Message 'La restauración consistente no repuso la base activa'
-        Assert-Equal -Actual (Invoke-Sql -Database $targetDatabase -Sql "SELECT count(*)::text || '|' || max(version::int)::text FROM flyway_schema_history WHERE success").Trim() -Expected "$($migrationManifest.Count)|$($migrationManifest.LatestVersion)" -Message 'Flyway destino inválido'
+        Assert-ControlPlaneFixture -Database $targetDatabase
+        Assert-ControlPlaneFixture -Database $sourceDatabase
+        $restoredFlyway = Assert-FlywayHistory -Database $targetDatabase -Manifest $migrationManifest
+        Assert-Equal -Actual $restoredFlyway.Mode -Expected $sourceFlyway.Mode -Message 'El restore cambió el modo de historia Flyway'
+        Assert-ControlPlaneDatabaseContract -Database $targetDatabase
         Assert-Equal -Actual (Invoke-Sql -Database $targetDatabase -Sql "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('jere_platform_student_export_snapshots','jere_platform_student_export_pages')").Trim() -Expected 2 -Message 'Las tablas V7 no fueron restauradas'
         $receipt = Invoke-Native -FilePath 'docker' -Arguments @('exec', $backendContainer, 'cat', "/app/data/receipts/$receiptFile") -Capture
         Assert-Equal -Actual $receipt -Expected $marker -Message 'El recibo no fue restaurado'

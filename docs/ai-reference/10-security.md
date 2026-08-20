@@ -1,7 +1,7 @@
 # Seguridad
 
-> Estado: CONFIRMADO  
-> Última revisión: 2026-07-24  
+> Estado: IMPLEMENTADO; EVIDENCIA INTEGRAL PENDIENTE
+> Última revisión: 2026-08-13
 > Fuentes principales: `SecurityConfigurations`, `PermissionCodes`, autenticación, pruebas y configuración
 
 ## Modelo
@@ -12,6 +12,15 @@ Spring Security usa dos `SecurityFilterChain` stateless:
 2. Aplicación: JWT, CORS, sin form login/basic, y autorización explícita por método/ruta.
 
 CSRF está deshabilitado porque la API usa bearer access token; refresh/logout compensan el uso de cookie validando `Origin`.
+
+El control plane añade una cadena/namespace separado para `/api/platform/**`.
+Los tokens declaran scope, audiencia y tipo: PLATFORM prohíbe claims tenant y
+TENANT no satisface rutas globales. La capacidad global procede de
+`platform_admins`, no de un rol tenant llamado `SUPERADMIN`. Login/refresh usan
+cookie de plataforma separada; MFA es obligatorio y las mutaciones sensibles
+requieren step-up ligado a sesión/acción/target/idempotencia. Ver
+[ADR-0009](../architecture/adr-0009-platform-control-plane.md) y el
+[threat model](../architecture/threat-model-platform-control-plane.md).
 
 ## Tokens y sesiones
 

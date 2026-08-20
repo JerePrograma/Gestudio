@@ -9,6 +9,7 @@ import Boton from "../../componentes/comunes/Boton";
 import { toast } from "react-toastify";
 import { Search } from "lucide-react";
 import type { MetodoPagoResponse } from "../../types/types";
+import { normalizeMoneyInput } from "../../utils/money";
 
 interface MetodoPago {
   id?: number;
@@ -54,12 +55,16 @@ const MetodosPagoFormulario: React.FC = () => {
   }, [searchParams, handleBuscar]);
 
   const handleGuardar = async (values: MetodoPago) => {
+    const payload = {
+      ...values,
+      recargo: normalizeMoneyInput(String(values.recargo)) ?? String(values.recargo),
+    };
     try {
       if (values.id) {
-        await api.put(`/metodos-pago/${values.id}`, values);
+        await api.put(`/metodos-pago/${values.id}`, payload);
         toast.success("Método de pago actualizado correctamente.");
       } else {
-        await api.post("/metodos-pago", values);
+        await api.post("/metodos-pago", payload);
         toast.success("Método de pago creado correctamente.");
       }
     } catch {

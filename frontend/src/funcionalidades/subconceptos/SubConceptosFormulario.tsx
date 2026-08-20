@@ -112,7 +112,7 @@ const SubConceptosFormulario: React.FC = () => {
                                 <label htmlFor="descripcion" className="auth-label">
                                     Descripcion:
                                 </label>
-                                <Field name="descripcion" type="text" className="form-input" />
+                                <Field id="descripcion" name="descripcion" type="text" className="form-input" />
                                 <ErrorMessage name="descripcion" component="div" className="auth-error" />
                             </div>
                         </div>

@@ -4,6 +4,11 @@
 > Última revisión: 2026-07-26  
 > Fuentes principales: GitHub remoto, historial, issues, PRs y `../project-status-and-handoff.md`
 
+> **Evidencia histórica — reemplazada.** Este archivo conserva la inspección
+> remota del 2026-07-26. No describe V12/B12, el control plane, el working tree
+> actual ni CI del candidato. La matriz viva está en
+> [`GESTUDIO_FINALIZACION_SUPERADMIN_MEGAPROMPT.md`](../../GESTUDIO_FINALIZACION_SUPERADMIN_MEGAPROMPT.md#estado-vivo).
+
 ## Repositorio
 
 - Repositorio: `JerePrograma/Gestudio`.

@@ -141,7 +141,7 @@ const SalonesFormulario: React.FC = () => {
                 <label htmlFor="nombre" className="auth-label">
                   Nombre:
                 </label>
-                <Field name="nombre" type="text" className="form-input" />
+                <Field id="nombre" name="nombre" type="text" className="form-input" />
                 <ErrorMessage
                   name="nombre"
                   component="div"
@@ -154,6 +154,7 @@ const SalonesFormulario: React.FC = () => {
                   Descripcion:
                 </label>
                 <Field
+                  id="descripcion"
                   name="descripcion"
                   as="textarea"
                   className="form-input"

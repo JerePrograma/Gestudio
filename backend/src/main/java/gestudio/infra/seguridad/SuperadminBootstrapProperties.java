@@ -6,6 +6,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record SuperadminBootstrapProperties(
         boolean enabled,
         String username,
-        String password
+        String password,
+        String totpSecret,
+        String totpCode,
+        String recoveryCodesFile
 ) {
 }

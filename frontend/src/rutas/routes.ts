@@ -4,12 +4,30 @@ import { PERMISSIONS, type PermissionCode } from "../config/permissions";
 export const prefetch = { dashboard: () => import("../paginas/Dashboard") };
 
 const Login = lazy(() => import("../paginas/Login"));
+const PlatformLogin = lazy(() => import("../platform/pages/PlatformLogin"));
+const PlatformActivatePage = lazy(() => import("../platform/pages/PlatformActivatePage"));
 const Unauthorized = lazy(() => import("../paginas/Unauthorized"));
 const Dashboard = lazy(() => import("../paginas/Dashboard"));
 const Reportes = lazy(() => import("../paginas/Reportes"));
 
 export const publicRoutes = [
   { path: "/login", Component: Login },
+  { path: "/platform/login", Component: PlatformLogin },
+  { path: "/platform/activate", Component: PlatformActivatePage },
+] as const;
+
+const TenantsPage = lazy(() => import("../platform/pages/TenantsPage"));
+const TenantFormPage = lazy(() => import("../platform/pages/TenantFormPage"));
+const TenantDetailPage = lazy(() => import("../platform/pages/TenantDetailPage"));
+const PlatformAdminsPage = lazy(() => import("../platform/pages/PlatformAdminsPage"));
+const PlatformAuditPage = lazy(() => import("../platform/pages/PlatformAuditPage"));
+
+export const platformRoutes = [
+  { path: "/platform/tenants", Component: TenantsPage },
+  { path: "/platform/tenants/new", Component: TenantFormPage },
+  { path: "/platform/tenants/:tenantId", Component: TenantDetailPage },
+  { path: "/platform/admins", Component: PlatformAdminsPage },
+  { path: "/platform/audit", Component: PlatformAuditPage },
 ] as const;
 
 export const protectedRoutes = [

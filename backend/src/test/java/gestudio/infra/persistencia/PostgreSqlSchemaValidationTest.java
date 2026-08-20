@@ -15,7 +15,11 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -74,7 +78,11 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
             "permisos", "usuario_roles", "rol_permisos",
             "jere_platform_student_export_snapshots", "jere_platform_student_export_pages",
             "tenants", "tenant_memberships", "tenant_membership_roles",
-            "platform_admins", "jere_platform_tenant_mappings"
+            "platform_admins", "jere_platform_tenant_mappings",
+            "platform_refresh_sessions", "platform_mfa_credentials",
+            "platform_recovery_codes", "platform_identity_activations",
+            "platform_step_up_challenges", "platform_idempotency_keys",
+            "platform_audit_events"
     );
 
     @Test
@@ -117,32 +125,16 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
                         .isEqualTo(PermissionCodes.ALL);
                 assertThat(contar(connection, "SELECT count(*) FROM permisos WHERE activo AND sistema"))
                         .isEqualTo(32);
-                assertThat(codigos(connection, "SELECT codigo FROM roles WHERE sistema"))
-                        .isEqualTo(BASE_ROLES);
-                assertThat(contar(connection, """
-                        SELECT count(*) FROM roles
-                        WHERE codigo = 'SUPERADMIN' AND activo AND sistema AND NOT editable
+                assertThat(codigos(connection, """
+                        SELECT version || ':' || type || ':' || script
+                        FROM flyway_schema_history
+                        WHERE success
+                        ORDER BY installed_rank
                         """))
-                        .isOne();
-                assertThat(contar(connection, """
-                        SELECT count(*) FROM roles
-                        WHERE codigo IN ('DIRECCION', 'ADMINISTRADOR', 'SECRETARIA', 'CAJA')
-                          AND activo AND sistema AND editable
-                        """))
-                        .isEqualTo(4);
-                assertThat(contar(connection, """
-                        SELECT count(*) FROM roles
-                        WHERE codigo = 'PROFESOR' AND NOT activo AND sistema AND NOT editable
-                        """))
-                        .isOne();
-                assertThat(permisosRol(connection, "SUPERADMIN")).isEqualTo(PermissionCodes.ALL);
-                assertThat(permisosRol(connection, "DIRECCION")).isEqualTo(DIRECCION);
-                assertThat(permisosRol(connection, "ADMINISTRADOR")).isEqualTo(DIRECCION);
-                assertThat(permisosRol(connection, "SECRETARIA")).isEqualTo(SECRETARIA);
-                assertThat(permisosRol(connection, "CAJA")).isEqualTo(CAJA);
-                assertThat(permisosRol(connection, "PROFESOR")).isEmpty();
-                assertThat(contar(connection, "SELECT count(*) FROM roles WHERE codigo ~ '^ROLE_'"))
-                        .isZero();
+                        .containsExactly("12:SQL_BASELINE:B12__gestudio_production_baseline.sql");
+                assertThat(tablasConDatosFuncionales(connection)).isEmpty();
+                assertThat(codigos(connection, "SELECT public.gestudio_multitenancy_health()"))
+                        .containsExactly("GREEN");
 
                 assertThat(contar(connection, """
                         SELECT count(*)
@@ -177,7 +169,12 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
                               'tenants',
                               'tenant_memberships',
                               'tenant_membership_roles',
-                              'jere_platform_tenant_mappings'
+                              'jere_platform_tenant_mappings',
+                              'platform_refresh_sessions',
+                              'platform_mfa_credentials',
+                              'platform_recovery_codes',
+                              'platform_identity_activations',
+                              'platform_step_up_challenges'
                           )
                           AND c.data_type <> 'bigint'
                         """))
@@ -258,6 +255,9 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
                     "--spring.datasource.url=" + jdbcUrl,
                     "--spring.datasource.username=" + POSTGRESQL.getUsername(),
                     "--spring.datasource.password=" + POSTGRESQL.getPassword(),
+                    "--app.platform-datasource.url=" + jdbcUrl,
+                    "--app.platform-datasource.username=" + POSTGRESQL.getUsername(),
+                    "--app.platform-datasource.password=" + POSTGRESQL.getPassword(),
                     "--spring.flyway.enabled=false",
                     "--spring.jpa.hibernate.ddl-auto=validate"
             ).close())
@@ -265,6 +265,118 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
 
         } finally {
             eliminarBase(databaseName);
+        }
+    }
+
+    @Test
+    void baselineB12YUpgradeV1AV12SonEstructuralmenteEquivalentes() throws Exception {
+        String suffix = UUID.randomUUID().toString().replace("-", "");
+        String historicalDatabase = "gestudio_v12_historical_" + suffix;
+        String baselineDatabase = "gestudio_b12_equivalent_" + suffix;
+        String historicalUrl = POSTGRESQL.getJdbcUrl()
+                .replace(POSTGRESQL.getDatabaseName(), historicalDatabase);
+        String baselineUrl = POSTGRESQL.getJdbcUrl()
+                .replace(POSTGRESQL.getDatabaseName(), baselineDatabase);
+
+        crearBase(historicalDatabase);
+        crearBase(baselineDatabase);
+
+        try {
+            Flyway historicalV11 = Flyway.configure()
+                    .dataSource(historicalUrl, POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
+                    .configuration(Map.of("flyway.baselineMigrationPrefix", "X_DISABLED_BASELINE"))
+                    .target("11")
+                    .baselineOnMigrate(false)
+                    .load();
+            assertThat(historicalV11.migrate().migrationsExecuted).isEqualTo(11);
+
+            Flyway historicalV12 = Flyway.configure()
+                    .dataSource(historicalUrl, POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
+                    .configuration(Map.of("flyway.baselineMigrationPrefix", "X_DISABLED_BASELINE"))
+                    .baselineOnMigrate(false)
+                    .load();
+            assertThat(historicalV12.migrate().migrationsExecuted).isOne();
+            assertThat(historicalV12.validateWithResult().validationSuccessful).isTrue();
+
+            Flyway baselineV12 = Flyway.configure()
+                    .dataSource(baselineUrl, POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
+                    .baselineOnMigrate(false)
+                    .load();
+            assertThat(baselineV12.migrate().migrationsExecuted).isOne();
+            assertThat(baselineV12.validateWithResult().validationSuccessful).isTrue();
+
+            try (Connection historical = DriverManager.getConnection(
+                    historicalUrl, POSTGRESQL.getUsername(), POSTGRESQL.getPassword());
+                 Connection baseline = DriverManager.getConnection(
+                         baselineUrl, POSTGRESQL.getUsername(), POSTGRESQL.getPassword())) {
+                assertThat(filas(historical, """
+                        SELECT version || ':' || type || ':' || script
+                        FROM flyway_schema_history
+                        WHERE success
+                        ORDER BY installed_rank
+                        """))
+                        .hasSize(12)
+                        .allMatch(row -> row.matches("[1-9][0-9]*:SQL:V[1-9][0-9]*__.+\\.sql"))
+                        .last()
+                        .isEqualTo("12:SQL:V12__platform_identity_and_seedless_health.sql");
+                assertThat(filas(baseline, """
+                        SELECT version || ':' || type || ':' || script
+                        FROM flyway_schema_history
+                        WHERE success
+                        ORDER BY installed_rank
+                        """))
+                        .containsExactly("12:SQL_BASELINE:B12__gestudio_production_baseline.sql");
+
+                Set<String> baselineSchema = esquemaNormalizado(baseline);
+                Set<String> historicalSchema = esquemaNormalizado(historical);
+                Set<String> missingFromBaseline = new TreeSet<>(historicalSchema);
+                missingFromBaseline.removeAll(baselineSchema);
+                Set<String> extraInBaseline = new TreeSet<>(baselineSchema);
+                extraInBaseline.removeAll(historicalSchema);
+                assertThat(missingFromBaseline)
+                        .as("objetos de V1..V12 ausentes en B12")
+                        .isEmpty();
+                assertThat(extraInBaseline)
+                        .as("objetos extra de B12 ausentes en V1..V12")
+                        .isEmpty();
+                assertThat(codigos(baseline, """
+                        SELECT codigo || '|' || descripcion || '|' || modulo || '|' || activo || '|' || sistema
+                        FROM permisos
+                        """))
+                        .as("los datos de referencia deben coincidir")
+                        .isEqualTo(codigos(historical, """
+                                SELECT codigo || '|' || descripcion || '|' || modulo || '|' || activo || '|' || sistema
+                                FROM permisos
+                                """));
+                assertThat(tablasConDatosFuncionales(baseline)).isEmpty();
+                assertThat(contar(historical, "SELECT count(*) FROM tenants")).isOne();
+                assertThat(contar(historical, "SELECT count(*) FROM roles")).isEqualTo(6);
+                assertThat(contar(baseline, "SELECT count(*) FROM tenants")).isZero();
+                assertThat(contar(baseline, "SELECT count(*) FROM usuarios")).isZero();
+                assertThat(contar(baseline, "SELECT count(*) FROM tenant_memberships")).isZero();
+                assertThat(contar(baseline, "SELECT count(*) FROM roles")).isZero();
+                assertThat(contar(baseline, "SELECT count(*) FROM rol_permisos")).isZero();
+                assertThat(codigos(historical, "SELECT public.gestudio_multitenancy_health()"))
+                        .containsExactly("GREEN");
+                assertThat(codigos(baseline, "SELECT public.gestudio_multitenancy_health()"))
+                        .containsExactly("GREEN");
+                assertThat(contar(baseline, """
+                        SELECT count(*)
+                        FROM pg_catalog.pg_roles
+                        WHERE rolname IN ('gestudio_app', 'gestudio_health', 'gestudio_platform')
+                          AND NOT rolsuper
+                          AND NOT rolcreaterole
+                          AND NOT rolcreatedb
+                          AND NOT rolcanlogin
+                          AND NOT rolinherit
+                          AND NOT rolreplication
+                          AND NOT rolbypassrls
+                        """))
+                        .isEqualTo(3);
+            }
+        } finally {
+            eliminarBase(historicalDatabase);
+            eliminarBase(baselineDatabase);
         }
     }
 
@@ -278,6 +390,7 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
         try {
             Flyway v4 = Flyway.configure()
                     .dataSource(jdbcUrl, POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
+                    .configuration(Map.of("flyway.baselineMigrationPrefix", "X_DISABLED_BASELINE"))
                     .target("4")
                     .load();
 
@@ -299,6 +412,7 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
 
             Flyway v5 = Flyway.configure()
                     .dataSource(jdbcUrl, POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
+                    .configuration(Map.of("flyway.baselineMigrationPrefix", "X_DISABLED_BASELINE"))
                     .target("5")
                     .load();
 
@@ -338,6 +452,7 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
         try {
             Flyway v5 = Flyway.configure()
                     .dataSource(jdbcUrl, POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
+                    .configuration(Map.of("flyway.baselineMigrationPrefix", "X_DISABLED_BASELINE"))
                     .target("5")
                     .load();
             assertThat(v5.migrate().migrationsExecuted).isEqualTo(5);
@@ -436,6 +551,7 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
 
             Flyway v7 = Flyway.configure()
                     .dataSource(jdbcUrl, POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
+                    .configuration(Map.of("flyway.baselineMigrationPrefix", "X_DISABLED_BASELINE"))
                     .target("7")
                     .load();
             assertThat(v7.migrate().migrationsExecuted).isEqualTo(2);
@@ -472,6 +588,7 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
 
             Flyway latest = Flyway.configure()
                     .dataSource(jdbcUrl, POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
+                    .configuration(Map.of("flyway.baselineMigrationPrefix", "X_DISABLED_BASELINE"))
                     .load();
             MigrationInfo[] pendingMigrations = latest.info().pending();
             assertThat(pendingMigrations).isNotEmpty();
@@ -658,6 +775,7 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
         try {
             Flyway v5 = Flyway.configure()
                     .dataSource(jdbcUrl, POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
+                    .configuration(Map.of("flyway.baselineMigrationPrefix", "X_DISABLED_BASELINE"))
                     .target("5")
                     .load();
             v5.migrate();
@@ -672,6 +790,7 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
 
             Flyway v6 = Flyway.configure()
                     .dataSource(jdbcUrl, POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
+                    .configuration(Map.of("flyway.baselineMigrationPrefix", "X_DISABLED_BASELINE"))
                     .load();
 
             assertThatThrownBy(v6::migrate)
@@ -692,6 +811,7 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
         try {
             Flyway v5 = Flyway.configure()
                     .dataSource(jdbcUrl, POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
+                    .configuration(Map.of("flyway.baselineMigrationPrefix", "X_DISABLED_BASELINE"))
                     .target("5")
                     .load();
             v5.migrate();
@@ -712,6 +832,7 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
 
             Flyway v6 = Flyway.configure()
                     .dataSource(jdbcUrl, POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
+                    .configuration(Map.of("flyway.baselineMigrationPrefix", "X_DISABLED_BASELINE"))
                     .load();
 
             assertThatThrownBy(v6::migrate)
@@ -734,12 +855,202 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
         String seed = Files.readString(repoFile("scripts/gestudio_demo_seed_full.sql"));
         assertThat(seed).doesNotContain("PERM_", "SUPERADMIN");
         assertThat(seed).contains("r.codigo = 'ADMINISTRADOR'");
-        assertThat(Pattern.compile("(?is)insert\\s+into\\s+public\\.roles").matcher(seed).find())
-                .isFalse();
+        assertThat(seed)
+                .contains(
+                        "Fixture tenant/RBAC explícita",
+                        "ON CONFLICT (tenant_id, codigo) DO NOTHING",
+                        "CREATE TEMP TABLE _demo_role_matrix",
+                        "INSERT INTO public.rol_permisos (tenant_id, rol_id, permiso_id)"
+                );
         assertThat(Pattern.compile("(?is)insert\\s+into\\s+public\\.permisos").matcher(seed).find())
                 .isFalse();
-        assertThat(Pattern.compile("(?is)insert\\s+into\\s+public\\.rol_permisos").matcher(seed).find())
-                .isFalse();
+    }
+
+    private Set<String> esquemaNormalizado(Connection connection) throws Exception {
+        Set<String> snapshot = new TreeSet<>();
+        List<String> queries = List.of(
+                """
+                SELECT concat_ws('|', 'REL', c.relkind, c.relname, c.relpersistence,
+                                  c.relrowsecurity, c.relforcerowsecurity)
+                FROM pg_catalog.pg_class c
+                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = 'public'
+                  AND c.relkind IN ('r', 'p', 'v', 'm', 'S')
+                  AND c.relname NOT LIKE 'flyway_schema_history%'
+                """,
+                """
+                SELECT concat_ws('|', 'COL', c.relname, a.attnum, a.attname,
+                                  pg_catalog.format_type(a.atttypid, a.atttypmod),
+                                  a.attnotnull, a.attidentity, a.attgenerated,
+                                  COALESCE(pg_catalog.pg_get_expr(d.adbin, d.adrelid), '<NULL>'),
+                                  COALESCE(coll.collname, '<DEFAULT>'))
+                FROM pg_catalog.pg_attribute a
+                JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                LEFT JOIN pg_catalog.pg_attrdef d
+                  ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+                LEFT JOIN pg_catalog.pg_collation coll ON coll.oid = a.attcollation
+                WHERE n.nspname = 'public'
+                  AND c.relkind IN ('r', 'p', 'v', 'm')
+                  AND c.relname <> 'flyway_schema_history'
+                  AND a.attnum > 0
+                  AND NOT a.attisdropped
+                """,
+                """
+                SELECT concat_ws('|', 'CON', c.relname, con.conname, con.contype,
+                                  con.condeferrable, con.condeferred, con.convalidated,
+                                  CASE WHEN con.contype = 'c' THEN '<CHECK>'
+                                       ELSE pg_catalog.pg_get_constraintdef(con.oid, true) END)
+                FROM pg_catalog.pg_constraint con
+                JOIN pg_catalog.pg_class c ON c.oid = con.conrelid
+                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = 'public'
+                  AND c.relname <> 'flyway_schema_history'
+                """,
+                """
+                SELECT concat_ws('|', 'IDX', table_class.relname, index_class.relname,
+                                  index.indisunique, index.indisprimary, index.indisexclusion,
+                                  index.indisvalid, index.indisready,
+                                  index.indkey::text, index.indclass::text, index.indoption::text,
+                                  index.indpred IS NOT NULL, index.indexprs IS NOT NULL)
+                FROM pg_catalog.pg_index index
+                JOIN pg_catalog.pg_class table_class ON table_class.oid = index.indrelid
+                JOIN pg_catalog.pg_class index_class ON index_class.oid = index.indexrelid
+                JOIN pg_catalog.pg_namespace n ON n.oid = table_class.relnamespace
+                WHERE n.nspname = 'public'
+                  AND table_class.relname <> 'flyway_schema_history'
+                """,
+                """
+                SELECT concat_ws('|', 'TRG', c.relname, trigger.tgname,
+                                  pg_catalog.pg_get_triggerdef(trigger.oid, true))
+                FROM pg_catalog.pg_trigger trigger
+                JOIN pg_catalog.pg_class c ON c.oid = trigger.tgrelid
+                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = 'public'
+                  AND NOT trigger.tgisinternal
+                """,
+                """
+                SELECT concat_ws('|', 'POL', c.relname, policy.polname, policy.polpermissive,
+                                  policy.polcmd,
+                                  COALESCE((
+                                      SELECT string_agg(COALESCE(role.rolname, 'PUBLIC'), ',' ORDER BY role.rolname)
+                                      FROM unnest(policy.polroles) role_oid(oid)
+                                      LEFT JOIN pg_catalog.pg_roles role ON role.oid = role_oid.oid
+                                  ), 'PUBLIC'),
+                                  COALESCE(pg_catalog.pg_get_expr(policy.polqual, policy.polrelid), '<NULL>'),
+                                  COALESCE(pg_catalog.pg_get_expr(policy.polwithcheck, policy.polrelid), '<NULL>'))
+                FROM pg_catalog.pg_policy policy
+                JOIN pg_catalog.pg_class c ON c.oid = policy.polrelid
+                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = 'public'
+                """,
+                """
+                SELECT concat_ws('|', 'FUN', procedure.proname,
+                                  pg_catalog.pg_get_function_identity_arguments(procedure.oid),
+                                  pg_catalog.pg_get_function_result(procedure.oid),
+                                  procedure.prokind, procedure.provolatile, procedure.prosecdef,
+                                  procedure.proleakproof, procedure.proparallel,
+                                  CASE WHEN procedure.proname = 'gestudio_multitenancy_health'
+                                       THEN pg_catalog.pg_get_userbyid(procedure.proowner)
+                                       ELSE '<MIGRATOR>' END,
+                                  COALESCE(array_to_string(procedure.proconfig, ','), '<NULL>'),
+                                  pg_catalog.pg_get_functiondef(procedure.oid))
+                FROM pg_catalog.pg_proc procedure
+                JOIN pg_catalog.pg_namespace n ON n.oid = procedure.pronamespace
+                WHERE n.nspname = 'public'
+                """,
+                """
+                SELECT concat_ws('|', 'VIEW', c.relname, pg_catalog.pg_get_viewdef(c.oid, true))
+                FROM pg_catalog.pg_class c
+                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = 'public' AND c.relkind IN ('v', 'm')
+                """,
+                """
+                SELECT concat_ws('|', 'SEQ', c.relname, sequence.seqtypid::regtype,
+                                  sequence.seqstart, sequence.seqincrement, sequence.seqmax,
+                                  sequence.seqmin, sequence.seqcache, sequence.seqcycle)
+                FROM pg_catalog.pg_sequence sequence
+                JOIN pg_catalog.pg_class c ON c.oid = sequence.seqrelid
+                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = 'public'
+                """,
+                """
+                SELECT concat_ws('|', 'ACL_REL', c.relkind, c.relname,
+                                  COALESCE(grantee.rolname, 'PUBLIC'), acl.privilege_type,
+                                  acl.is_grantable)
+                FROM pg_catalog.pg_class c
+                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                CROSS JOIN LATERAL pg_catalog.aclexplode(c.relacl) acl
+                LEFT JOIN pg_catalog.pg_roles grantee ON grantee.oid = acl.grantee
+                WHERE n.nspname = 'public'
+                  AND COALESCE(grantee.rolname, 'PUBLIC') <> current_user
+                  AND c.relname NOT LIKE 'flyway_schema_history%'
+                """,
+                """
+                SELECT concat_ws('|', 'ACL_FUN', procedure.proname,
+                                  pg_catalog.pg_get_function_identity_arguments(procedure.oid),
+                                  COALESCE(grantee.rolname, 'PUBLIC'), acl.privilege_type,
+                                  acl.is_grantable)
+                FROM pg_catalog.pg_proc procedure
+                JOIN pg_catalog.pg_namespace n ON n.oid = procedure.pronamespace
+                CROSS JOIN LATERAL pg_catalog.aclexplode(procedure.proacl) acl
+                LEFT JOIN pg_catalog.pg_roles grantee ON grantee.oid = acl.grantee
+                WHERE n.nspname = 'public'
+                  AND COALESCE(grantee.rolname, 'PUBLIC') <> current_user
+                """,
+                """
+                SELECT concat_ws('|', 'ACL_SCHEMA', n.nspname,
+                                  COALESCE(grantee.rolname, 'PUBLIC'), acl.privilege_type,
+                                  acl.is_grantable)
+                FROM pg_catalog.pg_namespace n
+                CROSS JOIN LATERAL pg_catalog.aclexplode(n.nspacl) acl
+                LEFT JOIN pg_catalog.pg_roles grantee ON grantee.oid = acl.grantee
+                WHERE n.nspname = 'public'
+                  AND COALESCE(grantee.rolname, 'PUBLIC') <> current_user
+                """
+        );
+
+        for (String query : queries) {
+            snapshot.addAll(filas(connection, query));
+        }
+        return snapshot;
+    }
+
+    private Set<String> tablasConDatosFuncionales(Connection connection) throws Exception {
+        Set<String> nonEmptyTables = new TreeSet<>();
+        List<String> tables = filas(connection, """
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_schema = 'public'
+                  AND table_type = 'BASE TABLE'
+                  AND table_name NOT IN ('permisos', 'flyway_schema_history')
+                ORDER BY table_name
+                """);
+
+        try (Statement statement = connection.createStatement()) {
+            for (String table : tables) {
+                if (!table.matches("[a-z0-9_]+")) {
+                    throw new IllegalStateException("Nombre de tabla no canónico: " + table);
+                }
+                try (ResultSet rows = statement.executeQuery(
+                        "SELECT EXISTS (SELECT 1 FROM public." + table + ")")) {
+                    rows.next();
+                    if (rows.getBoolean(1)) nonEmptyTables.add(table);
+                }
+            }
+        }
+        return nonEmptyTables;
+    }
+
+    private List<String> filas(Connection connection, String sql) throws Exception {
+        List<String> rows = new ArrayList<>();
+        try (Statement statement = connection.createStatement();
+             ResultSet result = statement.executeQuery(sql)) {
+            while (result.next()) {
+                rows.add(result.getString(1).replace("\r\n", "\n").replace('\r', '\n'));
+            }
+        }
+        return rows;
     }
 
     private void crearBase(String databaseName) throws Exception {

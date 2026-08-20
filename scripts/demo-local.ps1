@@ -175,6 +175,47 @@ function Invoke-Docker {
     return Invoke-Native -FilePath "docker" -Arguments $Arguments -Capture:$Capture -IgnoreDeadline:$IgnoreDeadline
 }
 
+function Assert-LocalDockerTarget {
+    if ($script:project -ceq "gestudio-remote-demo") {
+        throw "El proyecto gestudio-remote-demo está protegido"
+    }
+    if (-not [string]::IsNullOrWhiteSpace(
+            [Environment]::GetEnvironmentVariable("DOCKER_HOST", "Process"))) {
+        throw "DOCKER_HOST está definido; se rechazan overrides de daemon"
+    }
+    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+        throw "Docker no está disponible en PATH"
+    }
+
+    $context = Invoke-Docker -Arguments @("context", "show") -Capture -IgnoreDeadline
+    if ([string]::IsNullOrWhiteSpace($context) -or
+        $context -match "(?i)(prod|production|stage|staging|remote|demo)") {
+        throw "El contexto Docker activo es vacío o posee un nombre protegido"
+    }
+
+    $endpointRaw = Invoke-Docker -Arguments @(
+        "context", "inspect", "--format", "{{json .Endpoints.docker.Host}}", $context
+    ) -Capture -IgnoreDeadline
+    try { $endpoint = [string]($endpointRaw | ConvertFrom-Json) }
+    catch { throw "El contexto Docker no devolvió un endpoint válido" }
+    $allowedEndpoints = @(
+        "npipe:////./pipe/docker_engine",
+        "npipe:////./pipe/dockerdesktoplinuxengine",
+        "unix:///var/run/docker.sock"
+    )
+    if ([string]::IsNullOrWhiteSpace($endpoint) -or
+        $endpoint.ToLowerInvariant() -notin $allowedEndpoints) {
+        throw "El contexto Docker no apunta a un endpoint local permitido"
+    }
+
+    $osType = Invoke-Docker -Arguments @(
+        "--context", $context, "info", "--format", "{{.OSType}}"
+    ) -Capture -IgnoreDeadline
+    if ([string]::IsNullOrWhiteSpace($osType) -or $osType.Trim() -cne "linux") {
+        throw "El daemon Docker local debe ser Linux"
+    }
+}
+
 function Invoke-Compose {
     param(
         [Parameter(Mandatory)][string[]] $Arguments,
@@ -618,6 +659,7 @@ function Get-LocalMigrationManifest {
         Count = $entries.Count
         LatestVersion = $entries[-1].Version
         LatestScript = $entries[-1].Script
+        BaselineScript = "B$($entries[-1].Version)__gestudio_production_baseline.sql"
         Scripts = @($entries.Script)
     }
 }
@@ -1072,18 +1114,20 @@ FROM flyway_schema_history;
 "@
     $parts = $history.Split("|")
     Assert-Equal -Actual $parts.Count -Expected 4 -Message "Historial Flyway ilegible"
-    Assert-Equal -Actual $parts[0] -Expected ([string]$manifest.Count) -Message "Cantidad Flyway inesperada"
     Assert-Equal -Actual $parts[1] -Expected ([string]$manifest.LatestVersion) -Message "Versión Flyway inesperada"
     Assert-Equal -Actual $parts[2] -Expected "0" -Message "Hay migraciones fallidas"
     Assert-Equal -Actual $parts[3] -Expected "0" -Message "Hay una migración demo"
     $historyScripts = @((Invoke-Sql "SELECT script FROM flyway_schema_history WHERE success ORDER BY installed_rank;") -split "`r?`n")
-    Assert-Equal -Actual $historyScripts.Count -Expected $manifest.Count -Message "Cantidad de scripts Flyway inesperada"
-    foreach ($migration in $manifest.Scripts) {
-        Assert-True -Condition ($historyScripts -contains $migration) -Message "Flyway no aplicó $migration"
+    $baselineHistory = $historyScripts.Count -eq 1 -and $historyScripts[0] -eq $manifest.BaselineScript
+    if (-not $baselineHistory) {
+        Assert-Equal -Actual $historyScripts.Count -Expected $manifest.Count -Message "Cantidad de scripts Flyway inesperada"
+        foreach ($migration in $manifest.Scripts) {
+            Assert-True -Condition ($historyScripts -contains $migration) -Message "Flyway no aplicó $migration"
+        }
     }
     Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM roles WHERE codigo='PROFESOR' AND NOT activo AND sistema AND NOT editable;") -Expected "1" -Message "PROFESOR no conserva su contrato"
     Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM rol_permisos rp JOIN roles r ON r.id=rp.rol_id WHERE r.codigo='PROFESOR';") -Expected "0" -Message "PROFESOR tiene permisos"
-    Pass "Flyway/Hibernate/RBAC" "$($manifest.Count) migraciones, última V$($manifest.LatestVersion), ddl-auto=validate"
+    Pass "Flyway/Hibernate/RBAC" "historia V completa o baseline B$($manifest.LatestVersion), ddl-auto=validate"
 }
 
 function Assert-DatabaseEmptyForDemo {
@@ -1275,11 +1319,13 @@ function Invoke-Status {
             $history = (Invoke-Sql "SELECT count(*) || '|' || COALESCE(max(version::int), 0) || '|' || count(*) FILTER (WHERE NOT success) FROM flyway_schema_history;").Split("|")
             $historyScripts = @((Invoke-Sql "SELECT script FROM flyway_schema_history WHERE success ORDER BY installed_rank;") -split "`r?`n" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
             $flyway = $history[1]
+            $baselineHistory = $historyScripts.Count -eq 1 -and $historyScripts[0] -eq $manifest.BaselineScript
+            $versionedHistory = $historyScripts.Count -eq $manifest.Count `
+                -and @(Compare-Object -ReferenceObject $manifest.Scripts -DifferenceObject $historyScripts).Count -eq 0
             $flywayReady = $history.Count -eq 3 `
-                -and $history[0] -eq [string]$manifest.Count `
                 -and $history[1] -eq [string]$manifest.LatestVersion `
                 -and $history[2] -eq "0" `
-                -and @(Compare-Object -ReferenceObject $manifest.Scripts -DifferenceObject $historyScripts).Count -eq 0
+                -and ($baselineHistory -or $versionedHistory)
             $seedReady = Test-DemoSeedContract
         }
         catch {
@@ -1439,6 +1485,7 @@ function Invoke-Reset {
 }
 
 try {
+    if ($Action -ne "SeedNative") { Assert-LocalDockerTarget }
     switch ($Action) {
         "Start" { Invoke-Start }
         "Status" { if (-not (Invoke-Status)) { $exitCode = 1 } }

@@ -1,3 +1,4 @@
+import * as Dialog from "@radix-ui/react-dialog";
 import { useState } from "react";
 import { useTheme } from "next-themes";
 import { useSidebar } from "../hooks/context/useSidebar";
@@ -26,7 +27,7 @@ const findCurrentLabel = (items: NavigationItem[], pathname: string): string | u
 
 export default function Header() {
   const unreadCount = 0;
-  const { isExpanded, setMobileSidebarOpen } = useSidebar();
+  const { isExpanded, mobileSidebarOpen } = useSidebar();
   const { resolvedTheme, setTheme } = useTheme();
   const { user, switchTenant } = useAuth();
   const location = useLocation();
@@ -65,13 +66,17 @@ export default function Header() {
           },
         )}
       >
-        <button
-          onClick={() => setMobileSidebarOpen(true)}
-          className="icon-button mr-2 md:hidden"
-          aria-label="Abrir menú"
-        >
-          <Menu className="size-5" />
-        </button>
+        <Dialog.Trigger asChild>
+          <button
+            type="button"
+            className="icon-button mr-2 md:hidden"
+            aria-label="Abrir menú"
+            aria-expanded={mobileSidebarOpen}
+            aria-controls="tenant-mobile-navigation"
+          >
+            <Menu className="size-5" aria-hidden="true" />
+          </button>
+        </Dialog.Trigger>
 
         <div className="flex min-w-0 flex-1 items-center justify-between gap-4">
           <div className="min-w-0">

@@ -25,6 +25,10 @@ jwt:
   refresh-token-ttl: ${JWT_REFRESH_TOKEN_TTL:P1D}
 
 app:
+  platform-datasource:
+    url: ${APP_PLATFORM_DATASOURCE_URL}
+    username: ${APP_PLATFORM_DATASOURCE_USERNAME}
+    password: ${APP_PLATFORM_DATASOURCE_PASSWORD}
   time-zone: ${APP_TIME_ZONE}
   receipts-path: ${APP_RECEIPTS_PATH}
   cors-allowed-origins: ${APP_CORS_ALLOWED_ORIGINS}
@@ -45,6 +49,9 @@ app:
     enabled: false
     username: ""
     password: ""
+    totp-secret: ""
+    totp-code: ""
+    recovery-codes-file: ""
   local-admin-password-reset:
     enabled: false
     username: ""

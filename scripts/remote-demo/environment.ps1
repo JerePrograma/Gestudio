@@ -31,7 +31,9 @@
     foreach ($secretName in @(
         "POSTGRES_PASSWORD",
         "POSTGRES_APP_PASSWORD",
+        "POSTGRES_CONTROL_PASSWORD",
         "JWT_SECRET",
+        "APP_PLATFORM_MFA_ENCRYPTION_KEY",
         "APP_REMOTE_DEMO_PROXY_TOKEN",
         "APP_OBSERVABILITY_METRICS_TOKEN"
     )) {
@@ -90,8 +92,14 @@ function Assert-EnvironmentContract {
     foreach ($name in @(
         "SPRING_PROFILES_ACTIVE", "SPRING_JPA_HIBERNATE_DDL_AUTO", "SPRING_FLYWAY_ENABLED",
         "POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_APP_USER",
-        "POSTGRES_APP_PASSWORD", "JWT_SECRET", "JWT_ISSUER",
-        "JWT_ACCESS_TOKEN_TTL", "JWT_REFRESH_TOKEN_TTL", "APP_TIME_ZONE", "APP_RECEIPTS_PATH",
+        "POSTGRES_APP_PASSWORD", "POSTGRES_CONTROL_USER", "POSTGRES_CONTROL_PASSWORD",
+        "JWT_SECRET", "JWT_ISSUER", "JWT_ACCESS_TOKEN_TTL", "JWT_REFRESH_TOKEN_TTL",
+        "JWT_PLATFORM_AUDIENCE", "APP_PLATFORM_ACCESS_TOKEN_TTL",
+        "APP_PLATFORM_REFRESH_TOKEN_TTL", "APP_PLATFORM_STEP_UP_TTL",
+        "APP_PLATFORM_MFA_ENCRYPTION_KEY", "APP_PLATFORM_MFA_KEY_VERSION",
+        "APP_PLATFORM_REFRESH_COOKIE_NAME", "APP_PLATFORM_REFRESH_COOKIE_SECURE",
+        "APP_PLATFORM_REFRESH_COOKIE_SAME_SITE", "APP_PLATFORM_REFRESH_COOKIE_DOMAIN",
+        "APP_PLATFORM_REFRESH_COOKIE_PATH", "APP_TIME_ZONE", "APP_RECEIPTS_PATH",
         "APP_CORS_ALLOWED_ORIGINS", "APP_REMOTE_DEMO_PROXY_TOKEN", "APP_OBSERVABILITY_METRICS_TOKEN",
         "APP_SECURITY_REFRESH_COOKIE_NAME", "APP_SECURITY_REFRESH_COOKIE_SECURE",
         "APP_SECURITY_REFRESH_COOKIE_SAME_SITE", "APP_SECURITY_REFRESH_COOKIE_DOMAIN",
@@ -100,7 +108,8 @@ function Assert-EnvironmentContract {
         "APP_JERE_PLATFORM_STUDENT_EXPORT_ENABLED", "SERVER_PORT", "BACKEND_PORT", "BACKEND_IMAGE",
         "COMPOSE_PROJECT_NAME"
     )) {
-        [void](Get-EnvironmentValue -Name $name -AllowEmpty:($name -eq "APP_SECURITY_REFRESH_COOKIE_DOMAIN"))
+        [void](Get-EnvironmentValue -Name $name -AllowEmpty:($name -in @(
+            "APP_SECURITY_REFRESH_COOKIE_DOMAIN", "APP_PLATFORM_REFRESH_COOKIE_DOMAIN")))
     }
 
     Assert-Equal (Get-EnvironmentValue "SPRING_PROFILES_ACTIVE") "remote-demo" "Perfil Spring remoto incorrecto"
@@ -120,8 +129,18 @@ function Assert-EnvironmentContract {
     Assert-Equal (Get-EnvironmentValue "POSTGRES_DB") "gestudio_remote_demo" "POSTGRES_DB remoto incorrecto"
     Assert-Equal (Get-EnvironmentValue "POSTGRES_USER") "gestudio_remote_demo" "POSTGRES_USER remoto incorrecto"
     Assert-Equal (Get-EnvironmentValue "POSTGRES_APP_USER") "gestudio_remote_demo_runtime" "POSTGRES_APP_USER remoto incorrecto"
+    Assert-Equal (Get-EnvironmentValue "POSTGRES_CONTROL_USER") "gestudio_remote_demo_control" "POSTGRES_CONTROL_USER remoto incorrecto"
     Assert-Equal (Get-EnvironmentValue "JWT_ISSUER") "gestudio-remote-demo" "JWT_ISSUER remoto incorrecto"
     Assert-Equal (Get-EnvironmentValue "JWT_REFRESH_TOKEN_TTL") "P1D" "JWT_REFRESH_TOKEN_TTL remoto incorrecto"
+    Assert-Equal (Get-EnvironmentValue "JWT_PLATFORM_AUDIENCE") "gestudio-remote-demo-platform-web" "JWT_PLATFORM_AUDIENCE remoto incorrecto"
+    Assert-Equal (Get-EnvironmentValue "APP_PLATFORM_ACCESS_TOKEN_TTL") "PT5M" "TTL access de plataforma remoto incorrecto"
+    Assert-Equal (Get-EnvironmentValue "APP_PLATFORM_REFRESH_TOKEN_TTL") "PT8H" "TTL refresh de plataforma remoto incorrecto"
+    Assert-Equal (Get-EnvironmentValue "APP_PLATFORM_STEP_UP_TTL") "PT5M" "TTL step-up remoto incorrecto"
+    Assert-Equal (Get-EnvironmentValue "APP_PLATFORM_REFRESH_COOKIE_NAME") "gestudio_remote_demo_platform_refresh" "Nombre de cookie de plataforma remoto incorrecto"
+    Assert-Equal (Get-EnvironmentValue "APP_PLATFORM_REFRESH_COOKIE_SECURE") "true" "Cookie refresh de plataforma debe ser Secure"
+    Assert-Equal (Get-EnvironmentValue "APP_PLATFORM_REFRESH_COOKIE_SAME_SITE") "Strict" "SameSite de plataforma remoto incorrecto"
+    Assert-Equal (Get-EnvironmentValue "APP_PLATFORM_REFRESH_COOKIE_DOMAIN" -AllowEmpty) "" "La cookie de plataforma remota debe ser host-only"
+    Assert-Equal (Get-EnvironmentValue "APP_PLATFORM_REFRESH_COOKIE_PATH") "/api/platform/auth" "Path de cookie de plataforma remoto incorrecto"
     Assert-Equal (Get-EnvironmentValue "APP_SECURITY_REFRESH_COOKIE_NAME") "gestudio_remote_demo_refresh" "Nombre de cookie remoto incorrecto"
     Assert-Equal (Get-EnvironmentValue "SERVER_PORT") "8080" "SERVER_PORT remoto incorrecto"
     Assert-Equal (Get-EnvironmentValue "BACKEND_PORT") "18080" "BACKEND_PORT remoto incorrecto"
@@ -129,7 +148,9 @@ function Assert-EnvironmentContract {
     foreach ($name in @(
         "POSTGRES_PASSWORD",
         "POSTGRES_APP_PASSWORD",
+        "POSTGRES_CONTROL_PASSWORD",
         "JWT_SECRET",
+        "APP_PLATFORM_MFA_ENCRYPTION_KEY",
         "APP_REMOTE_DEMO_PROXY_TOKEN",
         "APP_OBSERVABILITY_METRICS_TOKEN"
     )) {
@@ -150,9 +171,30 @@ function Assert-EnvironmentContract {
     if ($databasePassword -ceq $runtimeDatabasePassword) {
         throw "POSTGRES_PASSWORD y POSTGRES_APP_PASSWORD deben ser independientes"
     }
+    $controlDatabasePassword = Get-EnvironmentValue "POSTGRES_CONTROL_PASSWORD"
+    if ([Text.Encoding]::UTF8.GetByteCount($controlDatabasePassword) -lt 16) {
+        throw "POSTGRES_CONTROL_PASSWORD debe tener al menos 16 bytes UTF-8"
+    }
+    if (@(@($databasePassword, $runtimeDatabasePassword, $controlDatabasePassword) | Select-Object -Unique).Count -ne 3) {
+        throw "Las credenciales migrador, runtime y control-plane deben ser independientes"
+    }
     $jwtSecret = Get-EnvironmentValue "JWT_SECRET"
     if ([Text.Encoding]::UTF8.GetByteCount($jwtSecret) -lt 32) {
         throw "JWT_SECRET debe tener al menos 32 bytes UTF-8"
+    }
+    $mfaEncryptionKey = Get-EnvironmentValue "APP_PLATFORM_MFA_ENCRYPTION_KEY"
+    try {
+        $mfaKeyBytes = [Convert]::FromBase64String($mfaEncryptionKey)
+    }
+    catch {
+        throw "APP_PLATFORM_MFA_ENCRYPTION_KEY debe ser Base64 válido"
+    }
+    if ($mfaKeyBytes.Length -ne 32 -or $mfaEncryptionKey -ceq $jwtSecret) {
+        throw "APP_PLATFORM_MFA_ENCRYPTION_KEY debe ser una clave AES-256 independiente de JWT_SECRET"
+    }
+    $mfaKeyVersion = 0
+    if (-not [int]::TryParse((Get-EnvironmentValue "APP_PLATFORM_MFA_KEY_VERSION"), [ref]$mfaKeyVersion) -or $mfaKeyVersion -lt 1) {
+        throw "APP_PLATFORM_MFA_KEY_VERSION debe ser un entero positivo"
     }
     $proxyToken = Get-EnvironmentValue "APP_REMOTE_DEMO_PROXY_TOKEN"
     if ([Text.Encoding]::UTF8.GetByteCount($proxyToken) -lt 32) {
@@ -169,12 +211,14 @@ function Assert-EnvironmentContract {
     $databaseName = Get-EnvironmentValue "POSTGRES_DB"
     $databaseUser = Get-EnvironmentValue "POSTGRES_USER"
     $runtimeDatabaseUser = Get-EnvironmentValue "POSTGRES_APP_USER"
+    $controlDatabaseUser = Get-EnvironmentValue "POSTGRES_CONTROL_USER"
     if ($databaseName -notmatch '^[A-Za-z0-9_.-]+$' -or $databaseUser -notmatch '^[A-Za-z0-9_.-]+$' -or
-            $runtimeDatabaseUser -notmatch '^[A-Za-z0-9_.-]+$') {
-        throw "POSTGRES_DB, POSTGRES_USER y POSTGRES_APP_USER sólo pueden contener letras, números, punto, guion o guion bajo"
+            $runtimeDatabaseUser -notmatch '^[A-Za-z0-9_.-]+$' -or $controlDatabaseUser -notmatch '^[A-Za-z0-9_.-]+$') {
+        throw "Los nombres PostgreSQL sólo pueden contener letras, números, punto, guion o guion bajo"
     }
-    if ($databaseUser -ceq $runtimeDatabaseUser) {
-        throw "POSTGRES_USER y POSTGRES_APP_USER deben ser distintos"
+    if (@(@($databaseUser, $runtimeDatabaseUser, $controlDatabaseUser) |
+            ForEach-Object { $_.ToLowerInvariant() } | Select-Object -Unique).Count -ne 3) {
+        throw "POSTGRES_USER, POSTGRES_APP_USER y POSTGRES_CONTROL_USER deben ser distintos"
     }
 
     $backendPort = 0

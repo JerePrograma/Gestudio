@@ -91,6 +91,7 @@ function Get-LocalMigrationManifest {
     return [pscustomobject]@{
         Count = $entries.Count
         LatestVersion = $entries[-1].Version
+        BaselineScript = "B$($entries[-1].Version)__gestudio_production_baseline.sql"
         Scripts = @($entries.Script)
     }
 }
@@ -102,18 +103,19 @@ SELECT count(*) || '|' || COALESCE(max(version::int), 0) || '|' || count(*) FILT
 FROM flyway_schema_history;
 "@).Split("|")
     Assert-Equal $history.Count 3 "Historial Flyway ilegible"
-    Assert-Equal $history[0] ([string]$manifest.Count) "Cantidad Flyway inesperada"
     Assert-Equal $history[1] ([string]$manifest.LatestVersion) "Última versión Flyway inesperada"
     Assert-Equal $history[2] "0" "Hay migraciones Flyway fallidas"
 
     $historyScripts = @((Invoke-Sql "SELECT script FROM flyway_schema_history WHERE success ORDER BY installed_rank;") -split "`r?`n" |
         Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
-    Assert-Equal $historyScripts.Count $manifest.Count "Cantidad de scripts Flyway inesperada"
-    if (@(Compare-Object -ReferenceObject $manifest.Scripts -DifferenceObject $historyScripts).Count -ne 0) {
-        throw "El historial Flyway no coincide con el manifiesto local"
+    $baselineHistory = $historyScripts.Count -eq 1 -and $historyScripts[0] -eq $manifest.BaselineScript
+    $versionedHistory = $historyScripts.Count -eq $manifest.Count `
+        -and @(Compare-Object -ReferenceObject $manifest.Scripts -DifferenceObject $historyScripts).Count -eq 0
+    if (-not ($baselineHistory -or $versionedHistory)) {
+        throw "El historial Flyway no coincide con la cadena V ni el baseline B vigente"
     }
 
-    Pass "Flyway" "$($manifest.Count) migraciones; última V$($manifest.LatestVersion)"
+    Pass "Flyway" "cadena V completa o baseline B$($manifest.LatestVersion)"
 }
 
 function Assert-DatabaseEmptyForDemo {

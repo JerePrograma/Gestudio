@@ -15,6 +15,19 @@ export interface UserProfile {
   tenantsDisponibles: TenantSummary[];
 }
 
+export type SessionScope = "TENANT" | "PLATFORM";
+
+export interface PlatformProfile {
+  id: number;
+  nombreUsuario: string;
+  authorities: string[];
+  mfaEnabled: boolean;
+  scope: "PLATFORM";
+}
+
+export type AuthProfile = UserProfile | PlatformProfile;
+export type PlatformMfaMethod = "TOTP" | "RECOVERY";
+
 export interface TenantSelection {
   selectionRequired: true;
   tenants: TenantSummary[];
@@ -23,15 +36,24 @@ export interface TenantSelection {
 export interface AuthContextProps {
   isAuth: boolean;
   loading: boolean;
+  scope: SessionScope | null;
+  profile: AuthProfile | null;
   login: (
     nombreUsuario: string,
     contrasena: string,
     tenantId?: string,
   ) => Promise<TenantSelection | null>;
+  platformLogin: (
+    nombreUsuario: string,
+    contrasena: string,
+    metodo: PlatformMfaMethod,
+    codigo: string,
+  ) => Promise<void>;
   switchTenant: (tenantId: string) => Promise<void>;
   logout: () => Promise<void>;
   accessToken: string | null;
   user: UserProfile | null;
+  platformUser: PlatformProfile | null;
 
   hasPermission: (permission: PermissionCode) => boolean;
   hasAllPermissions: (permissions: readonly PermissionCode[]) => boolean;
@@ -62,6 +84,15 @@ export const isAuthenticatedSession = (
   accessToken !== null &&
   user?.activo === true &&
   user.tenantActivo.estado === "ACTIVE";
+
+export const isPlatformAuthenticatedSession = (
+  accessToken: string | null,
+  profile: PlatformProfile | null,
+): boolean =>
+  accessToken !== null &&
+  profile?.scope === "PLATFORM" &&
+  profile.mfaEnabled &&
+  profile.authorities.includes("PLATFORM_SUPERADMIN");
 
 const TENANT_STATUSES = new Set<TenantStatus>([
   "ACTIVE",
@@ -147,6 +178,42 @@ export const sanitizeUserProfile = (value: unknown): UserProfile => {
     activo: raw.activo,
     tenantActivo,
     tenantsDisponibles,
+  };
+};
+
+export const sanitizePlatformProfile = (value: unknown): PlatformProfile => {
+  if (!value || typeof value !== "object") {
+    throw new Error("Perfil de plataforma inválido");
+  }
+
+  const raw = value as Record<string, unknown>;
+
+  if (
+    typeof raw.id !== "number" ||
+    typeof raw.nombreUsuario !== "string" ||
+    raw.nombreUsuario.trim().length === 0 ||
+    raw.scope !== "PLATFORM" ||
+    raw.mfaEnabled !== true ||
+    !Array.isArray(raw.authorities) ||
+    !raw.authorities.every(
+      (authority) =>
+        typeof authority === "string" && /^[A-Z][A-Z0-9_]{2,95}$/.test(authority),
+    )
+  ) {
+    throw new Error("Perfil de plataforma inválido");
+  }
+
+  const authorities = [...new Set(raw.authorities)];
+  if (!authorities.includes("PLATFORM_SUPERADMIN")) {
+    throw new Error("Perfil de plataforma sin autoridad requerida");
+  }
+
+  return {
+    id: raw.id,
+    nombreUsuario: raw.nombreUsuario,
+    authorities,
+    mfaEnabled: true,
+    scope: "PLATFORM",
   };
 };
 

@@ -35,7 +35,7 @@ class CanonicalArchitectureContractTest {
             "(?i)\\b(?:monto|importe|precio|saldo|credito|valorCuota|matricula|claseSuelta|clasePrueba|recargo|porcentaje|valorFijo|costoParticular)\\??\\s*:\\s*number\\b"
     );
 
-    private static final Pattern MIGRATION_FILE = Pattern.compile("^V[1-9][0-9]*__.+\\.sql$");
+    private static final Pattern MIGRATION_FILE = Pattern.compile("^[VB][1-9][0-9]*__.+\\.sql$");
 
     private final Path root = repositoryRoot();
 
@@ -55,12 +55,19 @@ class CanonicalArchitectureContractTest {
                     .contains("V1__canonical_schema.sql")
                     .noneMatch(name -> name.toLowerCase().contains("demo") && name.toLowerCase().contains("seed"));
 
-            List<Integer> versions = migrationFiles.stream()
+            List<String> versionedFiles = migrationFiles.stream()
+                    .filter(name -> name.startsWith("V"))
+                    .toList();
+            List<Integer> versions = versionedFiles.stream()
                     .map(name -> Integer.parseInt(name.substring(1, name.indexOf("__"))))
                     .sorted()
                     .toList();
             assertThat(versions)
                     .containsExactlyElementsOf(IntStream.rangeClosed(1, versions.size()).boxed().toList());
+
+            int latestVersion = versions.getLast();
+            assertThat(migrationFiles.stream().filter(name -> name.startsWith("B")).toList())
+                    .containsExactly("B%s__gestudio_production_baseline.sql".formatted(latestVersion));
         }
     }
 
@@ -72,7 +79,8 @@ class CanonicalArchitectureContractTest {
         assertThat(status)
                 .contains(
                         "$manifest = Get-LocalMigrationManifest",
-                        "$history[0] -eq [string]$manifest.Count",
+                        "$baselineHistory",
+                        "$versionedHistory",
                         "$history[1] -eq [string]$manifest.LatestVersion",
                         "Get-ImageFreshness -Service \"backend\"",
                         "Get-ImageFreshness -Service \"frontend\"",
@@ -113,7 +121,9 @@ class CanonicalArchitectureContractTest {
                 "scripts/ops/verify-backup-restore.ps1",
                 "scripts/ops/verify-application-rollback.ps1"
         );
-        Pattern expectedPair = Pattern.compile("(?i)-Expected\\s+['\"]?\\d+\\|\\d+");
+        Pattern expectedPair = Pattern.compile(
+                "(?i)(?:flyway|migration)[^\\r\\n]*-Expected\\s+['\"]?\\d+\\|\\d+"
+                        + "|-Expected\\s+['\"]?\\d+\\|\\d+[^\\r\\n]*(?:flyway|migration)");
         Pattern rigidRange = Pattern.compile("(?i)BETWEEN\\s+1\\s+AND\\s+\\d+");
         Pattern rigidMetadata = Pattern.compile("(?i)printf\\s+['\"]\\d+\\\\n['\"][^\\n]*flyway-latest");
 
@@ -121,7 +131,10 @@ class CanonicalArchitectureContractTest {
             String script = Files.readString(root.resolve(relativePath));
             assertThat(script)
                     .as(relativePath)
-                    .contains("function Get-LocalMigrationManifest", ".LatestVersion", ".Count");
+                    .contains("function Get-LocalMigrationManifest", ".LatestVersion", ".Count", "SQL_BASELINE");
+            assertThat(script.contains(".Baseline") || script.contains("BaselineScript"))
+                    .as("referencia al baseline derivado en %s", relativePath)
+                    .isTrue();
             assertThat(expectedPair.matcher(script).find())
                     .as("par count/latest rígido en %s", relativePath)
                     .isFalse();
@@ -132,6 +145,40 @@ class CanonicalArchitectureContractTest {
                     .as("metadata Flyway rígida en %s", relativePath)
                     .isFalse();
         }
+    }
+
+    @Test
+    void qualityCoverageIncluyeSubpaquetesCriticosYDecisionesDeAutorizacion() throws IOException {
+        String pom = Files.readString(root.resolve("backend/pom.xml"));
+        String critical = xmlExecution(pom, "quality-critical-coverage-check");
+        String authorization = xmlExecution(pom, "quality-authorization-coverage-check");
+
+        assertThat(critical)
+                .contains(
+                        "<include>gestudio/platform/**</include>",
+                        "<include>gestudio/tenancy/**</include>",
+                        "<include>gestudio/infra/seguridad/**</include>",
+                        "<include>gestudio/infra/configuracion/MultitenancyConfigurationGuard*</include>")
+                .doesNotContain(
+                        "<include>gestudio/platform/*</include>",
+                        "<include>gestudio/tenancy/*</include>",
+                        "<include>gestudio/infra/seguridad/*</include>");
+
+        assertThat(authorization)
+                .contains(
+                        "<include>gestudio/platform/security/PlatformSecurityFilter*</include>",
+                        "<include>gestudio/platform/security/PlatformStepUpService*</include>",
+                        "<include>gestudio/platform/control/PlatformControlPlaneService*</include>",
+                        "<include>gestudio/platform/control/TenantMutationCoordinator*</include>",
+                        "<include>gestudio/platform/control/MembershipMutationCoordinator*</include>",
+                        "<include>gestudio/platform/control/PlatformAdminMutationCoordinator*</include>",
+                        "<include>gestudio/platform/control/PlatformMutationExecutor*</include>",
+                        "<include>gestudio/infra/seguridad/SecurityConfigurations*</include>",
+                        "<include>gestudio/infra/seguridad/SecurityFilter*</include>",
+                        "<include>gestudio/infra/seguridad/RbacService*</include>",
+                        "<include>gestudio/tenancy/TenantAccessService*</include>",
+                        "<include>gestudio/tenancy/PlatformAdminAccessService*</include>",
+                        "<minimum>0.95</minimum>");
     }
 
     @Test
@@ -332,7 +379,7 @@ class CanonicalArchitectureContractTest {
                         ":'demo_expected_flyway_latest'::integer AS expected_flyway_latest"
                 );
 
-        Pattern fixedMigrationName = Pattern.compile("V[0-9]+__");
+        Pattern fixedMigrationName = Pattern.compile("[VB][0-9]+__");
         for (String source : List.of(demo, validator, seed)) {
             assertThat(fixedMigrationName.matcher(source).find())
                     .as("los validadores demo no deben fijar nombres de migración")
@@ -481,6 +528,18 @@ class CanonicalArchitectureContractTest {
         assertThat(start).as("función PowerShell %s", function).isGreaterThanOrEqualTo(0);
         assertThat(end).as("función PowerShell siguiente a %s", function).isGreaterThan(start);
         return script.substring(start, end);
+    }
+
+    private String xmlExecution(String xml, String executionId) {
+        String marker = "<id>" + executionId + "</id>";
+        int id = xml.indexOf(marker);
+        int start = xml.lastIndexOf("<execution>", id);
+        int end = xml.indexOf("</execution>", id);
+
+        assertThat(id).as("ejecución Maven %s", executionId).isGreaterThanOrEqualTo(0);
+        assertThat(start).as("inicio de ejecución Maven %s", executionId).isGreaterThanOrEqualTo(0);
+        assertThat(end).as("fin de ejecución Maven %s", executionId).isGreaterThan(id);
+        return xml.substring(start, end + "</execution>".length());
     }
 
     private Path repositoryRoot() {

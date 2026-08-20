@@ -1,12 +1,18 @@
 # Matriz RBAC y rutas
 
 > Estado: CONFIRMADO  
-> Última revisión: 2026-07-24  
+> Última revisión: 2026-08-13
 > Fuentes principales: `PermissionCodes`, `SecurityConfigurations`, `routes.ts`, pruebas
 
 ## Regla base
 
 Salvo login/refresh/logout y perfil autenticado, toda capacidad exige `PERM_APP_ACCESO` y permiso funcional. Roles activos suman permisos activos. El fallback API es `denyAll`.
+
+Esta regla describe RBAC tenant. El control plane no reutiliza esos nombres:
+exige una fila activa/versionada en `platform_admins`, token scope PLATFORM,
+MFA y step-up según la acción. Un rol tenant `SUPERADMIN` no concede acceso a
+`/api/platform/**`; un token PLATFORM tampoco habilita endpoints funcionales.
+Ver [ADR-0009](../architecture/adr-0009-platform-control-plane.md).
 
 ## Catálogo de 32 permisos
 

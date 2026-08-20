@@ -1,5 +1,12 @@
 # Autorreferencia operativa de Gestudio
 
+> **Evidencia histórica — reemplazada.** Este documento conserva la intervención
+> iniciada el 2026-08-04 y sus SHAs/conteos como registro; no describe el estado
+> vigente. El contrato operativo y la autorreferencia viva actuales son
+> [`GESTUDIO_FINALIZACION_SUPERADMIN_MEGAPROMPT.md`](../GESTUDIO_FINALIZACION_SUPERADMIN_MEGAPROMPT.md).
+> Ningún `PASS` de este archivo certifica V12/B12, el control plane ni el SHA
+> candidato actual.
+
 ## Identidad del repositorio
 
 - Ruta local: `C:\laburo\Gestudio`.

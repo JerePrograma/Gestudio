@@ -27,7 +27,8 @@ public class ConfiguracionCors implements WebMvcConfigurer {
 
         configuration.setAllowedMethods(List.of("GET", "POST", "OPTIONS", "PUT", "DELETE", "PATCH"));
         configuration.setAllowedHeaders(List.of(
-                "Authorization", "Content-Type", "Accept", RequestCorrelationFilter.HEADER_NAME));
+                "Authorization", "Content-Type", "Accept", RequestCorrelationFilter.HEADER_NAME,
+                "Idempotency-Key", "X-Step-Up-Token"));
         configuration.setExposedHeaders(List.of("Authorization", RequestCorrelationFilter.HEADER_NAME));
         configuration.setAllowCredentials(true);
 

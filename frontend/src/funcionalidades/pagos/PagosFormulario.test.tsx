@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   AlumnoResponse,
@@ -116,6 +116,115 @@ describe("PagosFormulario", () => {
 
     expect(toastSuccess).toHaveBeenCalledWith("Pago 99 registrado");
   });
+
+  it("rechaza localmente datos incompletos sin inventar una operación financiera", async () => {
+    renderPage();
+
+    const submit = screen.getByRole("button", { name: "Registrar pago" });
+    await waitFor(() => expect(submit).toBeEnabled());
+    fireEvent.submit(submit.closest("form")!);
+
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith("Completá alumno, método e importe con hasta dos decimales"));
+    expect(registrarPago).not.toHaveBeenCalled();
+  });
+
+  it("representa búsqueda corta, vacía, fallida con retry e inhabilita alumnos dados de baja", async () => {
+    buscarPorNombre
+      .mockResolvedValueOnce(pagina([], 0, 0, 0, 8))
+      .mockRejectedValueOnce(new Error("network"))
+      .mockResolvedValueOnce(pagina([alumno(8, false, false)], 1, 1, 0, 8));
+    renderPage();
+
+    fireEvent.change(screen.getByLabelText("Alumno"), { target: { value: "A" } });
+    expect(screen.getByText("Escribí al menos 2 caracteres para buscar.")).toBeVisible();
+    expect(buscarPorNombre).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText("Alumno"), { target: { value: "Nadie" } });
+    expect(await screen.findByText("Sin resultados")).toBeVisible();
+
+    fireEvent.change(screen.getByLabelText("Alumno"), { target: { value: "Error" } });
+    expect(await screen.findByRole("alert")).toHaveTextContent("No se pudieron buscar alumnos.");
+    fireEvent.click(screen.getByRole("button", { name: "Reintentar" }));
+    expect(await screen.findByRole("button", { name: "Seleccionar Alumno 8" })).toBeDisabled();
+  });
+
+  it("calcula centavos sin punto flotante, advierte excedente y envía crédito explícito", async () => {
+    renderPage();
+    fireEvent.change(screen.getByLabelText("Alumno"), { target: { value: "Ana" } });
+    fireEvent.click(await screen.findByRole("button", { name: "Seleccionar Ana Prueba" }));
+    await screen.findByText("Cuota julio");
+
+    fireEvent.change(screen.getByLabelText("Método de pago"), { target: { value: "2" } });
+    fireEvent.change(screen.getByLabelText("Monto recibido"), { target: { value: "150,00" } });
+    fireEvent.blur(screen.getByLabelText("Monto recibido"));
+    fireEvent.change(screen.getByLabelText("Aplicar a Cuota julio"), { target: { value: "100,00" } });
+    fireEvent.blur(screen.getByLabelText("Aplicar a Cuota julio"));
+
+    expect(screen.getByText("$ 50,00")).toBeVisible();
+    expect(screen.getByText(/Hay un excedente sin marcar como crédito/)).toBeVisible();
+    fireEvent.click(screen.getByRole("checkbox", { name: /Generar crédito con el excedente/ }));
+    expect(screen.queryByText(/Hay un excedente sin marcar como crédito/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Registrar pago" }));
+    await waitFor(() => expect(registrarPago).toHaveBeenCalledWith(expect.objectContaining({
+      montoRecibido: "150.00",
+      aplicaciones: [{ cargoId: 10, importe: "100.00" }],
+      generarCredito: true,
+    })));
+  });
+
+  it("expone sobreaplicación y descarta aplicaciones vacías o inválidas del payload", async () => {
+    listarPendientes.mockResolvedValue(pagina([cargo(10), { ...cargo(11), descripcion: "Matrícula" }], 2, 1, 0));
+    renderPage();
+    fireEvent.change(screen.getByLabelText("Alumno"), { target: { value: "Ana" } });
+    fireEvent.click(await screen.findByRole("button", { name: "Seleccionar Ana Prueba" }));
+    await screen.findByText("Matrícula");
+
+    fireEvent.change(screen.getByLabelText("Método de pago"), { target: { value: "2" } });
+    fireEvent.change(screen.getByLabelText("Monto recibido"), { target: { value: "100" } });
+    fireEvent.change(screen.getByLabelText("Aplicar a Cuota julio"), { target: { value: "150" } });
+    fireEvent.blur(screen.getByLabelText("Aplicar a Cuota julio"));
+    fireEvent.change(screen.getByLabelText("Aplicar a Matrícula"), { target: { value: "invalido" } });
+
+    expect(screen.getByText("Aplicado de más $ 50,00")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Registrar pago" }));
+    await waitFor(() => expect(registrarPago).toHaveBeenCalledWith(expect.objectContaining({
+      aplicaciones: [{ cargoId: 10, importe: "150.00" }],
+    })));
+  });
+
+  it("cubre errores de métodos/cargos, paginación, limpieza y rechazo backend", async () => {
+    listarMetodosPago.mockRejectedValueOnce(new Error("methods"));
+    listarPendientes.mockImplementation((_id: number, page: number) => Promise.resolve(
+      pagina(page === 0 ? [cargo(10)] : [], 1, 2, page),
+    ));
+    registrarPago.mockRejectedValueOnce(new Error("conflict"));
+    const firstClient = renderPage();
+
+    expect(await screen.findByText("No se pudieron cargar los métodos de pago.")).toBeVisible();
+    fireEvent.change(screen.getByLabelText("Alumno"), { target: { value: "Ana" } });
+    fireEvent.click(await screen.findByRole("button", { name: "Seleccionar Ana Prueba" }));
+    await screen.findByText("Cuota julio");
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
+    await waitFor(() => expect(listarPendientes).toHaveBeenCalledWith(7, 1, 50));
+    expect(await screen.findByText("Sin cargos pendientes")).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cambiar" }));
+    expect(screen.getByLabelText("Alumno")).toHaveValue("");
+    expect(screen.getByText("Seleccioná un alumno")).toBeVisible();
+
+    firstClient.clear();
+    cleanup();
+    renderPage();
+    fireEvent.change(screen.getByLabelText("Alumno"), { target: { value: "Ana" } });
+    fireEvent.click(await screen.findByRole("button", { name: "Seleccionar Ana Prueba" }));
+    fireEvent.change(screen.getByLabelText("Método de pago"), { target: { value: "2" } });
+    fireEvent.change(screen.getByLabelText("Monto recibido"), { target: { value: "100" } });
+    fireEvent.click(screen.getByRole("button", { name: "Registrar pago" }));
+
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith("El backend rechazó el pago; revisá saldos y aplicaciones"));
+    expect(screen.getByRole("button", { name: "Registrar pago" })).toBeEnabled();
+  });
 });
 
 function renderPage() {
@@ -150,22 +259,22 @@ function pagina<T>(
   };
 }
 
-function alumno(id: number): AlumnoResponse {
+function alumno(id: number, activo = true, contacto = true): AlumnoResponse {
   return {
     id,
-    nombre: "Ana",
-    apellido: "Prueba",
+    nombre: id === 7 ? "Ana" : "Alumno",
+    apellido: id === 7 ? "Prueba" : String(id),
     fechaNacimiento: "2010-01-01",
     fechaIncorporacion: "2026-01-01",
     edad: 16,
-    celular1: "2235550000",
+    celular1: contacto ? "2235550000" : "",
     celular2: "",
     email: "",
-    documento: "12345678",
+    documento: contacto ? "12345678" : "",
     fechaDeBaja: null,
     nombrePadres: "",
     autorizadoParaSalirSolo: false,
-    activo: true,
+    activo,
     otrasNotas: "",
     inscripciones: [],
   };

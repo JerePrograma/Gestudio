@@ -130,7 +130,7 @@ const ProfesoresFormulario: React.FC = () => {
                 <label htmlFor="nombre" className="auth-label">
                   Nombre:
                 </label>
-                <Field name="nombre" type="text" className="form-input" />
+                <Field id="nombre" name="nombre" type="text" className="form-input" />
                 <ErrorMessage name="nombre" component="div" className="auth-error" />
               </div>
 
@@ -138,14 +138,14 @@ const ProfesoresFormulario: React.FC = () => {
                 <label htmlFor="apellido" className="auth-label">
                   Apellido:
                 </label>
-                <Field name="apellido" type="text" className="form-input" />
+                <Field id="apellido" name="apellido" type="text" className="form-input" />
                 <ErrorMessage name="apellido" component="div" className="auth-error" />
               </div>
               <div className="mb-4">
                 <label htmlFor="fechaNacimiento" className="auth-label">
                   Fecha de Nacimiento:
                 </label>
-                <Field name="fechaNacimiento" type="date" className="form-input" />
+                <Field id="fechaNacimiento" name="fechaNacimiento" type="date" className="form-input" />
                 <ErrorMessage name="fechaNacimiento" component="div" className="auth-error" />
               </div>
 
@@ -153,7 +153,7 @@ const ProfesoresFormulario: React.FC = () => {
                 <label htmlFor="telefono" className="auth-label">
                   Telefono:
                 </label>
-                <Field name="telefono" type="text" className="form-input" />
+                <Field id="telefono" name="telefono" type="text" className="form-input" />
                 <ErrorMessage name="telefono" component="div" className="auth-error" />
               </div>
 

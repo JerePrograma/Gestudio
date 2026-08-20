@@ -90,6 +90,36 @@ function Test-ContainerRunning {
     ) -Capture) -eq 'true'
 }
 
+function Get-LocalMigrationManifest {
+    $migrationRoot = Join-Path $repoRoot 'backend\src\main\resources\db\migration'
+    $versioned = @(Get-ChildItem -LiteralPath $migrationRoot -Filter 'V*__*.sql' -File | ForEach-Object {
+        if ($_.Name -notmatch '^V(?<version>[0-9]+)__.+\.sql$') {
+            throw "Nombre de migración Flyway inválido: $($_.Name)"
+        }
+        [pscustomobject]@{ version = [int]$Matches.version; script = $_.Name }
+    } | Sort-Object version)
+    if ($versioned.Count -eq 0) { throw 'No se encontraron migraciones Flyway versionadas.' }
+    for ($index = 0; $index -lt $versioned.Count; $index++) {
+        if ($versioned[$index].version -ne ($index + 1)) {
+            throw "La cadena Flyway local no es contigua en V$($index + 1)."
+        }
+    }
+    $baselines = @(Get-ChildItem -LiteralPath $migrationRoot -Filter 'B*__*.sql' -File | ForEach-Object {
+        if ($_.Name -notmatch '^B(?<version>[0-9]+)__.+\.sql$') {
+            throw "Nombre de baseline Flyway inválido: $($_.Name)"
+        }
+        [pscustomobject]@{ version = [int]$Matches.version; script = $_.Name }
+    })
+    if ($baselines.Count -gt 1 -or
+        ($baselines.Count -eq 1 -and $baselines[0].version -ne $versioned[-1].version)) {
+        throw 'La baseline Flyway local debe ser única y corresponder a la última versión.'
+    }
+    return [pscustomobject]@{
+        versioned = $versioned
+        baseline = if ($baselines.Count -eq 1) { $baselines[0] } else { $null }
+    }
+}
+
 if (-not (Test-Path -LiteralPath $ComposeFile -PathType Leaf)) {
     throw "No existe Compose: $ComposeFile"
 }
@@ -129,6 +159,7 @@ $receiptsName = if ($SkipReceipts) { $null } else { 'receipts.tar.gz' }
 $receiptsPath = if ($receiptsName) { Join-Path $packageDirectory $receiptsName } else { $null }
 $backendStopped = $false
 $completed = $false
+$localMigrations = Get-LocalMigrationManifest
 
 try {
     New-Item -ItemType Directory -Path $packageDirectory -Force | Out-Null
@@ -149,17 +180,54 @@ try {
         throw 'pg_dump no produjo un archivo válido.'
     }
 
-    $sql = 'SELECT count(*)::text || ''|'' || coalesce(max(version::int)::text,'''') FROM flyway_schema_history WHERE success'
+    $sql = 'SELECT version || ''|'' || type || ''|'' || script FROM flyway_schema_history WHERE success ORDER BY installed_rank'
     $sqlBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($sql))
     $flyway = Invoke-Native -FilePath 'docker' -Arguments @(
         'exec', $dbContainer, 'sh', '-ec',
         'printf "%s" "$1" | base64 -d | PGPASSWORD="$POSTGRES_PASSWORD" psql --no-psqlrc --tuples-only --no-align --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" --file=-',
         'sh', $sqlBase64
     ) -Capture
-    $flywayParts = $flyway.Trim().Split('|')
-    if ($flywayParts.Count -ne 2) {
+    $flywayRows = @(($flyway -split "`r?`n") | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    $flywayHistory = @($flywayRows | ForEach-Object {
+        $parts = $_.Split('|', 3)
+        $version = 0
+        if ($parts.Count -ne 3 -or -not [int]::TryParse($parts[0], [ref]$version) -or $version -lt 1) {
+            throw "Fila Flyway inválida: $_"
+        }
+        [ordered]@{ version = $version; type = $parts[1]; script = $parts[2] }
+    })
+    if ($flywayHistory.Count -eq 0) {
         throw "No se pudo leer el historial Flyway: $flyway"
     }
+    $failedSql = 'SELECT count(*) FROM flyway_schema_history WHERE NOT success'
+    $failedSqlBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($failedSql))
+    $failedFlyway = Invoke-Native -FilePath 'docker' -Arguments @(
+        'exec', $dbContainer, 'sh', '-ec',
+        'printf "%s" "$1" | base64 -d | PGPASSWORD="$POSTGRES_PASSWORD" psql --no-psqlrc --tuples-only --no-align --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" --file=-',
+        'sh', $failedSqlBase64
+    ) -Capture
+    if ($failedFlyway.Trim() -cne '0') {
+        throw "Flyway contiene migraciones fallidas: $failedFlyway"
+    }
+    $flywayLatest = [int](($flywayHistory | Measure-Object -Property version -Maximum).Maximum)
+    $flywayBaseline = $null -ne $localMigrations.baseline -and
+        $flywayHistory.Count -eq 1 -and
+        $flywayHistory[0].version -eq $localMigrations.baseline.version -and
+        $flywayHistory[0].type -ceq 'SQL_BASELINE' -and
+        $flywayHistory[0].script -ceq $localMigrations.baseline.script
+    $flywayVersioned = $flywayHistory.Count -le $localMigrations.versioned.Count
+    if ($flywayVersioned) {
+        for ($index = 0; $index -lt $flywayHistory.Count; $index++) {
+            $flywayVersioned = $flywayVersioned -and
+                $flywayHistory[$index].version -eq $localMigrations.versioned[$index].version -and
+                $flywayHistory[$index].type -ceq 'SQL' -and
+                $flywayHistory[$index].script -ceq $localMigrations.versioned[$index].script
+        }
+    }
+    if (-not $flywayBaseline -and -not $flywayVersioned) {
+        throw "El historial Flyway no es un prefijo V exacto ni la baseline B local exacta: $flyway"
+    }
+    $flywayMode = if ($flywayBaseline) { 'BASELINE' } else { 'VERSIONED' }
 
     if ($receiptsPath) {
         $mount = "${packageDirectory}:/backup"
@@ -203,7 +271,7 @@ tar -C /app/data -czf /backup/receipts.tar.gz receipts
     }
 
     $manifest = [ordered]@{
-        formatVersion = 2
+        formatVersion = 3
         backupSetId = $backupSetId
         createdAtUtc = (Get-Date).ToUniversalTime().ToString('o')
         projectName = $ProjectName
@@ -211,8 +279,10 @@ tar -C /app/data -czf /backup/receipts.tar.gz receipts
         sourceUser = $user
         gitHead = $gitHead
         applicationConsistent = (-not $backendWasRunning) -or $backendStopped
-        flywaySuccessfulCount = [int]$flywayParts[0]
-        flywayLatestVersion = $flywayParts[1]
+        flywaySuccessfulCount = $flywayHistory.Count
+        flywayLatestVersion = $flywayLatest
+        flywayMode = $flywayMode
+        flywayHistory = $flywayHistory
         databaseDump = [ordered]@{
             file = $dumpName
             bytes = (Get-Item $dumpPath).Length

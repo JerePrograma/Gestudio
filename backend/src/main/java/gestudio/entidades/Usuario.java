@@ -31,8 +31,8 @@ public class Usuario implements UserDetails {
     @Column(length = 100, nullable = false)
     private String contrasena;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "rol_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "rol_id")
     private Rol rol;
 
     @ManyToMany(fetch = FetchType.LAZY)

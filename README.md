@@ -2,6 +2,11 @@
 
 Monorepo de gestión para alumnos, inscripciones, disciplinas, asistencias, mensualidades, pagos, inventario, caja, recibos y reportes.
 
+> **Estado vigente (2026-08-13):** la intervención SUPERADMIN/control-plane está
+> en curso y `RELEASE_READINESS=PARTIAL`. La evidencia de julio que sigue en
+> este README es histórica; el estado operativo actual se mantiene en el
+> [contrato vivo](GESTUDIO_FINALIZACION_SUPERADMIN_MEGAPROMPT.md#estado-vivo).
+
 ## Estado
 
 El árbol de release del 22 de julio de 2026 quedó validado localmente para
@@ -10,11 +15,12 @@ commit publicado y las ejecuciones remotas se consultan en el informe de cierre
 externo asociado al release; no se incrusta el SHA del propio commit dentro del
 commit.
 
-El desarrollo multitenancy posterior incorpora Flyway V8-V11, autenticación
-ligada a tenant/membership y RLS shared-schema. Ese cierre sólo se considera
-validado después de ejecutar PostgreSQL/Testcontainers y `clean verify` sobre el
-SHA definitivo. La demo estable remota permanece deliberadamente en V7 y no
-debe recibir V8-V11.
+El worktree actual incorpora Flyway V8-V12, una baseline fresh B12 sin seed
+funcional, autenticación ligada a tenant/membership, RLS shared-schema y un
+control plane separado. Ese cierre sólo se considera validado después de
+ejecutar PostgreSQL/Testcontainers y `clean verify` sobre el SHA definitivo.
+El estado runtime actual de la demo protegida no pudo refrescarse con Docker
+inaccesible; no debe iniciarse, reiniciarse, recrearse ni mutarse.
 
 Integrado y probado sobre el árbol de release:
 
@@ -53,6 +59,9 @@ el ambiente real.
 Fuentes vigentes:
 
 - [ADR shared-schema multitenancy](docs/architecture/adr-0008-shared-schema-multitenancy.md)
+- [ADR del control plane SUPERADMIN](docs/architecture/adr-0009-platform-control-plane.md)
+- [Threat model del control plane](docs/architecture/threat-model-platform-control-plane.md)
+- [Runbook del control plane](docs/operations/platform-control-plane-runbook.md)
 - [Gobierno y salud multitenancy](docs/architecture/multitenancy-governance-and-health.md)
 - [Estado de release y traspaso](docs/project-status-and-handoff.md)
 - [Estado y backlog](docs/codex/gestudio-release-hardening/12_ESTADO_ACTUAL_Y_BACKLOG.md)
@@ -68,13 +77,13 @@ Fuentes vigentes:
 ## Stack
 
 - Backend: Java 21, Spring Boot 3.5.16, Maven Wrapper, PostgreSQL 15 y Flyway.
-- Frontend: React 18, TypeScript, Vite 6, Node 22 LTS y npm 10.x o compatible.
+- Frontend: React 19.2.8, React Router 8.3.0, TypeScript, Vite 6, Node 22 LTS y npm 10.x o compatible.
 - Operación: PowerShell, Docker y Docker Compose v2.
 - Observabilidad: Spring Boot Actuator, Micrometer y formato Prometheus.
 
-El árbol de desarrollo contiene V1-V11, todas forward-only. V1-V7 ya están
-publicadas y son inmutables; cualquier corrección posterior a V11 debe usar una
-nueva migración. La demo estable protegida continúa en V7.
+El worktree contiene la cadena forward-only V1-V12 y la baseline productiva
+B12. Las migraciones ya publicadas permanecen inmutables y toda corrección debe
+usar la próxima versión contigua; fresh y upgrade deben validarse por separado.
 
 ## Inicio recomendado: demo persistente
 
@@ -187,7 +196,9 @@ Runbook: [Backup y restore](docs/operations/backup-restore.md).
 
 ## Rollback backend
 
-La imagen objetivo debe contener exactamente todas las migraciones aplicadas. Una base V7 rechaza una imagen V6.
+La imagen objetivo debe contener exactamente el manifiesto Flyway ya aplicado.
+Una base en `V<N>` rechaza una imagen que sólo alcance `V<N-1>` o no declare la
+baseline `B<N>` correspondiente.
 
 ```powershell
 $rollbackRoot = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'GestudioBackups\Rollback'

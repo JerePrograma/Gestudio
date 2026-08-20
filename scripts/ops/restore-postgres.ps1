@@ -385,11 +385,11 @@ foreach ($property in $requiredManifestProperties) {
 }
 $formatVersion = 0
 if (-not [int]::TryParse([string]$manifest.formatVersion, [ref]$formatVersion) -or
-    $formatVersion -notin @(1, 2)) {
+    $formatVersion -notin @(1, 2, 3)) {
     throw "Versión de backup no soportada: $($manifest.formatVersion)"
 }
 $backupSetId = $null
-if ($formatVersion -eq 2) {
+if ($formatVersion -ge 2) {
     if ($manifest.PSObject.Properties.Name -notcontains 'backupSetId' -or
         [string]$manifest.backupSetId -cnotmatch '^[a-f0-9]{32}$') {
         throw "El manifiesto está incompleto: falta un backupSetId válido."
@@ -407,6 +407,45 @@ $flywayLatest = 0
 if (-not [int]::TryParse([string]$manifest.flywaySuccessfulCount, [ref]$flywayCount) -or $flywayCount -le 0 -or
     -not [int]::TryParse([string]$manifest.flywayLatestVersion, [ref]$flywayLatest) -or $flywayLatest -le 0) {
     throw 'El manifiesto contiene metadata Flyway inválida.'
+}
+$expectedFlywayHistory = @()
+if ($formatVersion -eq 3) {
+    foreach ($property in @('flywayMode', 'flywayHistory')) {
+        if ($manifest.PSObject.Properties.Name -notcontains $property -or $null -eq $manifest.$property) {
+            throw "El manifiesto v3 está incompleto: falta '$property'."
+        }
+    }
+    $expectedFlywayHistory = @($manifest.flywayHistory | ForEach-Object {
+        $version = 0
+        if (-not [int]::TryParse([string]$_.version, [ref]$version) -or $version -lt 1 -or
+            [string]$_.type -notin @('SQL', 'SQL_BASELINE') -or
+            [string]$_.script -cnotmatch '^[VB][0-9]+__.+\.sql$' -or
+            [string]$_.script -match '[|\r\n]') {
+            throw 'El manifiesto v3 contiene una fila Flyway inválida.'
+        }
+        "${version}|$([string]$_.type)|$([string]$_.script)"
+    })
+    if ($expectedFlywayHistory.Count -ne $flywayCount) {
+        throw 'flywayHistory no coincide con flywaySuccessfulCount.'
+    }
+    $expectedLatest = [int](($expectedFlywayHistory | ForEach-Object {
+        [int](($_ -split '\|', 2)[0])
+    } | Measure-Object -Maximum).Maximum)
+    $baselineHistory = $manifest.flywayMode -ceq 'BASELINE' -and
+        $expectedFlywayHistory.Count -eq 1 -and
+        $expectedFlywayHistory[0] -cmatch "^${flywayLatest}\|SQL_BASELINE\|B${flywayLatest}__.+\.sql$"
+    $versionedHistory = $manifest.flywayMode -ceq 'VERSIONED' -and
+        $expectedFlywayHistory.Count -eq $flywayLatest
+    if ($versionedHistory) {
+        for ($index = 0; $index -lt $expectedFlywayHistory.Count; $index++) {
+            $version = $index + 1
+            $versionedHistory = $versionedHistory -and
+                $expectedFlywayHistory[$index] -cmatch "^${version}\|SQL\|V${version}__.+\.sql$"
+        }
+    }
+    if ($expectedLatest -ne $flywayLatest -or (-not $baselineHistory -and -not $versionedHistory)) {
+        throw 'El manifiesto v3 no describe una cadena V contigua ni una baseline B válida.'
+    }
 }
 
 $dumpPath = Resolve-ConfinedBackupFile -BackupRoot $backupRoot `
@@ -505,18 +544,31 @@ try {
         'sh', $restoreDatabaseScriptBase64, $TargetDatabase, $remoteDump
     ) | Out-Null
 
-    $sql = 'SELECT count(*)::text || ''|'' || coalesce(max(version::int)::text,'''') FROM flyway_schema_history WHERE success'
+    $sql = if ($formatVersion -eq 3) {
+        'SELECT version || ''|'' || type || ''|'' || script FROM flyway_schema_history WHERE success ORDER BY installed_rank'
+    }
+    else {
+        'SELECT count(*)::text || ''|'' || coalesce(max(version::int)::text,'''') FROM flyway_schema_history WHERE success'
+    }
     $sqlBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($sql))
     $flyway = Invoke-Native -FilePath 'docker' -Arguments @(
         'exec', $dbContainer, 'sh', '-ec',
         'printf "%s" "$2" | base64 -d | PGPASSWORD="$POSTGRES_PASSWORD" psql --no-psqlrc --tuples-only --no-align --username="$POSTGRES_USER" --dbname="$1" --file=-',
         'sh', $TargetDatabase, $sqlBase64
     ) -Capture
-    $parts = $flyway.Trim().Split('|')
-    if ($parts.Count -ne 2 -or
-        [int]$parts[0] -ne [int]$manifest.flywaySuccessfulCount -or
-        $parts[1] -ne [string]$manifest.flywayLatestVersion) {
-        throw "Flyway restaurado no coincide. Esperado=$($manifest.flywaySuccessfulCount)|$($manifest.flywayLatestVersion), actual=$flyway"
+    if ($formatVersion -eq 3) {
+        $actualFlywayHistory = @(($flyway -split "`r?`n") | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        if (($actualFlywayHistory -join "`n") -cne ($expectedFlywayHistory -join "`n")) {
+            throw "Flyway restaurado no coincide con el historial exacto del manifiesto. Actual=$flyway"
+        }
+    }
+    else {
+        $parts = $flyway.Trim().Split('|')
+        if ($parts.Count -ne 2 -or
+            [int]$parts[0] -ne [int]$manifest.flywaySuccessfulCount -or
+            $parts[1] -ne [string]$manifest.flywayLatestVersion) {
+            throw "Flyway restaurado no coincide. Esperado=$($manifest.flywaySuccessfulCount)|$($manifest.flywayLatestVersion), actual=$flyway"
+        }
     }
 
     if ($receiptsPath) {

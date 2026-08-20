@@ -1,7 +1,15 @@
 node_modules/
 dist/
 .vite/
+.wrangler/
 *.log
 .git/
 .env*
 coverage/
+lcov-report/
+quality-reports/
+playwright-report/
+test-results/
+frontend-sbom.cdx.json
+*.tsbuildinfo
+*.trace.zip

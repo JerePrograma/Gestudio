@@ -15,6 +15,13 @@ jwt:
   secret: ${JWT_SECRET:local-only-jwt-secret-change-before-sharing}
 
 app:
+  platform-datasource:
+    url: ${APP_PLATFORM_DATASOURCE_URL:${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/gestudio_db}}
+    username: ${APP_PLATFORM_DATASOURCE_USERNAME:gestudio_control_local}
+    password: ${APP_PLATFORM_DATASOURCE_PASSWORD:local-only-control-change-me}
+  platform-security:
+    refresh-cookie:
+      secure: ${APP_PLATFORM_REFRESH_COOKIE_SECURE:false}
   receipts-path: ${APP_RECEIPTS_PATH:${GESTUDIO_HOME:.}/pdfs}
   security:
     refresh-cookie:

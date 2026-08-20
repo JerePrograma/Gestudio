@@ -1,10 +1,13 @@
 package gestudio.infra.observabilidad;
 
+import jakarta.servlet.FilterChain;
 import org.junit.jupiter.api.Test;
 import org.slf4j.MDC;
-import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
+
+import java.nio.charset.StandardCharsets;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -13,37 +16,52 @@ class RequestCorrelationFilterTest {
     private final RequestCorrelationFilter filter = new RequestCorrelationFilter();
 
     @Test
-    void propagaUnRequestIdSeguro() throws Exception {
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/test");
-        request.addHeader(RequestCorrelationFilter.HEADER_NAME, "client-request-123");
-        MockHttpServletResponse response = new MockHttpServletResponse();
-
-        filter.doFilter(request, response, new MockFilterChain());
-
-        assertThat(response.getHeader(RequestCorrelationFilter.HEADER_NAME))
-                .isEqualTo("client-request-123");
-        assertThat(MDC.get(RequestCorrelationFilter.MDC_KEY)).isNull();
+    void generaUnUuidCanonicoUnaVezCuandoFaltaElHeader() throws Exception {
+        assertCorrelation(null, null, 4);
     }
 
     @Test
-    void generaUuidCuandoFaltaElHeader() throws Exception {
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/test");
-        MockHttpServletResponse response = new MockHttpServletResponse();
+    void conservaElUuidDelClienteEnHeaderMdcYAtributo() throws Exception {
+        UUID supplied = UUID.fromString("AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA");
 
-        filter.doFilter(request, response, new MockFilterChain());
-
-        assertThat(response.getHeader(RequestCorrelationFilter.HEADER_NAME))
-                .matches("[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}");
-        assertThat(MDC.get(RequestCorrelationFilter.MDC_KEY)).isNull();
+        assertCorrelation("AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA", supplied, 4);
     }
 
     @Test
-    void reemplazaValoresConEspaciosOSaltosDeLinea() {
-        assertThat(RequestCorrelationFilter.resolveRequestId("unsafe request id"))
-                .matches("[0-9a-f-]{36}")
-                .isNotEqualTo("unsafe request id");
-        assertThat(RequestCorrelationFilter.resolveRequestId("unsafe\nrequest"))
-                .matches("[0-9a-f-]{36}")
-                .isNotEqualTo("unsafe\nrequest");
+    void convierteUnIdSeguroNoUuidUnaVezYPropagaElMismoValor() throws Exception {
+        String supplied = "client-request-123";
+        UUID expected = UUID.nameUUIDFromBytes(supplied.getBytes(StandardCharsets.UTF_8));
+
+        assertCorrelation(supplied, expected, 3);
+    }
+
+    @Test
+    void reemplazaUnIdInseguroPorUnUuidAleatorioCanonico() throws Exception {
+        assertCorrelation("unsafe request id", null, 4);
+        assertThat(RequestCorrelationFilter.resolveRequestId("unsafe\nrequest").version())
+                .isEqualTo(4);
+    }
+
+    private void assertCorrelation(String supplied, UUID expected, int expectedVersion)
+            throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/test");
+        if (supplied != null) request.addHeader(RequestCorrelationFilter.HEADER_NAME, supplied);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        UUID[] observed = new UUID[1];
+        FilterChain chain = (servletRequest, servletResponse) -> {
+            observed[0] = (UUID) servletRequest.getAttribute(
+                    RequestCorrelationFilter.ATTRIBUTE_NAME);
+            assertThat(MDC.get(RequestCorrelationFilter.MDC_KEY))
+                    .isEqualTo(observed[0].toString());
+        };
+
+        filter.doFilter(request, response, chain);
+
+        UUID responseId = UUID.fromString(
+                response.getHeader(RequestCorrelationFilter.HEADER_NAME));
+        assertThat(responseId).isEqualTo(observed[0]);
+        if (expected != null) assertThat(responseId).isEqualTo(expected);
+        assertThat(responseId.version()).isEqualTo(expectedVersion);
+        assertThat(MDC.get(RequestCorrelationFilter.MDC_KEY)).isNull();
     }
 }

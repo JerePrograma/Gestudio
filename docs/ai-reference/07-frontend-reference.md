@@ -1,12 +1,16 @@
 # Referencia frontend
 
 > Estado: CONFIRMADO  
-> Última revisión: 2026-07-24  
+> Última revisión: 2026-08-13
 > Fuentes principales: `../../frontend/package.json`, `../../frontend/src/rutas/routes.ts`, `AppRouter.tsx`
+
+> Addendum: existe un namespace `/platform/**` con sesión, login, layout y
+> guards separados; las cifras de rutas históricas de este documento no son un
+> inventario vigente. Ver el [runbook del control plane](../operations/platform-control-plane-runbook.md).
 
 ## Stack
 
-React 18.3, React DOM, TypeScript 5.6, Vite 6, React Router 7, TanStack Query 5, Axios, Formik, Yup, Radix UI, Tailwind, date-fns, React Toastify y Vitest/Testing Library.
+React/React DOM 19.2.8, TypeScript 5.6, Vite 6, React Router 8.3, TanStack Query 5, Axios, Formik, Yup, Radix UI, Tailwind, date-fns, React Toastify y Vitest/Testing Library.
 
 ## Estructura
 

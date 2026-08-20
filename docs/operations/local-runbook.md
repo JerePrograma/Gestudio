@@ -128,8 +128,9 @@ no usar limpiezas Docker globales.
 borrar el volumen PostgreSQL. `Status` no acepta como disponible un contenedor
 healthy pero viejo: compara image ID, revisión Git, hash de
 `docker-compose.yml`, metadata Flyway, health, respuesta frontend e integridad
-del seed. La cadena esperada se deriva de las migraciones locales contiguas
-(V1-V7 en este corte), no de un número duplicado en el script.
+del seed. La cadena esperada se deriva del manifiesto local: `V1..Vlatest` para
+una historia upgradeada o `Blatest` para una instalación fresh; el número
+latest nunca se duplica manualmente en el script.
 
 Si alguna condición falla, `Status` imprime `Demo disponible: NO`, detalla el
 motivo y termina con exit code `1`. La disponibilidad afirmativa y exit `0` son
@@ -158,7 +159,8 @@ Editar como mínimo:
 - `APP_OBSERVABILITY_METRICS_TOKEN` para consultar Prometheus;
 - email en `NOOP`, disabled, dry-run, red bloqueada, kill switch activo y Sent
   copy deshabilitado salvo habilitación externa expresamente aprobada;
-- bootstrap inicial si la base no tiene usuarios;
+- `APP_BOOTSTRAP_SUPERADMIN_ENABLED=false` en el servicio ordinario; el primer
+  administrador de plataforma se crea después mediante el job one-shot;
 - puertos si `5432`, `8080` o `8081` están ocupados.
 
 Generar secretos locales independientes:
@@ -172,24 +174,13 @@ function New-HexSecret([int]$Bytes) {
 
 $jwtSecret = New-HexSecret 64
 $metricsToken = New-HexSecret 48
-
-$jwtSecret
-$metricsToken
 ```
 
-No reutilizar el secreto JWT como token de métricas.
+Asignar esos valores directamente al `.env` ignorado o al mecanismo local de
+secretos, sin ejecutar las variables solas ni copiarlas a logs, historial o
+capturas. No reutilizar el secreto JWT como token de métricas.
 En producción los TTL usan duraciones ISO-8601, por ejemplo `PT15M` y `P7D`, y
 la cookie refresh se configura con `Secure=true`.
-
-## Primer superadministrador
-
-Sólo en una base sin usuarios:
-
-```text
-APP_BOOTSTRAP_SUPERADMIN_ENABLED=true
-APP_BOOTSTRAP_SUPERADMIN_USERNAME=admin-inicial
-APP_BOOTSTRAP_SUPERADMIN_PASSWORD=<clave de 16 a 72 bytes UTF-8>
-```
 
 ## Validar y levantar
 
@@ -211,20 +202,32 @@ Esperar `db` y `backend` en estado `healthy`.
 | Readiness | `http://localhost:8080/actuator/health/readiness` |
 | Prometheus | `http://localhost:8080/actuator/prometheus` |
 
-## Apagar bootstrap
+## Primer administrador de plataforma
 
-Después del primer login:
-
-```text
-APP_BOOTSTRAP_SUPERADMIN_ENABLED=false
-```
+El backend ordinario permanece con `APP_BOOTSTRAP_SUPERADMIN_ENABLED=false`.
+Sólo cuando la base no contiene administradores de plataforma, ejecutar el job
+externo one-shot. El script solicita password, secreto TOTP Base32 y código
+actual como valores seguros; no pasarlos en la línea de comandos:
 
 ```powershell
-docker compose --env-file .env -p gestudio `
-  up -d --no-deps --force-recreate backend
+$recoveryCodes = Join-Path `
+  ([Environment]::GetFolderPath('MyDocuments')) `
+  'gestudio-platform-recovery.txt'
+
+pwsh -NoProfile -File .\scripts\ops\bootstrap-platform-admin.ps1 `
+  -EnvFile .\.env `
+  -ProjectName gestudio `
+  -Username admin-inicial `
+  -RecoveryCodesPath $recoveryCodes `
+  -ConfirmBootstrap
 ```
 
-La bandera no debe permanecer activa.
+El destino debe ser nuevo. Custodiar los diez códigos fuera del host y eliminar
+la copia local según la política operativa. Si la base confirma el bootstrap
+pero la entrega local falla, no repetir el bootstrap: usar exclusivamente el
+comando de recuperación sanitizado que devuelve el script para el job retenido.
+La identidad creada es platform-only (`platform_admins`), con MFA, sin rol ni
+membership tenant.
 
 ## Detener
 
@@ -326,7 +329,11 @@ Contrato:
 
 ## 8.1 Login y permisos
 
-Ingresar como `SUPERADMIN` o `demo-superadmin`.
+Para el control plane, ingresar por `/platform/login` con una identidad activa
+en `platform_admins` y MFA. Para la aplicación funcional, ingresar por `/login`
+con una membership tenant activa. Un rol tenant llamado `SUPERADMIN` no concede
+`PLATFORM_SUPERADMIN` ni acceso a `/api/platform/**`. Los usuarios
+`demo-*` existen sólo en la demo explícita, nunca en una instalación fresh.
 
 Verificar:
 
@@ -543,7 +550,9 @@ operación requiere ventana, backup aprobado y responsables identificados.
 
 # 13. Rollback backend
 
-Una imagen objetivo debe contener exactamente todas las migraciones aplicadas. Una base V7 rechaza una imagen V6.
+Una imagen objetivo debe contener exactamente el manifiesto Flyway aplicado.
+Una base en `V<N>` rechaza una imagen que sólo alcance `V<N-1>` o no declare la
+baseline `B<N>` correspondiente.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass `
@@ -607,8 +616,13 @@ Problemas frecuentes:
 - `Status` falla con imagen vieja: ejecutar `Start`; no borrar el volumen;
 - `Status` falla por revisión/Compose/Flyway: reconstruir desde el checkout correcto;
 - Hibernate no valida: no usar `ddl-auto=update`;
-- login inicial ausente: revisar bootstrap sólo en base sin usuarios;
-- backend falla tras bootstrap: apagar la bandera;
+- login inicial de plataforma ausente: verificar que todavía no exista ningún
+  `platform_admins` y ejecutar el job one-shot; no habilitar bootstrap en el
+  backend ordinario;
+- entrega de recovery codes fallida después del commit: conservar el ID del job
+  e invocar el modo `-RecoverJobId ... -ConfirmRecovery`; no repetir bootstrap;
+- login tenant no abre el control plane: es el aislamiento esperado; usar una
+  sesión PLATFORM separada y MFA;
 - tarifa ausente: crear tarifa histórica;
 - readiness DOWN: revisar PostgreSQL, disco y Flyway;
 - Prometheus `401`: revisar cabecera y token exactos;

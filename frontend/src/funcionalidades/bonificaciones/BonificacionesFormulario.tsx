@@ -12,6 +12,7 @@ import type {
   BonificacionRegistroRequest,
   BonificacionModificacionRequest,
 } from "../../types/types";
+import { normalizeMoneyInput } from "../../utils/money";
 
 const initialBonificacionValues: BonificacionRegistroRequest &
   Partial<BonificacionModificacionRequest> = {
@@ -95,16 +96,25 @@ const BonificacionesFormulario: React.FC = () => {
         BonificacionRegistroRequest & Partial<BonificacionModificacionRequest>
       >
     ) => {
+      const payload = {
+        ...values,
+        porcentajeDescuento: normalizeMoneyInput(String(values.porcentajeDescuento ?? "0")) ?? String(values.porcentajeDescuento ?? "0"),
+        valorFijo: normalizeMoneyInput(String(values.valorFijo ?? "0")) ?? String(values.valorFijo ?? "0"),
+      };
       try {
         if (bonificacionId) {
+          const updatePayload: BonificacionModificacionRequest = {
+            ...payload,
+            activo: values.activo ?? true,
+          };
           await bonificacionesApi.actualizarBonificacion(
             bonificacionId,
-            values as BonificacionModificacionRequest
+            updatePayload
           );
           toast.success("Bonificacion actualizada correctamente.");
         } else {
           const nuevaBonificacion = await bonificacionesApi.crearBonificacion(
-            values as BonificacionRegistroRequest
+            payload
           );
           setBonificacionId(nuevaBonificacion.id);
           toast.success("Bonificacion creada correctamente.");

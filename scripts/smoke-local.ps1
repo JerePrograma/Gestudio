@@ -85,6 +85,7 @@ function Get-LocalMigrationManifest {
     return [pscustomobject]@{
         Count = $entries.Count
         LatestVersion = $entries[-1].Version
+        BaselineScript = "B$($entries[-1].Version)__gestudio_production_baseline.sql"
         Scripts = @($entries.Script)
         Entries = $entries
     }
@@ -147,6 +148,47 @@ function Invoke-Docker {
     if (-not [string]::IsNullOrWhiteSpace($text)) { Write-Host (Redact $text) }
 }
 
+function Assert-LocalDockerTarget {
+    if ($script:project -ceq "gestudio-remote-demo") {
+        throw "El proyecto gestudio-remote-demo esta protegido"
+    }
+    if (-not [string]::IsNullOrWhiteSpace(
+            [Environment]::GetEnvironmentVariable("DOCKER_HOST", "Process"))) {
+        throw "DOCKER_HOST esta definido; se rechazan overrides de daemon"
+    }
+    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+        throw "Docker no esta disponible en PATH"
+    }
+
+    $context = Invoke-Docker -Arguments @("context", "show") -Capture -IgnoreDeadline
+    if ([string]::IsNullOrWhiteSpace($context) -or
+        $context -match "(?i)(prod|production|stage|staging|remote|demo)") {
+        throw "El contexto Docker activo es vacio o posee un nombre protegido"
+    }
+
+    $endpointRaw = Invoke-Docker -Arguments @(
+        "context", "inspect", "--format", "{{json .Endpoints.docker.Host}}", $context
+    ) -Capture -IgnoreDeadline
+    try { $endpoint = [string]($endpointRaw | ConvertFrom-Json) }
+    catch { throw "El contexto Docker no devolvio un endpoint valido" }
+    $allowedEndpoints = @(
+        "npipe:////./pipe/docker_engine",
+        "npipe:////./pipe/dockerdesktoplinuxengine",
+        "unix:///var/run/docker.sock"
+    )
+    if ([string]::IsNullOrWhiteSpace($endpoint) -or
+        $endpoint.ToLowerInvariant() -notin $allowedEndpoints) {
+        throw "El contexto Docker no apunta a un endpoint local permitido"
+    }
+
+    $osType = Invoke-Docker -Arguments @(
+        "--context", $context, "info", "--format", "{{.OSType}}"
+    ) -Capture -IgnoreDeadline
+    if ([string]::IsNullOrWhiteSpace($osType) -or $osType.Trim() -cne "linux") {
+        throw "El daemon Docker local debe ser Linux"
+    }
+}
+
 function Invoke-Compose {
     param([Parameter(Mandatory)][string[]] $Arguments, [switch] $Capture, [switch] $IgnoreDeadline)
     $all = @("compose", "--env-file", $script:envFile, "-p", $script:project) + $Arguments
@@ -191,18 +233,29 @@ function Invoke-Sql {
 
 function Assert-FlywayHistory {
     $manifest = Get-LocalMigrationManifest
-    $rows = @((Invoke-Sql "SELECT version::int, script, checksum::text FROM flyway_schema_history WHERE success ORDER BY installed_rank") `
+    $rows = @((Invoke-Sql "SELECT version::int, type, script, checksum::text FROM flyway_schema_history WHERE success ORDER BY installed_rank") `
         -split "`r?`n" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 
-    Assert-Equal -Actual $rows.Count -Expected $manifest.Count -Message "Cantidad de migraciones Flyway inesperada"
-    for ($index = 0; $index -lt $manifest.Count; $index++) {
-        $parts = $rows[$index].Split("|")
-        Assert-Equal -Actual $parts.Count -Expected 3 -Message "Fila Flyway ilegible"
-        Assert-Equal -Actual $parts[0] -Expected ([string]$manifest.Entries[$index].Version) -Message "Versión Flyway inesperada"
-        Assert-Equal -Actual $parts[1] -Expected $manifest.Entries[$index].Script -Message "Script Flyway inesperado"
-        Assert-True -Condition ($parts[2] -match '^-?\d+$') -Message "Migración Flyway sin checksum"
+    $baselineHistory = $rows.Count -eq 1 -and $rows[0].Split("|")[1] -eq "SQL_BASELINE"
+    if ($baselineHistory) {
+        $parts = $rows[0].Split("|")
+        Assert-Equal -Actual $parts.Count -Expected 4 -Message "Fila baseline Flyway ilegible"
+        Assert-Equal -Actual $parts[0] -Expected ([string]$manifest.LatestVersion) -Message "Versión baseline Flyway inesperada"
+        Assert-Equal -Actual $parts[2] -Expected $manifest.BaselineScript -Message "Script baseline Flyway inesperado"
+        Assert-True -Condition ($parts[3] -match '^-?\d+$') -Message "Baseline Flyway sin checksum"
     }
-    Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM flyway_schema_history WHERE NOT success OR version::int NOT BETWEEN 1 AND $($manifest.LatestVersion)") `
+    else {
+        Assert-Equal -Actual $rows.Count -Expected $manifest.Count -Message "Cantidad de migraciones Flyway inesperada"
+        for ($index = 0; $index -lt $manifest.Count; $index++) {
+        $parts = $rows[$index].Split("|")
+        Assert-Equal -Actual $parts.Count -Expected 4 -Message "Fila Flyway ilegible"
+        Assert-Equal -Actual $parts[0] -Expected ([string]$manifest.Entries[$index].Version) -Message "Versión Flyway inesperada"
+        Assert-Equal -Actual $parts[1] -Expected "SQL" -Message "Tipo Flyway inesperado"
+        Assert-Equal -Actual $parts[2] -Expected $manifest.Entries[$index].Script -Message "Script Flyway inesperado"
+        Assert-True -Condition ($parts[3] -match '^-?\d+$') -Message "Migración Flyway sin checksum"
+        }
+    }
+    Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM flyway_schema_history WHERE NOT success OR version::int > $($manifest.LatestVersion)") `
         -Expected "0" -Message "Hay migraciones fallidas o inesperadas"
 
     return $manifest
@@ -359,7 +412,7 @@ $frontendOrigin = "http://127.0.0.1:$frontendPort"
 try {
     Push-Location $repoRoot
     try {
-        if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { throw "Docker no esta disponible en PATH" }
+        Assert-LocalDockerTarget
         Invoke-Docker -Arguments @("info", "--format", "{{.ServerVersion}}") | Out-Null
         Invoke-Docker -Arguments @("compose", "version") | Out-Null
         Pass "Docker disponible"

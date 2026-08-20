@@ -1,7 +1,7 @@
 # Datos y persistencia
 
 > Estado: PARCIAL  
-> Última revisión: 2026-07-24  
+> Última revisión: 2026-08-13
 > Fuentes principales: entidades JPA, migraciones Flyway, `AGENTS.md`, runbooks
 
 ## Tecnología
@@ -9,6 +9,12 @@
 PostgreSQL 15, Spring Data JPA/Hibernate y Flyway. `open-in-view=false`; el mapeo a DTO debe ocurrir dentro del caso de uso. `ddl-auto=validate` es obligatorio; no usar `update`.
 
 ## Migraciones
+
+El estado actual conserva V1-V11 inmutables, agrega V12 forward-only para
+upgrades y B12 como baseline fresh equivalente. Fresh aplica B12 y termina con
+32 permisos de referencia y cero tenants/usuarios/memberships/roles/admins/datos
+funcionales; una historia V1-V11 aplica V12 sin borrar ni reinterpretar filas.
+`baselineOnMigrate` permanece deshabilitado.
 
 - Baseline canónico: `V1__canonical_schema.sql`.
 - V4: `V4__cargo_liquidations_and_events.sql`.

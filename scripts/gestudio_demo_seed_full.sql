@@ -24,7 +24,6 @@ DO $$
 DECLARE
     required_table text;
     missing_tables text[] := ARRAY[]::text[];
-    full_role_count integer;
 BEGIN
     IF (SELECT anchor_date FROM _demo_config) NOT BETWEEN DATE '2020-01-01' AND DATE '2099-12-31' THEN
         RAISE EXCEPTION 'demo_anchor_date fuera del rango admitido';
@@ -56,9 +55,7 @@ BEGIN
         RAISE EXCEPTION 'Faltan tablas requeridas: %', array_to_string(missing_tables, ', ');
     END IF;
 
-    IF (SELECT count(*) FROM public.flyway_schema_history WHERE success) <>
-            (SELECT expected_flyway_count FROM _demo_config)
-       OR (SELECT COALESCE(max(version::integer), 0) FROM public.flyway_schema_history WHERE success)
+    IF (SELECT COALESCE(max(version::integer), 0) FROM public.flyway_schema_history WHERE success)
             <> (SELECT expected_flyway_latest FROM _demo_config)
        OR EXISTS (SELECT 1 FROM public.flyway_schema_history WHERE NOT success)
        OR EXISTS (
@@ -66,15 +63,116 @@ BEGIN
             FROM public.flyway_schema_history
             WHERE lower(script) LIKE '%demo%seed%'
                OR lower(script) LIKE '%seed%demo%'
+       )
+       OR NOT (
+            (
+                (SELECT count(*) FROM public.flyway_schema_history WHERE success) =
+                    (SELECT expected_flyway_count FROM _demo_config)
+                AND NOT EXISTS (
+                    SELECT 1 FROM public.flyway_schema_history
+                    WHERE success AND (type <> 'SQL' OR script !~ '^V[1-9][0-9]*__.+\.sql$')
+                )
+            )
+            OR (
+                (SELECT count(*) FROM public.flyway_schema_history WHERE success) = 1
+                AND EXISTS (
+                    SELECT 1 FROM public.flyway_schema_history
+                    WHERE success
+                      AND version::integer = (SELECT expected_flyway_latest FROM _demo_config)
+                      AND type = 'SQL_BASELINE'
+                      AND script = 'B' || (SELECT expected_flyway_latest FROM _demo_config)
+                                   || '__gestudio_production_baseline.sql'
+                )
+            )
        ) THEN
-        RAISE EXCEPTION 'El historial Flyway no coincide con las migraciones productivas esperadas (cantidad %, última V%)',
-            (SELECT expected_flyway_count FROM _demo_config),
+        RAISE EXCEPTION 'El historial Flyway no es una cadena V completa ni el baseline B vigente (ultima V%)',
             (SELECT expected_flyway_latest FROM _demo_config);
     END IF;
 
     IF (SELECT count(*) FROM public.permisos WHERE activo AND sistema) <> 32 THEN
         RAISE EXCEPTION 'El catálogo productivo no contiene 32 permisos activos de sistema';
     END IF;
+END
+$$;
+
+-- Fixture tenant/RBAC explícita. B12 no crea tenants ni roles funcionales;
+-- el demo descartable los materializa fuera de Flyway antes de cargar negocio.
+INSERT INTO public.tenants (id, code, name, status)
+VALUES ((SELECT tenant_id FROM _demo_config), 'gestudio-demo', 'Gestudio Demo', 'ACTIVE')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.roles
+    (tenant_id, descripcion, activo, codigo, nombre, descripcion_funcional, sistema, editable)
+VALUES
+    ((SELECT tenant_id FROM _demo_config), 'SUPERADMIN', TRUE, 'SUPERADMIN', 'Superadministración',
+     'Administración técnica completa del sistema', TRUE, FALSE),
+    ((SELECT tenant_id FROM _demo_config), 'DIRECCION', TRUE, 'DIRECCION', 'Dirección',
+     'Dirección operativa y administrativa', TRUE, TRUE),
+    ((SELECT tenant_id FROM _demo_config), 'ADMINISTRADOR', TRUE, 'ADMINISTRADOR', 'Administrador',
+     'Rol legacy compatible con la matriz de Dirección', TRUE, TRUE),
+    ((SELECT tenant_id FROM _demo_config), 'SECRETARIA', TRUE, 'SECRETARIA', 'Secretaría',
+     'Operación académica y cobros de Secretaría', TRUE, TRUE),
+    ((SELECT tenant_id FROM _demo_config), 'CAJA', TRUE, 'CAJA', 'Caja',
+     'Consulta y registro de cobros en Caja', TRUE, TRUE),
+    ((SELECT tenant_id FROM _demo_config), 'PROFESOR', FALSE, 'PROFESOR', 'Profesor',
+     'Rol diferido hasta implementar ownership por profesor', TRUE, FALSE)
+ON CONFLICT (tenant_id, codigo) DO NOTHING;
+
+CREATE TEMP TABLE _demo_role_matrix (
+    role_code VARCHAR(50) NOT NULL,
+    permission_code VARCHAR(100) NOT NULL,
+    PRIMARY KEY (role_code, permission_code)
+) ON COMMIT DROP;
+
+INSERT INTO _demo_role_matrix (role_code, permission_code)
+SELECT 'SUPERADMIN', codigo FROM public.permisos WHERE activo AND sistema
+UNION ALL
+SELECT role_code, codigo
+FROM (VALUES ('DIRECCION'), ('ADMINISTRADOR')) base(role_code)
+CROSS JOIN public.permisos
+WHERE activo AND sistema AND codigo <> 'PERM_ROLES_ADMIN';
+
+INSERT INTO _demo_role_matrix (role_code, permission_code)
+VALUES
+    ('SECRETARIA', 'PERM_APP_ACCESO'),
+    ('SECRETARIA', 'PERM_PAGOS_REGISTRAR'),
+    ('SECRETARIA', 'PERM_CREDITOS_CONSUMIR'),
+    ('SECRETARIA', 'PERM_CONDICIONES_ECONOMICAS_ADMIN'),
+    ('SECRETARIA', 'PERM_ALUMNOS_LEER'),
+    ('SECRETARIA', 'PERM_ALUMNOS_ADMIN'),
+    ('SECRETARIA', 'PERM_INSCRIPCIONES_LEER'),
+    ('SECRETARIA', 'PERM_INSCRIPCIONES_ADMIN'),
+    ('SECRETARIA', 'PERM_DISCIPLINAS_LEER'),
+    ('SECRETARIA', 'PERM_PROFESORES_LEER'),
+    ('SECRETARIA', 'PERM_ASISTENCIAS_LEER'),
+    ('SECRETARIA', 'PERM_ASISTENCIAS_REGISTRAR'),
+    ('SECRETARIA', 'PERM_PAGOS_LEER'),
+    ('SECRETARIA', 'PERM_CAJA_LEER'),
+    ('SECRETARIA', 'PERM_STOCK_LEER'),
+    ('SECRETARIA', 'PERM_REPORTES_LEER'),
+    ('SECRETARIA', 'PERM_CONFIG_LEER'),
+    ('CAJA', 'PERM_APP_ACCESO'),
+    ('CAJA', 'PERM_ALUMNOS_LEER'),
+    ('CAJA', 'PERM_PAGOS_LEER'),
+    ('CAJA', 'PERM_PAGOS_REGISTRAR'),
+    ('CAJA', 'PERM_CAJA_LEER'),
+    ('CAJA', 'PERM_STOCK_LEER'),
+    ('CAJA', 'PERM_CONFIG_LEER'),
+    ('CAJA', 'PERM_CREDITOS_CONSUMIR');
+
+INSERT INTO public.rol_permisos (tenant_id, rol_id, permiso_id)
+SELECT (SELECT tenant_id FROM _demo_config), r.id, p.id
+FROM _demo_role_matrix expected
+JOIN public.roles r
+  ON r.tenant_id = (SELECT tenant_id FROM _demo_config)
+ AND r.codigo = expected.role_code
+JOIN public.permisos p ON p.codigo = expected.permission_code
+ON CONFLICT (rol_id, permiso_id) DO NOTHING;
+
+DO $$
+DECLARE
+    full_role_count integer;
+BEGIN
 
     SELECT count(*)
     INTO full_role_count

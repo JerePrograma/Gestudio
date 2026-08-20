@@ -12,6 +12,9 @@ build/
 # Node.js / Vite / Wrangler
 node_modules/
 /frontend/dist/
+/frontend/frontend-sbom.cdx.json
+/frontend/coverage/
+/frontend/quality-reports/
 /frontend/.wrangler/
 npm-debug.log*
 yarn-debug.log*
@@ -85,7 +88,9 @@ coverage/
 lcov-report/
 playwright-report/
 test-results/
+/frontend/e2e/tsconfig.tsbuildinfo
 *.trace.zip
+/artifacts/e2e/
 # Manual visual generado
 artifacts/manual/
 docs/manual-usuarios/screenshots/

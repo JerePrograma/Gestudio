@@ -76,12 +76,25 @@ jobs:
           POSTGRES_PASSWORD: ci-not-a-production-secret
           POSTGRES_APP_USER: gestudio_ci_runtime
           POSTGRES_APP_PASSWORD: ci-not-a-production-runtime-secret
+          POSTGRES_CONTROL_USER: gestudio_ci_control
+          POSTGRES_CONTROL_PASSWORD: ci-not-a-production-control-secret
           BACKEND_IMAGE: example.invalid/gestudio-backend:${{ github.sha }}
           FRONTEND_IMAGE: example.invalid/gestudio-frontend:${{ github.sha }}
           JWT_SECRET: ci-only-jwt-secret-with-at-least-32-characters
           JWT_ISSUER: gestudio-ci
           JWT_ACCESS_TOKEN_TTL: PT15M
           JWT_REFRESH_TOKEN_TTL: P7D
+          JWT_PLATFORM_AUDIENCE: gestudio-ci-platform-web
+          APP_PLATFORM_ACCESS_TOKEN_TTL: PT5M
+          APP_PLATFORM_REFRESH_TOKEN_TTL: PT8H
+          APP_PLATFORM_STEP_UP_TTL: PT5M
+          APP_PLATFORM_MFA_ENCRYPTION_KEY: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+          APP_PLATFORM_MFA_KEY_VERSION: "1"
+          APP_PLATFORM_REFRESH_COOKIE_NAME: gestudio_ci_platform_refresh
+          APP_PLATFORM_REFRESH_COOKIE_SECURE: "true"
+          APP_PLATFORM_REFRESH_COOKIE_SAME_SITE: Strict
+          APP_PLATFORM_REFRESH_COOKIE_DOMAIN: ""
+          APP_PLATFORM_REFRESH_COOKIE_PATH: /api/platform/auth
           APP_EMAIL_ENABLED: "false"
           APP_EMAIL_PROVIDER: NOOP
           APP_EMAIL_DRY_RUN: "true"
@@ -100,7 +113,20 @@ jobs:
           POSTGRES_PASSWORD: ci-remote-database-password
           POSTGRES_APP_USER: gestudio_remote_demo_runtime
           POSTGRES_APP_PASSWORD: ci-remote-runtime-database-password
+          POSTGRES_CONTROL_USER: gestudio_remote_demo_control
+          POSTGRES_CONTROL_PASSWORD: ci-remote-control-database-password
           JWT_SECRET: ci-remote-jwt-secret-with-at-least-32-characters
+          JWT_PLATFORM_AUDIENCE: gestudio-remote-demo-platform-web
+          APP_PLATFORM_ACCESS_TOKEN_TTL: PT5M
+          APP_PLATFORM_REFRESH_TOKEN_TTL: PT8H
+          APP_PLATFORM_STEP_UP_TTL: PT5M
+          APP_PLATFORM_MFA_ENCRYPTION_KEY: YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODk=
+          APP_PLATFORM_MFA_KEY_VERSION: "1"
+          APP_PLATFORM_REFRESH_COOKIE_NAME: gestudio_remote_demo_platform_refresh
+          APP_PLATFORM_REFRESH_COOKIE_SECURE: "true"
+          APP_PLATFORM_REFRESH_COOKIE_SAME_SITE: Strict
+          APP_PLATFORM_REFRESH_COOKIE_DOMAIN: ""
+          APP_PLATFORM_REFRESH_COOKIE_PATH: /api/platform/auth
           APP_CORS_ALLOWED_ORIGINS: https://app.example.invalid
           APP_OBSERVABILITY_METRICS_TOKEN: ci-remote-independent-metrics-token
         run: |
@@ -270,11 +296,17 @@ jobs:
         run: |
           set -euo pipefail
           compose_sha="$(sha256sum docker-compose.yml | cut -d' ' -f1)"
-          expected_flyway="$(find backend/src/main/resources/db/migration -maxdepth 1 -type f -name 'V*__*.sql' -printf '%f\n' | sed -E 's/^V([0-9]+)__.*/\1/' | sort -n | tail -n 1)"
+          expected_versioned="$(find backend/src/main/resources/db/migration -maxdepth 1 -type f -name 'V*__*.sql' -printf '%f\n' | sed -E 's/^V([0-9]+)__.*/\1/' | sort -n | tail -n 1)"
+          expected_baseline="$(find backend/src/main/resources/db/migration -maxdepth 1 -type f -name "B${expected_versioned}__*.sql" -printf '%f\n')"
+          test "$(printf '%s\n' "$expected_baseline" | grep -c .)" -eq 1
           test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' gestudio-backend:${{ github.sha }})" = "$GITHUB_SHA"
           test "$(docker image inspect --format '{{ index .Config.Labels "org.gestudio.compose.sha256" }}' gestudio-backend:${{ github.sha }})" = "$compose_sha"
           test "$(docker image inspect --format '{{ index .Config.Labels "org.gestudio.source.sha256" }}' gestudio-backend:${{ github.sha }})" = "$(git rev-parse HEAD:backend)"
-          test "$(docker run --rm --network none --entrypoint cat gestudio-backend:${{ github.sha }} /app/build-metadata/flyway-latest)" = "$expected_flyway"
+          test "$(docker run --rm --network none --entrypoint cat gestudio-backend:${{ github.sha }} /app/build-metadata/flyway-latest)" = "$expected_versioned"
+          test "$(docker run --rm --network none --entrypoint cat gestudio-backend:${{ github.sha }} /app/build-metadata/flyway-versioned-latest)" = "$expected_versioned"
+          test "$(docker run --rm --network none --entrypoint cat gestudio-backend:${{ github.sha }} /app/build-metadata/flyway-baseline-script)" = "$expected_baseline"
+          test "$(docker image inspect --format '{{ index .Config.Labels "org.gestudio.flyway.versioned-metadata" }}' gestudio-backend:${{ github.sha }})" = "/app/build-metadata/flyway-versioned-latest"
+          test "$(docker image inspect --format '{{ index .Config.Labels "org.gestudio.flyway.baseline-metadata" }}' gestudio-backend:${{ github.sha }})" = "/app/build-metadata/flyway-baseline-script"
           test "$(docker run --rm --network none --entrypoint cat gestudio-backend:${{ github.sha }} /app/build-metadata/health-contract)" = "actuator-readiness-v1"
           test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' gestudio-frontend:${{ github.sha }})" = "$GITHUB_SHA"
           test "$(docker image inspect --format '{{ index .Config.Labels "org.gestudio.compose.sha256" }}' gestudio-frontend:${{ github.sha }})" = "$compose_sha"

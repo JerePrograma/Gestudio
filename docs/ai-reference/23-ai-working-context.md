@@ -1,12 +1,19 @@
 # Contexto compacto para IA
 
 > Estado: CONFIRMADO  
-> Última revisión: 2026-07-26  
+> Última revisión: 2026-08-13
 > Fuentes principales: síntesis de la base documental, código e issues vigentes
 
 ## Sistema
 
 Gestudio es un monorepo y monolito modular para academia: alumnos, profesores, disciplinas, inscripciones, asistencia, tarifas, condiciones, matrículas, mensualidades, cargos, pagos, crédito, caja, egresos, stock, recibos, reportes, notificaciones y RBAC.
+
+El sistema distingue dos scopes no intercambiables: TENANT para operación
+funcional y PLATFORM para el control plane SUPERADMIN. PLATFORM usa
+`platform_admins`, MFA/step-up, sesiones/cookie propias y un datasource
+PostgreSQL dedicado sin `SUPERUSER`/`BYPASSRLS`. Fresh usa B12 sin seed
+funcional; upgrades V1-V11 aplican V12 de forma preservativa. Antes de actuar,
+leer el `GESTUDIO_FINALIZACION_SUPERADMIN_MEGAPROMPT.md` raíz.
 
 ## Stack
 

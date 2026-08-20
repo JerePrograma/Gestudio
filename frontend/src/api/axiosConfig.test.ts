@@ -9,8 +9,13 @@ import api from "./axiosConfig";
 import { PERMISSIONS } from "../config/permissions";
 import {
   getAccessToken,
+  getAuthProfile,
+  getAuthSession,
   refreshSession,
+  clearAuthSession,
   setAuthSession,
+  setPlatformAuthSession,
+  subscribeAuthSession,
 } from "./authSession";
 import { resetTenantClientState } from "../hooks/queryClient";
 
@@ -35,6 +40,13 @@ const user = {
   activo: true,
   tenantActivo: tenant,
   tenantsDisponibles: [tenant],
+};
+const platformProfile = {
+  id: 99,
+  nombreUsuario: "platform-admin",
+  authorities: ["PLATFORM_SUPERADMIN"],
+  mfaEnabled: true,
+  scope: "PLATFORM" as const,
 };
 
 function response(
@@ -144,6 +156,145 @@ describe("interceptor de autenticación", () => {
       {},
       expect.objectContaining({ withCredentials: true }),
     );
+  });
+
+  it("serializa el refresh PLATFORM en su endpoint y conserva el scope", async () => {
+    setPlatformAuthSession("old-platform-access", platformProfile);
+    const refresh = vi.spyOn(axios, "post").mockResolvedValue({
+      data: {
+        accessToken: "new-platform-access",
+        refreshExpiresAt: "2030-01-01T00:00:00Z",
+        profile: platformProfile,
+      },
+    });
+    const adapter = async (config: InternalAxiosRequestConfig) => {
+      const authorization = AxiosHeaders.from(config.headers).get("Authorization");
+      if (authorization === "Bearer new-platform-access") {
+        return response(config, 200, { ok: true });
+      }
+      return rejectWith(401, config);
+    };
+
+    await expect(Promise.all([
+      api.get("/platform/tenants", { adapter }),
+      api.get("/platform/admins", { adapter }),
+    ])).resolves.toHaveLength(2);
+
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(refresh).toHaveBeenCalledWith(
+      expect.stringContaining("/platform/auth/refresh"),
+      {},
+      expect.objectContaining({ withCredentials: true }),
+    );
+    expect(getAuthSession()).toMatchObject({ scope: "PLATFORM", accessToken: "new-platform-access" });
+  });
+
+  it("no envía ni refresca una sesión TENANT contra el control plane", async () => {
+    const refresh = vi.spyOn(axios, "post");
+
+    await expect(api.get("/platform/tenants", {
+      adapter: async (config) => {
+        expect(AxiosHeaders.from(config.headers).get("Authorization")).toBeUndefined();
+        return rejectWith(401, config);
+      },
+    })).rejects.toBeInstanceOf(AxiosError);
+
+    expect(refresh).not.toHaveBeenCalled();
+    expect(getAuthSession().scope).toBe("TENANT");
+  });
+
+  it("mantiene separados los tokens y publica sólo cambios de sesión válidos", () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribeAuthSession(listener);
+
+    expect(() => setPlatformAuthSession("   ", platformProfile)).toThrow(
+      "Token de acceso inválido",
+    );
+    expect(listener).not.toHaveBeenCalled();
+
+    setPlatformAuthSession("platform-access", platformProfile);
+    expect(getAccessToken()).toBe("platform-access");
+    expect(getAccessToken("PLATFORM")).toBe("platform-access");
+    expect(getAccessToken("TENANT")).toBeNull();
+    expect(getAuthProfile()).toEqual(platformProfile);
+    expect(listener).toHaveBeenLastCalledWith(expect.objectContaining({
+      scope: "PLATFORM",
+      accessToken: "platform-access",
+    }));
+
+    unsubscribe();
+    setAuthSession("tenant-access", user);
+    expect(listener).toHaveBeenCalledOnce();
+  });
+
+  it("infiere el refresh PLATFORM desde la ruta y rechaza cambiar su identidad", async () => {
+    window.history.replaceState({}, "", "/platform/login");
+    const differentProfile = { ...platformProfile, id: 100 };
+    clearAuthSession();
+    vi.spyOn(axios, "post").mockResolvedValue({
+      data: {
+        accessToken: "cross-identity-access",
+        refreshExpiresAt: "2030-01-01T00:00:00Z",
+        profile: platformProfile,
+      },
+    });
+
+    await expect(refreshSession()).resolves.toMatchObject({
+      scope: "PLATFORM",
+      accessToken: "cross-identity-access",
+    });
+    expect(axios.post).toHaveBeenCalledWith(
+      expect.stringContaining("/platform/auth/refresh"),
+      {},
+      expect.anything(),
+    );
+
+    setPlatformAuthSession("old-platform-access", platformProfile);
+    vi.mocked(axios.post).mockResolvedValueOnce({
+      data: {
+        accessToken: "cross-identity-access",
+        refreshExpiresAt: "2030-01-01T00:00:00Z",
+        profile: differentProfile,
+      },
+    });
+    await expect(refreshSession("PLATFORM")).rejects.toThrow(
+      "El refresh intentó cambiar la identidad de plataforma",
+    );
+    expect(getAccessToken()).toBe("old-platform-access");
+  });
+
+  it("refresca un 401 cuyo Authorization coincide y reintenta con el token nuevo", async () => {
+    vi.spyOn(axios, "post").mockResolvedValue({
+      data: { accessToken: "new-access", usuario: user },
+    });
+    let attempts = 0;
+
+    const result = await api.get("/private", {
+      adapter: async (config) => {
+        attempts += 1;
+        const authorization = AxiosHeaders.from(config.headers).get("Authorization");
+        if (attempts === 1) {
+          expect(authorization).toBe("Bearer old-access");
+          return rejectWith(401, config);
+        }
+        expect(authorization).toBe("Bearer new-access");
+        return response(config, 200, { ok: true });
+      },
+    });
+
+    expect(result.data).toEqual({ ok: true });
+    expect(attempts).toBe(2);
+  });
+
+  it("propaga una cancelación del refresh sin limpiar la sesión", async () => {
+    vi.spyOn(axios, "post").mockRejectedValue(new axios.CanceledError("scope rotated"));
+
+    await expect(api.get("/private", {
+      adapter: async (config) => rejectWith(401, config),
+    })).rejects.toSatisfy(axios.isCancel);
+
+    expect(getAccessToken()).toBe("old-access");
+    expect(localStorage.getItem("accessToken")).toBe("legacy-access");
   });
 
   it("rechaza un refresh que intente cambiar el tenant de la sesión", async () => {

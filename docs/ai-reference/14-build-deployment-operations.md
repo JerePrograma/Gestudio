@@ -1,12 +1,19 @@
 # Build, despliegue y operaciones
 
 > Estado: CONFIRMADO  
-> Última revisión: 2026-07-24  
+> Última revisión: 2026-08-13
 > Fuentes principales: Dockerfiles, Compose, workflows y runbooks
 
 ## Build
 
 Backend: Maven Wrapper produce artefacto Spring Boot. Frontend: TypeScript + Vite + generación de `_headers`. Imágenes Docker backend/frontend se construyen non-root y contienen metadata de revisión, hash Compose, hash de fuente y versión Flyway.
+
+El deploy actual configura logins runtime separados `gestudio_app` y
+`gestudio_platform`; Flyway usa su propia credencial. El primer administrador se
+crea mediante `scripts/ops/bootstrap-platform-admin.ps1`, nunca durante el
+arranque ordinario. Los gates permanentes incluyen Quality Fortress,
+security/supply-chain y E2E Playwright/axe; sus resultados sólo valen para el
+SHA que los produjo.
 
 ## CI principal
 

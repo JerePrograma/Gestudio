@@ -9,12 +9,13 @@ import type {
   RecargoRegistroRequest,
 } from "../../types/types";
 import { recargoEsquema } from "../../validaciones/recargoEsquema";
+import { normalizeMoneyInput } from "../../utils/money";
 
 // Valores iniciales
 const initialRecargoValues: RecargoRegistroRequest = {
   descripcion: "",
   porcentaje: "0",
-  valorFijo: undefined,
+  valorFijo: "0",
   diaDelMesAplicacion: 1, // ✅ Se inicializa en 1
 };
 
@@ -39,7 +40,7 @@ const RecargosFormulario: React.FC = () => {
       setFormValues({
         descripcion: recargo.descripcion,
         porcentaje: recargo.porcentaje,
-        valorFijo: recargo.valorFijo ?? undefined,
+        valorFijo: recargo.valorFijo ?? "0",
         diaDelMesAplicacion: recargo.diaDelMesAplicacion,
       });
       setRecargoId(recargo.id);
@@ -61,12 +62,18 @@ const RecargosFormulario: React.FC = () => {
     values: RecargoRegistroRequest,
     { setSubmitting }: FormikHelpers<RecargoRegistroRequest>
   ) => {
+    const payload: RecargoRegistroRequest = {
+      ...values,
+      porcentaje: normalizeMoneyInput(String(values.porcentaje)) ?? String(values.porcentaje),
+      valorFijo: normalizeMoneyInput(String(values.valorFijo ?? "0")) ?? String(values.valorFijo ?? "0"),
+      diaDelMesAplicacion: Number(values.diaDelMesAplicacion),
+    };
     try {
       if (recargoId) {
-        await recargosApi.actualizarRecargo(recargoId, values);
+        await recargosApi.actualizarRecargo(recargoId, payload);
         toast.success("Recargo actualizado correctamente.");
       } else {
-        const nuevoRecargo = await recargosApi.crearRecargo(values);
+        const nuevoRecargo = await recargosApi.crearRecargo(payload);
         setRecargoId(nuevoRecargo.id);
         toast.success("Recargo creado correctamente.");
       }

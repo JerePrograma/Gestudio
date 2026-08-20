@@ -13,6 +13,9 @@ import org.springframework.core.env.Environment;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.nio.charset.StandardCharsets;
+import java.util.UUID;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.matchesPattern;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -86,10 +89,14 @@ class ObservabilityPostgreSqlTest extends PostgreSqlIntegrationTest {
 
     @Test
     void requestIdSePropagaOSeReemplazaAntesDeResponder401() throws Exception {
+        String clientRequestId = "client-request-123";
+        String canonicalClientRequestId = UUID.nameUUIDFromBytes(
+                clientRequestId.getBytes(StandardCharsets.UTF_8)).toString();
         mockMvc.perform(get("/api/alumnos")
-                        .header(RequestCorrelationFilter.HEADER_NAME, "client-request-123"))
+                        .header(RequestCorrelationFilter.HEADER_NAME, clientRequestId))
                 .andExpect(status().isUnauthorized())
-                .andExpect(header().string(RequestCorrelationFilter.HEADER_NAME, "client-request-123"));
+                .andExpect(header().string(
+                        RequestCorrelationFilter.HEADER_NAME, canonicalClientRequestId));
 
         mockMvc.perform(get("/api/alumnos"))
                 .andExpect(status().isUnauthorized())

@@ -99,19 +99,16 @@ class ApplicationRoleAuthenticationPostgreSqlTest {
     private final AutenticacionService autenticacion;
     private final SecurityFilter securityFilter;
     private final PasswordEncoder passwordEncoder;
-    private final SuperadminBootstrapService bootstrap;
 
     @Autowired
     ApplicationRoleAuthenticationPostgreSqlTest(
             AutenticacionService autenticacion,
             SecurityFilter securityFilter,
-            PasswordEncoder passwordEncoder,
-            SuperadminBootstrapService bootstrap
+            PasswordEncoder passwordEncoder
     ) {
         this.autenticacion = autenticacion;
         this.securityFilter = securityFilter;
         this.passwordEncoder = passwordEncoder;
-        this.bootstrap = bootstrap;
     }
 
     @BeforeEach
@@ -227,11 +224,6 @@ class ApplicationRoleAuthenticationPostgreSqlTest {
 
         assertApplicationRolesAreRestrictedAndDoNotOwnSchema();
         assertConnectionReuseDoesNotLeakTenant();
-        assertThat(bootstrap.bootstrap(
-                "app-role-bootstrap",
-                "bootstrap-role-test-password"
-        ).getNombreUsuario()).isEqualTo("app-role-bootstrap");
-
         assertThatThrownBy(() -> autenticacion.login(
                 new LoginRequest(LOGIN_USERNAME, LOGIN_PASSWORD, INVALID_TENANT_ID),
                 "integration-test",

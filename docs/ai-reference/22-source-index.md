@@ -1,7 +1,7 @@
 # Índice de fuentes
 
 > Estado: CONFIRMADO  
-> Última revisión: 2026-07-26  
+> Última revisión: 2026-08-13
 > Fuentes principales: trazabilidad de esta base
 
 | Tema | Documento | Fuente/símbolos | Certeza |
@@ -14,6 +14,9 @@
 | Rutas UI | 07, 25 | `routes.ts`, `AppRouter.tsx` | CONFIRMADO |
 | API total | 08 | `SecurityHttpIntegrationTest.discoverEndpoints`, `PageResponse` | CONFIRMADO |
 | RBAC | 10, 25 | `SecurityConfigurations`, `PermissionCodes` | CONFIRMADO |
+| Control plane | ADR-0009, runbook | `gestudio.platform`, `/api/platform/**`, `frontend/src/platform` | IMPLEMENTED_NOT_RUN |
+| Threat model | threat model control plane | auth scopes, MFA, step-up, RLS, audit | IMPLEMENTED_NOT_RUN |
+| Release vigente | megaprompt raíz | Estado vivo, matriz y regla de invalidación | CONFIRMADO |
 | Login/refresh | 05, 10 | `AutenticacionControlador`, `AutenticacionService` | CONFIRMADO |
 | Usuarios | 08, 25 | `UsuarioControlador` | CONFIRMADO |
 | Roles/permisos | 08, 25 | `RolControlador`, `PermisoControlador` | CONFIRMADO |

@@ -37,6 +37,23 @@ Testcontainers, Flyway desde cero y desde estados de actualización soportados,
 concurrencia, planes de consulta y contratos de arquitectura. Los reportes
 JaCoCo se generan bajo `backend/target/site/jacoco/`; `target/` no se versiona.
 
+Los gates de métricas se ejecutan mediante el orquestador permanente:
+
+```powershell
+.\scripts\codex\quality-fortress.ps1 -Scope BackendCoverage
+.\scripts\codex\quality-fortress.ps1 -Scope BackendDiffCoverage -DiffBase origin/main
+.\scripts\codex\quality-fortress.ps1 -Scope BackendMutationGlobal
+.\scripts\codex\quality-fortress.ps1 -Scope BackendMutationCritical
+.\scripts\codex\quality-fortress.ps1 -Scope BackendStatic -DiffBase origin/main
+```
+
+`BackendCoverage` exige 90% líneas/85% ramas globales, 95%/90% en familias
+críticas y 95% de ramas en autorización. El diff exige 90%. PIT exige 80% de
+mutación y 85% de fuerza global, y 90%/90% en capacidades críticas. Los
+verificadores rechazan artefactos ausentes, viejos, vacíos, inconsistentes o
+generados fuera del marcador de ejecución. Coverage, Gherkin y PIT incluyen
+tests PostgreSQL: Docker/Testcontainers son obligatorios.
+
 Las pruebas de confinamiento de recibos crean enlaces simbólicos. En Windows
 pueden omitirse únicamente cuando el sistema niega el privilegio de crearlos;
 en Linux/GitHub Actions deben ejecutarse y pasar. El reporte final debe indicar
@@ -64,6 +81,47 @@ finally {
 El script `npm test` ejecuta primero los contratos Node de Nginx y después
 Vitest. El build usa las variables Vite documentadas y su salida queda en
 `frontend/dist/`, que tampoco se versiona.
+
+Los gates de cobertura y análisis frontend son:
+
+```powershell
+.\scripts\codex\quality-fortress.ps1 -Scope FrontendCoverage
+.\scripts\codex\quality-fortress.ps1 -Scope FrontendDiffCoverage -DiffBase origin/main
+.\scripts\codex\quality-fortress.ps1 -Scope FrontendStatic -DiffBase origin/main
+```
+
+El release exige 85% líneas, 80% ramas y 85% sentencias globales, además de 90%
+de líneas para servicios/guards críticos. El diff calcula hunks ejecutables
+reales y exige 90% en líneas, sentencias y ramas; los cambios sólo de tipos se
+clasifican explícitamente. Un inventario independiente impide que una fuente
+ejecutable sin mapa se cuente como cubierta. La duplicación se mide sobre
+producto, excluye tests de forma explícita y falla al superar 2%.
+
+## Supply chain
+
+```powershell
+.\scripts\codex\quality-fortress.ps1 -Scope SupplyChain
+```
+
+Este scope ejecuta ambos `npm audit`, OWASP Dependency-Check backend, SBOM
+CycloneDX backend/frontend y la policy de Actions con referencias inmutables.
+CodeQL y TruffleHog se ejecutan en el workflow de seguridad del SHA publicado;
+un análisis local parcial no los sustituye.
+
+## E2E del control plane
+
+El runner canónico es:
+
+```powershell
+pwsh -NoProfile -File .\scripts\e2e\run-control-plane.ps1
+```
+
+El runner crea un proyecto Compose efímero con credenciales sintéticas, prueba
+B12 fresh, bootstrap one-shot, MFA/step-up, tenants Alpha/Beta, RLS adversarial,
+suspensión/reactivación, auditoría exacta y axe en Chromium, y limpia sólo los
+recursos propios. No debe apuntarse a `gestudio-remote-demo` ni a una DB
+persistente. `npm run e2e:typecheck` y `npm run e2e:list` validan el arnés, pero
+no constituyen evidencia browser.
 
 ## Validación integrada
 

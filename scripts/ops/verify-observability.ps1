@@ -69,6 +69,45 @@ function Invoke-Native {
     return $code
 }
 
+function Assert-LocalDockerTarget {
+    param([Parameter(Mandatory)][string] $ProjectName)
+
+    if ($ProjectName -ceq 'gestudio-remote-demo') {
+        throw 'El proyecto gestudio-remote-demo está protegido.'
+    }
+    if (-not [string]::IsNullOrWhiteSpace($env:DOCKER_HOST)) {
+        throw 'DOCKER_HOST no está permitido para este drill descartable.'
+    }
+    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+        throw 'Docker CLI no está disponible.'
+    }
+
+    $context = Invoke-Native -FilePath 'docker' -Arguments @('context', 'show') -Capture
+    if ([string]::IsNullOrWhiteSpace($context) -or $context -match '(?i)(prod|production|stage|staging|remote|demo)') {
+        throw "El contexto Docker '$context' no está permitido para este drill descartable."
+    }
+    $endpointJson = Invoke-Native -FilePath 'docker' -Arguments @(
+        'context', 'inspect', $context, '--format', '{{json .Endpoints.docker.Host}}'
+    ) -Capture
+    try { $endpoint = [string]($endpointJson | ConvertFrom-Json) }
+    catch { throw 'No se pudo interpretar el endpoint del contexto Docker.' }
+    $allowedEndpoints = @(
+        'npipe:////./pipe/docker_engine',
+        'npipe:////./pipe/dockerDesktopLinuxEngine',
+        'unix:///var/run/docker.sock'
+    )
+    if (-not ($allowedEndpoints -contains $endpoint)) {
+        throw "El endpoint Docker '$endpoint' no es local."
+    }
+    $osType = Invoke-Native -FilePath 'docker' -Arguments @(
+        '--context', $context, 'info', '--format', '{{.OSType}}'
+    ) -Capture
+    if ($osType -cne 'linux') {
+        throw "El daemon Docker debe ser Linux; OSType='$osType'."
+    }
+    return $context
+}
+
 function Compose-Prefix {
     return @(
         'compose', '-f', (Resolve-Path -LiteralPath $ComposeFile).Path,
@@ -199,6 +238,10 @@ $environment = [ordered]@{
     POSTGRES_DB = $database
     POSTGRES_USER = $postgresUser
     POSTGRES_PASSWORD = $postgresPassword
+    POSTGRES_APP_USER = 'gestudio_observability_runtime'
+    POSTGRES_APP_PASSWORD = "${postgresPassword}app"
+    POSTGRES_CONTROL_USER = 'gestudio_observability_control'
+    POSTGRES_CONTROL_PASSWORD = "${postgresPassword}control"
     POSTGRES_PORT = $dbPort
     BACKEND_PORT = $backendPort
     FRONTEND_PORT = (Get-FreePort)
@@ -215,12 +258,16 @@ $environment = [ordered]@{
     APP_OBSERVABILITY_METRICS_TOKEN = $metricsToken
     JWT_SECRET = $jwtSecret
     JWT_ISSUER = 'gestudio-observability-verify'
+    JWT_PLATFORM_AUDIENCE = 'gestudio-observability-platform-web'
+    APP_PLATFORM_MFA_ENCRYPTION_KEY = 'MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY='
+    APP_PLATFORM_REFRESH_COOKIE_SECURE = 'false'
     APP_TIME_ZONE = 'America/Argentina/Buenos_Aires'
     APP_CORS_ALLOWED_ORIGINS = "http://127.0.0.1:$backendPort"
     APP_JERE_PLATFORM_STUDENT_EXPORT_ENABLED = 'false'
 }
 $previousProcessEnvironment = @{}
 
+$null = Assert-LocalDockerTarget -ProjectName $project
 try {
     foreach ($entry in $environment.GetEnumerator()) {
         $previousProcessEnvironment[$entry.Key] = [Environment]::GetEnvironmentVariable($entry.Key, 'Process')
@@ -268,6 +315,21 @@ try {
         Assert-True -Condition ($metrics.Body -match 'jvm_memory_used_bytes') -Message 'Falta métrica JVM esperada.'
         Assert-True -Condition ($metrics.Body -match 'process_uptime_seconds') -Message 'Falta métrica de proceso esperada.'
         Pass 'Prometheus autenticado publica métricas mínimas'
+
+        $platformMetricNames = @(
+            'gestudio_platform_tenant_events_total',
+            'gestudio_platform_membership_events_total',
+            'gestudio_platform_bootstrap_events_total',
+            'gestudio_platform_mfa_events_total',
+            'gestudio_platform_auth_failures_total',
+            'gestudio_platform_authorization_denials_total',
+            'gestudio_platform_provisioning_failures_total'
+        )
+        foreach ($metricName in $platformMetricNames) {
+            Assert-True -Condition ($metrics.Body -match "(?m)^$([regex]::Escape($metricName))(?:\{|\s)") `
+                -Message "Falta la métrica obligatoria de control plane '$metricName'."
+        }
+        Pass 'Prometheus publica el contrato de métricas del control plane'
 
         $custom = Invoke-HttpGet -Uri "$baseUri/api/alumnos" -Headers @{
             'X-Request-ID' = $customRequestId

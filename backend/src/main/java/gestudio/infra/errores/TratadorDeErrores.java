@@ -20,6 +20,7 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import gestudio.infra.seguridad.InvalidTokenException;
 import gestudio.infra.seguridad.RefreshTokenReuseException;
+import gestudio.platform.security.PlatformPreconditionRequiredException;
 import gestudio.tarifas.application.TarifaDisciplinaServicio.TarifaHistoricaNoDefinidaException;
 import gestudio.tarifas.application.CondicionEconomicaServicio.CondicionHistoricaNoDefinidaException;
 
@@ -100,6 +101,13 @@ public class TratadorDeErrores {
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ApiErrorResponse> forbidden(AccessDeniedException exception) {
         return response(HttpStatus.FORBIDDEN, "FORBIDDEN", "Permisos insuficientes");
+    }
+
+    @ExceptionHandler(PlatformPreconditionRequiredException.class)
+    public ResponseEntity<ApiErrorResponse> platformPrecondition(
+            PlatformPreconditionRequiredException exception) {
+        return response(HttpStatus.PRECONDITION_REQUIRED, "STEP_UP_REQUIRED",
+                safeMessage(exception, "Se requiere verificación reforzada"));
     }
 
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)

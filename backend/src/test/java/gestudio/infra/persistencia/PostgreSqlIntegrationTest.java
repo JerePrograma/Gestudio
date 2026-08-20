@@ -6,6 +6,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -16,6 +17,7 @@ import java.util.concurrent.Callable;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @ActiveProfiles("test")
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 public abstract class PostgreSqlIntegrationTest {
 
     protected static final UUID DEFAULT_TENANT_ID =
@@ -40,8 +42,12 @@ public abstract class PostgreSqlIntegrationTest {
         registry.add("spring.datasource.password", POSTGRESQL::getPassword);
         registry.add("spring.flyway.enabled", () -> true);
         registry.add("spring.flyway.baseline-on-migrate", () -> false);
+        registry.add("spring.flyway.baseline-migration-prefix", () -> "X_DISABLED_BASELINE");
         registry.add("spring.flyway.default-schema", () -> "public");
         registry.add("spring.flyway.schemas", () -> "public");
+        registry.add("app.platform-datasource.url", POSTGRESQL::getJdbcUrl);
+        registry.add("app.platform-datasource.username", POSTGRESQL::getUsername);
+        registry.add("app.platform-datasource.password", POSTGRESQL::getPassword);
     }
 
     @BeforeEach

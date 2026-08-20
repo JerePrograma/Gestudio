@@ -10,6 +10,7 @@ import type {
   ConceptoRegistroRequest,
 } from "../../types/types";
 import type { ConceptoResponse, SubConceptoResponse } from "../../types/types";
+import { normalizeMoneyInput } from "../../utils/money";
 
 interface FormValues {
   id?: number;
@@ -86,9 +87,9 @@ const ConceptosFormulario: React.FC = () => {
       try {
         const payload: ConceptoRegistroRequest = {
           descripcion: values.descripcion,
-          precio: values.precio,
+          precio: normalizeMoneyInput(String(values.precio)) ?? String(values.precio),
           // Se construye el objeto de subconcepto únicamente con el id
-          subConcepto: { id: values.subConceptoId, descripcion: "" },
+          subConcepto: { id: Number(values.subConceptoId), descripcion: "" },
           activo: values.activo,
         };
 
@@ -131,14 +132,14 @@ const ConceptosFormulario: React.FC = () => {
                 <label htmlFor="descripcion" className="auth-label">
                   Descripción:
                 </label>
-                <Field name="descripcion" type="text" className="form-input" />
+                <Field id="descripcion" name="descripcion" type="text" className="form-input" />
                 <ErrorMessage name="descripcion" component="div" className="auth-error" />
               </div>
               <div className="mb-4">
                 <label htmlFor="precio" className="auth-label">
                   Precio:
                 </label>
-                <Field name="precio" type="number" className="form-input" />
+                <Field id="precio" name="precio" type="number" className="form-input" />
                 <ErrorMessage name="precio" component="div" className="auth-error" />
               </div>
             </div>
@@ -148,7 +149,7 @@ const ConceptosFormulario: React.FC = () => {
               <label htmlFor="subConceptoId" className="auth-label">
                 Subconcepto:
               </label>
-              <Field as="select" name="subConceptoId" className="form-input">
+              <Field id="subConceptoId" as="select" name="subConceptoId" className="form-input">
                 <option value={0}>Seleccione un subconcepto...</option>
                 {subConceptos.map((sub) => (
                   <option key={sub.id} value={sub.id}>

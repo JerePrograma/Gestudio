@@ -10,6 +10,9 @@ Los archivos versionados `.env.example` y `.env.local.example` contienen plantil
 | `SPRING_DATASOURCE_URL` | todos | prod: sí | `jdbc:postgresql://localhost:5432/gestudio_db` |
 | `SPRING_DATASOURCE_USERNAME` | todos | prod: sí | `postgres` |
 | `SPRING_DATASOURCE_PASSWORD` | todos | prod: sí, secreta | valor local explícito |
+| `APP_PLATFORM_DATASOURCE_URL` | todos | prod: sí | misma base que `SPRING_DATASOURCE_URL` |
+| `APP_PLATFORM_DATASOURCE_USERNAME` | todos | prod: sí | login dedicado, miembro de `gestudio_platform`; distinto de runtime y migrador |
+| `APP_PLATFORM_DATASOURCE_PASSWORD` | todos | prod: sí, secreta | credencial independiente del control-plane |
 | `SPRING_JPA_HIBERNATE_DDL_AUTO` | todos | no | `validate`; no usar `update` |
 | `SPRING_FLYWAY_ENABLED` | todos | no | `true`; test usa `false` por defecto |
 | `SPRING_FLYWAY_BASELINE_ON_MIGRATE` | todos | no | `false`; habilitar sólo tras revisar un esquema sin historial |
@@ -18,6 +21,13 @@ Los archivos versionados `.env.example` y `.env.local.example` contienen plantil
 | `JWT_ISSUER` | todos | prod: sí | `gestudio-local` |
 | `JWT_ACCESS_TOKEN_TTL` | todos | prod: sí | duración ISO-8601; local `PT15M` |
 | `JWT_REFRESH_TOKEN_TTL` | todos | prod: sí | duración ISO-8601; local `P7D` |
+| `JWT_PLATFORM_AUDIENCE` | todos | prod: sí | audiencia exclusiva para tokens de plataforma |
+| `APP_PLATFORM_ACCESS_TOKEN_TTL` | todos | prod: sí | duración ISO-8601; local `PT5M` |
+| `APP_PLATFORM_REFRESH_TOKEN_TTL` | todos | prod: sí | duración ISO-8601; local `PT8H` |
+| `APP_PLATFORM_STEP_UP_TTL` | todos | prod: sí | duración ISO-8601; local `PT5M` |
+| `APP_PLATFORM_MFA_ENCRYPTION_KEY` | todos | prod: sí, secreta | clave AES-256 independiente, exactamente 32 bytes codificados en Base64 |
+| `APP_PLATFORM_MFA_KEY_VERSION` | todos | prod: sí | entero positivo usado para rotación explícita |
+| `APP_PLATFORM_REFRESH_COOKIE_*` | todos | prod: sí | cookie separada; `Secure`, `Strict` y path `/api/platform/auth` en entornos públicos |
 | `APP_EMAIL_ENABLED` | todos | no | `false`; una de las cinco guardas Gmail |
 | `APP_EMAIL_PROVIDER` | todos | no | `NOOP`; admite `FAKE` y `GMAIL_SMTP` explícitos |
 | `APP_EMAIL_DRY_RUN` | todos | no | `true`; bloquea SMTP real |
@@ -52,6 +62,9 @@ Los archivos versionados `.env.example` y `.env.local.example` contienen plantil
 | `APP_BOOTSTRAP_SUPERADMIN_ENABLED` | bootstrap único | no | `false`; habilitar sólo para crear el `SUPERADMIN` inicial. |
 | `APP_BOOTSTRAP_SUPERADMIN_USERNAME` | bootstrap único | si se habilita | nombre explícito del `SUPERADMIN` inicial. |
 | `APP_BOOTSTRAP_SUPERADMIN_PASSWORD` | bootstrap único | si se habilita | secreto externo de 16 a 72 bytes UTF-8. |
+| `APP_BOOTSTRAP_PLATFORM_TOTP_SECRET` | bootstrap único | si se habilita, secreta | secreto Base32 externo para provisionar MFA; sólo existe en el job one-shot. |
+| `APP_BOOTSTRAP_PLATFORM_TOTP_CODE` | bootstrap único | si se habilita, secreta | código TOTP vigente que verifica la credencial inicial; sólo existe en el job one-shot. |
+| `APP_BOOTSTRAP_PLATFORM_RECOVERY_CODES_FILE` | bootstrap único | si se habilita | ruta interna del job donde se escriben exactamente diez códigos antes del commit; el script operativo los copia a un destino nuevo con ACL restringida. |
 | `APP_LOCAL_ADMIN_PASSWORD_RESET_ENABLED` | sólo `dev` | no | `false`; restablece una vez el BCrypt de un `ADMINISTRADOR` existente. |
 | `APP_LOCAL_ADMIN_PASSWORD_RESET_USERNAME` | reset local habilitado | sí | `ADMINISTRADOR` activo que se restablecerá. |
 | `APP_LOCAL_ADMIN_PASSWORD_RESET_PASSWORD` | reset local habilitado | sí, secreta | nueva clave local, de 12 a 72 bytes UTF-8. |
@@ -79,6 +92,10 @@ Vite incorpora estas variables durante el build. Cambiar una variable requiere r
 | `POSTGRES_DB` | prod: sí | `gestudio_db` |
 | `POSTGRES_USER` | prod: sí | `postgres` |
 | `POSTGRES_PASSWORD` | prod: sí, secreta | valor local explícito |
+| `POSTGRES_APP_USER` | prod: sí | `gestudio_app_local`; login tenant runtime |
+| `POSTGRES_APP_PASSWORD` | prod: sí, secreta | credencial independiente del runtime tenant |
+| `POSTGRES_CONTROL_USER` | prod: sí | `gestudio_control_local`; login externo miembro de `gestudio_platform` |
+| `POSTGRES_CONTROL_PASSWORD` | prod: sí, secreta | credencial independiente del control-plane |
 | `POSTGRES_PORT` | no | `5432` |
 | `BACKEND_PORT` | no | `8080` |
 | `FRONTEND_PORT` | no | `8081` |
@@ -138,11 +155,22 @@ La rotación y el procedimiento local están documentados en
 
 ## Bootstrap y smoke
 
-El bootstrap inicial canónico usa `APP_BOOTSTRAP_SUPERADMIN_*` y está deshabilitado
-por defecto. Al habilitarlo, reclama una ejecución única en
-`bootstrap_ejecuciones`, exige el rol activo `SUPERADMIN` y un username que no
-exista, y crea una cuenta activa con BCrypt. No modifica usuarios, hashes ni
-roles existentes. No existen aliases legacy para este bootstrap.
+El bootstrap inicial canónico usa `APP_BOOTSTRAP_SUPERADMIN_*` únicamente en un
+contenedor externo one-shot y está deshabilitado de forma fija en el servicio
+ordinario. Tras un deploy healthy se ejecuta
+`scripts/ops/bootstrap-platform-admin.ps1` con el env efectivo, proyecto,
+username, un `RecoveryCodesPath` nuevo y `-ConfirmBootstrap`; el script solicita
+password, secreto Base32 y código TOTP como `SecureString`, rechaza
+`gestudio-remote-demo`, copia los diez recovery codes a ese archivo sin
+imprimirlos, restringe su ACL al usuario Windows actual, elimina el job temporal
+y verifica identidad activa, MFA inicial y ausencia de memberships antes de
+terminar. Al habilitarlo en ese job, reclama una ejecución única en
+`bootstrap_ejecuciones`, exige que todavía no exista ningún administrador de
+plataforma y que el username sea nuevo, y crea una identidad global activa con
+BCrypt y una fila activa en `platform_admins`. La política de complejidad usa el
+nivel privilegiado `SUPERADMIN`, pero no crea un rol tenant: `usuarios.rol_id`
+queda `NULL` y no se agrega membership. No modifica usuarios, hashes, roles ni
+memberships existentes. No existen aliases legacy para este bootstrap.
 
 Para recuperar una contraseña local existente, use el perfil `dev`, mantenga
 `APP_BOOTSTRAP_SUPERADMIN_ENABLED=false` y habilite temporalmente

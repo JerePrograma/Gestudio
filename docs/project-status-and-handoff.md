@@ -1,5 +1,10 @@
 # Estado de release y traspaso
 
+> **Corte histórico reemplazado.** Este archivo conserva la evidencia del
+> release 2026-07-22. No describe V12/B12, el control plane ni el working tree
+> actual. La única matriz viva para la intervención vigente está en
+> [`GESTUDIO_FINALIZACION_SUPERADMIN_MEGAPROMPT.md`](../GESTUDIO_FINALIZACION_SUPERADMIN_MEGAPROMPT.md).
+
 Fecha de validación local: 2026-07-22
 
 Última actualización de backlog: 2026-07-26

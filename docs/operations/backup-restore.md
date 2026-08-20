@@ -8,7 +8,7 @@ El paquete de backup puede incluir:
 
 - PostgreSQL en formato custom de `pg_dump`;
 - el volumen lógico de recibos de `/app/data/receipts`;
-- un `manifest.json` con SHA-256, tamaños, HEAD Git y versión Flyway.
+- un `manifest.json` v3 con SHA-256, tamaños, HEAD Git e historial Flyway exacto.
 
 La configuración y los secretos de email no forman parte del backup. Deben
 restaurarse desde el secret manager y conservarse en `NOOP`/kill switch hasta
@@ -57,7 +57,8 @@ El manifiesto registra:
 - proyecto Compose;
 - base y usuario de origen;
 - HEAD Git, cuando está disponible;
-- cantidad y última versión Flyway;
+- cantidad, última versión, modo (`VERSIONED` o `BASELINE`) y filas exactas
+  `version|type|script` de Flyway;
 - tamaño y SHA-256 del dump;
 - tamaño y SHA-256 del archivo de recibos;
 - si el backup se tomó con consistencia de aplicación.
@@ -102,7 +103,9 @@ El script:
 4. rechaza nombres PostgreSQL inseguros o bases reservadas;
 5. elimina y recrea únicamente la base destino indicada;
 6. ejecuta `pg_restore --exit-on-error`;
-7. compara cantidad y versión Flyway con el manifiesto.
+7. para manifiestos v3 compara el historial Flyway exacto, aceptando tanto
+   `V1..V12` como la única fila `SQL_BASELINE` de `B12`; conserva compatibilidad
+   de lectura con manifests v1/v2 mediante cantidad y versión.
 
 ## Restaurar también recibos
 
@@ -157,8 +160,8 @@ El drill:
 
 1. crea un proyecto Compose aislado con puertos y secretos aleatorios;
 2. espera PostgreSQL y backend healthy;
-3. verifica Flyway V1-V7;
-4. crea un alumno y un recibo sintéticos;
+3. verifica la historia Flyway exacta admitida: cadena `V1..Vlatest` o baseline `Blatest`;
+4. crea un tenant, un alumno asociado y un recibo sintéticos;
 5. ejecuta un backup consistente;
 6. rechaza nombre manipulado, manifiesto incompleto y `backupSetId` ausente o inconsistente;
 7. rechaza hash incorrecto, dump alterado, archivo faltante y backup parcial;
@@ -173,7 +176,7 @@ El drill:
 
 Usá `-KeepStack` sólo para investigar un fallo. El script mostrará el nombre del proyecto y el env temporal.
 
-### Evidencia local del hardening — 2026-07-22
+### Evidencia histórica del hardening — 2026-07-22
 
 Las ejecuciones posteriores a la captura silenciosa del TOC terminaron con:
 
@@ -181,8 +184,9 @@ Las ejecuciones posteriores a la captura silenciosa del TOC terminaron con:
 - Windows PowerShell 5.1: 12/12, exit 0, aproximadamente 168 s;
 - limpieza completa de los recursos del proyecto aislado.
 
-Esta evidencia cierra el drill local. El workflow del SHA final y las políticas
-externas de custodia, cifrado y RPO/RTO se registran por separado.
+Esta evidencia sólo documenta aquella ejecución histórica: no cierra el gate del
+SHA actual. El workflow del SHA final y las políticas externas de custodia,
+cifrado y RPO/RTO se registran por separado.
 
 ## Semántica de fallos
 
@@ -210,8 +214,10 @@ Para un entorno no local:
 
 ## Estado de release
 
-El drill local endurecido está aprobado en ambos shells. El workflow del SHA
-publicado aporta la evidencia Linux separada. Aun con ambos aprobados permanecen
+El drill histórico fue aprobado en ambos shells para el contrato de julio. V12,
+B12, el control plane y los cambios posteriores del drill invalidan esa evidencia
+para el árbol actual. El gate permanece `NOT_EXECUTED` hasta una nueva corrida
+local y el workflow Linux del SHA publicado. Aun con ambos aprobados permanecerán
 separados:
 
 - rollback de código y configuración;
