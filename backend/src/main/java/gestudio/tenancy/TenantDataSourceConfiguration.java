@@ -1,6 +1,7 @@
 package gestudio.tenancy;
 
 import com.zaxxer.hikari.HikariDataSource;
+import jakarta.persistence.EntityManagerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.jdbc.DataSourceProperties;
@@ -8,6 +9,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.orm.jpa.JpaTransactionManager;
+import org.springframework.transaction.PlatformTransactionManager;
 
 import javax.sql.DataSource;
 
@@ -15,7 +18,7 @@ import javax.sql.DataSource;
 @ConditionalOnProperty(name = "app.multitenancy.required", havingValue = "true", matchIfMissing = true)
 public class TenantDataSourceConfiguration {
 
-    @Bean
+    @Bean(destroyMethod = "close")
     @Primary
     DataSource dataSource(
             @Qualifier("spring.datasource-org.springframework.boot.autoconfigure.jdbc.DataSourceProperties")
@@ -30,5 +33,11 @@ public class TenantDataSourceConfiguration {
     @Primary
     JdbcTemplate jdbcTemplate(@Qualifier("dataSource") DataSource dataSource) {
         return new JdbcTemplate(dataSource);
+    }
+
+    @Bean(name = "transactionManager")
+    @Primary
+    PlatformTransactionManager transactionManager(EntityManagerFactory entityManagerFactory) {
+        return new JpaTransactionManager(entityManagerFactory);
     }
 }

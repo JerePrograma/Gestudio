@@ -66,12 +66,16 @@ class CargoLiquidacionMigrationPostgreSqlTest extends PostgreSqlIntegrationTest 
     }
 
     private Flyway flyway(String url, String target) {
-        return Flyway.configure().dataSource(url, POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
-                .schemas("public").defaultSchema("public").target(MigrationVersion.fromVersion(target)).load();
+        return versionedFlyway(url, MigrationVersion.fromVersion(target));
     }
 
     private long id(Statement statement, String sql) throws SQLException {
-        try (ResultSet result = statement.executeQuery(sql)) { result.next(); return result.getLong(1); }
+        try (ResultSet result = statement.executeQuery(sql)) {
+            if (!result.next()) {
+                throw new IllegalStateException("La sentencia no devolvió id: " + sql);
+            }
+            return result.getLong(1);
+        }
     }
 
     private String text(Connection connection, String sql) throws SQLException {

@@ -1,12 +1,16 @@
 package gestudio.infra.persistencia;
 
 import gestudio.tenancy.TenantContext;
+import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.MigrationVersion;
+import org.flywaydb.core.api.configuration.FluentConfiguration;
+import org.flywaydb.core.api.migration.baseline.BaselineMigrationConfigurationExtension;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -19,6 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ActiveProfiles("test")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 public abstract class PostgreSqlIntegrationTest {
+    private static final String DISABLED_BASELINE_MIGRATION_PREFIX = "X_DISABLED_BASELINE";
 
     protected static final UUID DEFAULT_TENANT_ID =
             UUID.fromString("00000000-0000-0000-0000-000000000001");
@@ -33,6 +38,7 @@ public abstract class PostgreSqlIntegrationTest {
 
     static {
         POSTGRESQL.start();
+        versionedFlyway(POSTGRESQL.getJdbcUrl()).migrate();
     }
 
     @DynamicPropertySource
@@ -40,14 +46,28 @@ public abstract class PostgreSqlIntegrationTest {
         registry.add("spring.datasource.url", POSTGRESQL::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRESQL::getUsername);
         registry.add("spring.datasource.password", POSTGRESQL::getPassword);
-        registry.add("spring.flyway.enabled", () -> true);
-        registry.add("spring.flyway.baseline-on-migrate", () -> false);
-        registry.add("spring.flyway.baseline-migration-prefix", () -> "X_DISABLED_BASELINE");
-        registry.add("spring.flyway.default-schema", () -> "public");
-        registry.add("spring.flyway.schemas", () -> "public");
+        registry.add("spring.flyway.enabled", () -> false);
         registry.add("app.platform-datasource.url", POSTGRESQL::getJdbcUrl);
         registry.add("app.platform-datasource.username", POSTGRESQL::getUsername);
         registry.add("app.platform-datasource.password", POSTGRESQL::getPassword);
+    }
+
+    protected static Flyway versionedFlyway(String jdbcUrl) {
+        return versionedFlyway(jdbcUrl, null);
+    }
+
+    protected static Flyway versionedFlyway(String jdbcUrl, MigrationVersion target) {
+        FluentConfiguration configuration = Flyway.configure()
+                .dataSource(jdbcUrl, POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
+                .schemas("public")
+                .defaultSchema("public");
+        if (target != null) {
+            configuration.target(target);
+        }
+        Flyway flyway = configuration.load();
+        flyway.getConfigurationExtension(BaselineMigrationConfigurationExtension.class)
+                .setBaselineMigrationPrefix(DISABLED_BASELINE_MIGRATION_PREFIX);
+        return flyway;
     }
 
     @BeforeEach

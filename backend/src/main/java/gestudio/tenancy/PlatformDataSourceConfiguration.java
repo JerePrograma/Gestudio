@@ -21,7 +21,7 @@ public class PlatformDataSourceConfiguration {
         return new DataSourceProperties();
     }
 
-    @Bean(name = "platformDataSource")
+    @Bean(name = "platformDataSource", destroyMethod = "close")
     DataSource platformDataSource(
             @Qualifier("platformDataSourceProperties") DataSourceProperties properties) {
         HikariDataSource delegate = properties.initializeDataSourceBuilder()

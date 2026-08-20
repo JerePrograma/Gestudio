@@ -1,6 +1,5 @@
 package gestudio.infra.persistencia;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -38,10 +37,7 @@ class DataAuditSqlPostgreSqlTest extends PostgreSqlIntegrationTest {
         }
 
         try {
-            Flyway.configure()
-                    .dataSource(jdbcUrl, POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
-                    .load()
-                    .migrate();
+            versionedFlyway(jdbcUrl).migrate();
             try (Connection connection = DriverManager.getConnection(
                     jdbcUrl, POSTGRESQL.getUsername(), POSTGRESQL.getPassword())) {
                 connection.setReadOnly(true);

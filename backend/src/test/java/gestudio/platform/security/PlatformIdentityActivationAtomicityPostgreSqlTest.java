@@ -50,7 +50,6 @@ class PlatformIdentityActivationAtomicityPostgreSqlTest {
         registry.add("spring.datasource.password", POSTGRESQL::getPassword);
         registry.add("spring.flyway.enabled", () -> true);
         registry.add("spring.flyway.baseline-on-migrate", () -> false);
-        registry.add("spring.flyway.baseline-migration-prefix", () -> "X_DISABLED_BASELINE");
         registry.add("spring.flyway.default-schema", () -> "public");
         registry.add("spring.flyway.schemas", () -> "public");
         registry.add("app.platform-datasource.url", POSTGRESQL::getJdbcUrl);

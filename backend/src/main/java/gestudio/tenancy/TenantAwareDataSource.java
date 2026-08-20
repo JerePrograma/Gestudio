@@ -13,13 +13,20 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.logging.Logger;
 
-public final class TenantAwareDataSource extends AbstractDataSource {
+public final class TenantAwareDataSource extends AbstractDataSource implements AutoCloseable {
     private static final String SET_TENANT = "SELECT set_config('app.current_tenant_id', ?, false)";
 
     private final DataSource delegate;
 
     public TenantAwareDataSource(DataSource delegate) {
         this.delegate = delegate;
+    }
+
+    @Override
+    public void close() throws Exception {
+        if (delegate instanceof AutoCloseable closeable) {
+            closeable.close();
+        }
     }
 
     @Override

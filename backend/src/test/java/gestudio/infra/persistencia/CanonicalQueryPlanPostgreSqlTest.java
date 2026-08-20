@@ -1,6 +1,5 @@
 package gestudio.infra.persistencia;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 
 import java.sql.Connection;
@@ -24,7 +23,7 @@ class CanonicalQueryPlanPostgreSqlTest extends PostgreSqlIntegrationTest {
             statement.execute("CREATE DATABASE " + databaseName);
         }
         try {
-            Flyway.configure().dataSource(jdbcUrl, POSTGRESQL.getUsername(), POSTGRESQL.getPassword()).load().migrate();
+            versionedFlyway(jdbcUrl).migrate();
             try (Connection connection = DriverManager.getConnection(jdbcUrl, POSTGRESQL.getUsername(), POSTGRESQL.getPassword());
                  Statement statement = connection.createStatement()) {
                 statement.executeUpdate("""

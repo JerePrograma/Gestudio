@@ -9,6 +9,7 @@ import java.sql.PreparedStatement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -42,6 +43,26 @@ class TenantAwareDataSourceTest {
         }
 
         assertThat(values).containsExactly("", "");
+    }
+
+    @Test
+    void cierreDelWrapperCierraElDataSourceDelegado() throws Exception {
+        AtomicBoolean closed = new AtomicBoolean();
+        DataSource delegate = (DataSource) Proxy.newProxyInstance(
+                DataSource.class.getClassLoader(),
+                new Class<?>[]{DataSource.class, AutoCloseable.class},
+                (proxy, method, args) -> {
+                    if (method.getName().equals("close")) {
+                        closed.set(true);
+                        return null;
+                    }
+                    return primitiveDefault(method.getReturnType());
+                });
+        TenantAwareDataSource dataSource = new TenantAwareDataSource(delegate);
+
+        dataSource.close();
+
+        assertThat(closed).isTrue();
     }
 
     private static DataSource dataSource(Connection connection) {
