@@ -26,6 +26,8 @@ class CanonicalQueryPlanPostgreSqlTest extends PostgreSqlIntegrationTest {
             versionedFlyway(jdbcUrl).migrate();
             try (Connection connection = DriverManager.getConnection(jdbcUrl, POSTGRESQL.getUsername(), POSTGRESQL.getPassword());
                  Statement statement = connection.createStatement()) {
+                statement.execute("SELECT set_config('app.current_tenant_id', '"
+                        + DEFAULT_TENANT_ID + "', false)");
                 statement.executeUpdate("""
                         INSERT INTO alumnos(nombre, apellido, fecha_incorporacion)
                         SELECT 'Alumno ' || n, 'Plan', DATE '2025-01-01'
