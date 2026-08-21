@@ -31,8 +31,8 @@ public class PlatformControlPlaneRepository {
     public PageData<TenantView> tenants(String query, String status, int page, int size) {
         String q = normalizedQuery(query);
         String state = blankToNull(status);
-        String where = "WHERE (? IS NULL OR lower(t.code) LIKE ? OR lower(t.name) LIKE ?) "
-                + "AND (? IS NULL OR t.status = ?)";
+        String where = "WHERE (CAST(? AS varchar) IS NULL OR lower(t.code) LIKE ? OR lower(t.name) LIKE ?) "
+                + "AND (CAST(? AS varchar) IS NULL OR t.status = ?)";
         Object[] filters = {q, like(q), like(q), state, state};
         long total = count("SELECT count(*) FROM tenants t " + where, filters);
         List<Object> args = new ArrayList<>(List.of(filters));
@@ -141,7 +141,7 @@ public class PlatformControlPlaneRepository {
         String q = normalizedQuery(query);
         return jdbc.query("""
                 SELECT id, nombre_usuario, activo FROM usuarios
-                WHERE ? IS NULL OR lower(nombre_usuario) LIKE ?
+                WHERE CAST(? AS varchar) IS NULL OR lower(nombre_usuario) LIKE ?
                 ORDER BY lower(nombre_usuario), id LIMIT 25
                 """, PlatformControlPlaneRepository::identity, q, like(q));
     }
@@ -195,8 +195,8 @@ public class PlatformControlPlaneRepository {
                                                  int page, int size) {
         String q = normalizedQuery(query);
         String state = blankToNull(status);
-        String where = "WHERE m.tenant_id = ? AND (? IS NULL OR lower(u.nombre_usuario) LIKE ?) "
-                + "AND (? IS NULL OR m.status = ?)";
+        String where = "WHERE m.tenant_id = ? AND (CAST(? AS varchar) IS NULL OR lower(u.nombre_usuario) LIKE ?) "
+                + "AND (CAST(? AS varchar) IS NULL OR m.status = ?)";
         Object[] filters = {tenantId, q, like(q), state, state};
         long total = count("SELECT count(*) FROM tenant_memberships m JOIN usuarios u ON u.id=m.usuario_id "
                 + where, filters);
@@ -275,7 +275,7 @@ public class PlatformControlPlaneRepository {
                 JOIN tenant_membership_roles mr ON mr.membership_id = m.id AND mr.tenant_id = m.tenant_id
                 JOIN roles r ON r.id = mr.role_id AND r.tenant_id = m.tenant_id
                 WHERE m.tenant_id = ? AND m.status = 'ACTIVE' AND r.codigo = 'ADMINISTRADOR'
-                  AND (? IS NULL OR m.id <> ?)
+                  AND (CAST(? AS uuid) IS NULL OR m.id <> ?)
                 """, Long.class, tenantId, excludingMembership, excludingMembership);
         return value == null ? 0 : value;
     }
@@ -296,8 +296,8 @@ public class PlatformControlPlaneRepository {
     public PageData<AdminView> admins(String query, String status, int page, int size) {
         String q = normalizedQuery(query);
         String state = blankToNull(status);
-        String where = "WHERE (? IS NULL OR lower(u.nombre_usuario) LIKE ?) "
-                + "AND (? IS NULL OR (CASE WHEN pa.active THEN 'ACTIVE' ELSE 'REVOKED' END) = ?)";
+        String where = "WHERE (CAST(? AS varchar) IS NULL OR lower(u.nombre_usuario) LIKE ?) "
+                + "AND (CAST(? AS varchar) IS NULL OR (CASE WHEN pa.active THEN 'ACTIVE' ELSE 'REVOKED' END) = ?)";
         Object[] filters = {q, like(q), state, state};
         long total = count("SELECT count(*) FROM platform_admins pa JOIN usuarios u ON u.id=pa.usuario_id "
                 + where, filters);
@@ -332,7 +332,7 @@ public class PlatformControlPlaneRepository {
         jdbc.update("""
                 INSERT INTO platform_admins(usuario_id, active, granted_at, granted_by_usuario_id,
                     revoked_at, security_version, mfa_required, updated_at)
-                VALUES (?, ?, ?, ?, CASE WHEN ? THEN NULL ELSE ? END, 0, TRUE, ?)
+                VALUES (?, ?, ?, ?, CASE WHEN ? THEN NULL::timestamptz ELSE ? END, 0, TRUE, ?)
                 ON CONFLICT (usuario_id) DO UPDATE
                 SET active=EXCLUDED.active, granted_at=EXCLUDED.granted_at,
                     granted_by_usuario_id=EXCLUDED.granted_by_usuario_id, revoked_at=EXCLUDED.revoked_at,
@@ -344,7 +344,7 @@ public class PlatformControlPlaneRepository {
     public boolean changeAdminStatus(long userId, boolean active, long expectedVersion, Instant now) {
         return jdbc.update("""
                 UPDATE platform_admins
-                SET active = ?, revoked_at = CASE WHEN ? THEN NULL ELSE ? END,
+                SET active = ?, revoked_at = CASE WHEN ? THEN NULL::timestamptz ELSE ? END,
                     security_version = security_version + 1, updated_at = ?
                 WHERE usuario_id = ? AND security_version = ?
                 """, active, active, Timestamp.from(now), Timestamp.from(now), userId,
