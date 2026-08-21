@@ -80,6 +80,7 @@ public class ControlPlaneSteps {
             throw new IllegalStateException("No se pudo crear el actor BDD");
         }
         Instant now = clock.instant();
+        Instant mfaVerifiedAt = now.minusSeconds(1);
         Timestamp timestamp = Timestamp.from(now);
         jdbc.update("""
                 INSERT INTO platform_admins(usuario_id, active, granted_at,
@@ -87,8 +88,18 @@ public class ControlPlaneSteps {
                                             security_version, mfa_required, updated_at)
                 VALUES (?, TRUE, ?, NULL, NULL, 0, TRUE, ?)
                 """, actorId, timestamp, timestamp);
-        actor = new PlatformPrincipal(actorId, actorUsername, 0, 0,
-                UUID.randomUUID(), now);
+        UUID sessionId = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO platform_refresh_sessions(
+                    id, family_id, usuario_id, session_scope, token_hash,
+                    auth_version, platform_security_version, mfa_verified_at,
+                    issued_at, expires_at, family_expires_at)
+                VALUES (?, ?, ?, 'PLATFORM', ?, 0, 0, ?, ?, ?, ?)
+                """, sessionId, UUID.randomUUID(), actorId,
+                PlatformStepUpService.hash("bdd-refresh-" + suffix),
+                Timestamp.from(mfaVerifiedAt), timestamp,
+                Timestamp.from(now.plusSeconds(3600)), Timestamp.from(now.plusSeconds(7200)));
+        actor = new PlatformPrincipal(actorId, actorUsername, 0, 0, sessionId, mfaVerifiedAt);
     }
 
     @Given("un SUPERADMIN de plataforma autenticado y autorizado")
