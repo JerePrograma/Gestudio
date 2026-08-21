@@ -13,6 +13,7 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.transaction.BeforeTransaction;
 import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.util.UUID;
@@ -70,6 +71,11 @@ public abstract class PostgreSqlIntegrationTest {
         return flyway;
     }
 
+    @BeforeTransaction
+    protected void openTenantContextBeforeTransaction() {
+        selectMembership(null);
+    }
+
     @BeforeEach
     protected void openTenantContext() {
         selectMembership(null);
@@ -81,6 +87,24 @@ public abstract class PostgreSqlIntegrationTest {
             tenantScope.close();
             tenantScope = null;
         }
+    }
+
+    protected final Long defaultRoleId(JdbcTemplate jdbc, String code) {
+        if (jdbc == null || code == null || code.isBlank()) {
+            throw new IllegalArgumentException("JdbcTemplate y código de rol son obligatorios");
+        }
+
+        Long roleId = jdbc.queryForObject("""
+                SELECT id
+                FROM roles
+                WHERE tenant_id = ?
+                  AND codigo = ?
+                """, Long.class, DEFAULT_TENANT_ID, code);
+
+        if (roleId == null) {
+            throw new IllegalStateException("El rol de test no devolvió id: " + code);
+        }
+        return roleId;
     }
 
     protected final UUID createActiveMembership(
