@@ -339,10 +339,7 @@ class PagoCanonicoPostgreSqlTest extends PostgreSqlIntegrationTest {
     private Escenario escenario(BigDecimal importe1, BigDecimal importe2) {
         String suffix = UUID.randomUUID().toString();
 
-        Long role = jdbc.queryForObject(
-                "SELECT id FROM roles WHERE descripcion = 'ADMINISTRADOR'",
-                Long.class
-        );
+        Long role = defaultRoleId(jdbc, "ADMINISTRADOR");
 
         Long usuario = jdbc.queryForObject("""
                 INSERT INTO usuarios (nombre_usuario, contrasena, rol_id, activo)

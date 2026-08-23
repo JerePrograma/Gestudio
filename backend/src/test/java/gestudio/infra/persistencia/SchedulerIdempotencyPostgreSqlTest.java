@@ -2,6 +2,7 @@ package gestudio.infra.persistencia;
 
 import gestudio.servicios.matricula.MatriculaServicio;
 import gestudio.servicios.mensualidad.MensualidadServicio;
+import gestudio.tenancy.TenantContext;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -140,7 +141,9 @@ class SchedulerIdempotencyPostgreSqlTest extends PostgreSqlIntegrationTest {
             if (!start.await(5, TimeUnit.SECONDS)) {
                 throw new IllegalStateException("Timeout esperando inicio concurrente");
             }
-            proceso.run();
+            try (TenantContext.Scope ignored = TenantContext.open(DEFAULT_TENANT_ID, null)) {
+                proceso.run();
+            }
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException(exception);
@@ -148,13 +151,14 @@ class SchedulerIdempotencyPostgreSqlTest extends PostgreSqlIntegrationTest {
     }
 
     private Long usuario(String nombre) {
-        Long rol = jdbc.queryForObject("SELECT id FROM roles WHERE codigo = 'SUPERADMIN'", Long.class);
+        Long rol = defaultRoleId(jdbc, "SUPERADMIN");
         Long usuario = id("""
                 INSERT INTO usuarios(nombre_usuario, contrasena, rol_id, activo)
                 VALUES (?, 'test-only', ?, true) RETURNING id
                 """, nombre, rol);
         jdbc.update("INSERT INTO usuario_roles(usuario_id, rol_id) VALUES (?, ?) ON CONFLICT DO NOTHING",
                 usuario, rol);
+        createActiveMembership(jdbc, usuario, rol);
         return usuario;
     }
 

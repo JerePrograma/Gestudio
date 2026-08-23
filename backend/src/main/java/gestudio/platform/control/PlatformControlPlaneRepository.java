@@ -1,5 +1,6 @@
 package gestudio.platform.control;
 
+import gestudio.tenancy.TenantContext;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -12,6 +13,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -19,6 +21,7 @@ import java.util.UUID;
 
 @Repository
 public class PlatformControlPlaneRepository {
+    private static final String SECURITY_VERSION_COLUMN = "security_version";
     private static final String PLATFORM_ADMIN_INVARIANT_LOCK_SQL =
             "SELECT pg_advisory_xact_lock(1195725908, 1347174733)";
 
@@ -35,7 +38,7 @@ public class PlatformControlPlaneRepository {
                 + "AND (CAST(? AS varchar) IS NULL OR t.status = ?)";
         Object[] filters = {q, like(q), like(q), state, state};
         long total = count("SELECT count(*) FROM tenants t " + where, filters);
-        List<Object> args = new ArrayList<>(List.of(filters));
+        List<Object> args = new ArrayList<>(Arrays.asList(filters));
         args.add(size);
         args.add(page * size);
         List<TenantView> content = jdbc.query("""
@@ -43,11 +46,11 @@ public class PlatformControlPlaneRepository {
                        t.updated_at,
                        (SELECT count(*) FROM tenant_memberships m WHERE m.tenant_id = t.id) membership_count,
                        (SELECT count(*) FROM tenant_memberships m
-                        WHERE m.tenant_id = t.id AND m.status = 'ACTIVE') active_membership_count,
-                       (SELECT count(*) FROM roles r WHERE r.tenant_id = t.id) role_count
+                        WHERE m.tenant_id = t.id AND m.status = 'ACTIVE') active_membership_count
                 FROM tenants t
                 """ + where + " ORDER BY t.created_at DESC, t.id LIMIT ? OFFSET ?",
-                PlatformControlPlaneRepository::tenant, args.toArray());
+                PlatformControlPlaneRepository::tenantWithoutRoleCount, args.toArray());
+        content = content.stream().map(this::withRoleCount).toList();
         return page(content, total, page, size);
     }
 
@@ -200,7 +203,7 @@ public class PlatformControlPlaneRepository {
         Object[] filters = {tenantId, q, like(q), state, state};
         long total = count("SELECT count(*) FROM tenant_memberships m JOIN usuarios u ON u.id=m.usuario_id "
                 + where, filters);
-        List<Object> args = new ArrayList<>(List.of(filters));
+        List<Object> args = new ArrayList<>(Arrays.asList(filters));
         args.add(size);
         args.add(page * size);
         List<MembershipView> content = jdbc.query("""
@@ -301,7 +304,7 @@ public class PlatformControlPlaneRepository {
         Object[] filters = {q, like(q), state, state};
         long total = count("SELECT count(*) FROM platform_admins pa JOIN usuarios u ON u.id=pa.usuario_id "
                 + where, filters);
-        List<Object> args = new ArrayList<>(List.of(filters));
+        List<Object> args = new ArrayList<>(Arrays.asList(filters));
         args.add(size);
         args.add(page * size);
         List<AdminView> content = jdbc.query("""
@@ -484,10 +487,27 @@ public class PlatformControlPlaneRepository {
 
     private static TenantView tenant(ResultSet rs, int row) throws SQLException {
         return new TenantView((UUID) rs.getObject("id"), rs.getString("code"), rs.getString("name"),
-                rs.getString("status"), rs.getLong("security_version"),
+                rs.getString("status"), rs.getLong(SECURITY_VERSION_COLUMN),
                 rs.getTimestamp("created_at").toInstant(), rs.getTimestamp("updated_at").toInstant(),
                 rs.getLong("membership_count"), rs.getLong("active_membership_count"),
                 rs.getLong("role_count"));
+    }
+
+    private static TenantView tenantWithoutRoleCount(ResultSet rs, int row) throws SQLException {
+        return new TenantView((UUID) rs.getObject("id"), rs.getString("code"), rs.getString("name"),
+                rs.getString("status"), rs.getLong(SECURITY_VERSION_COLUMN),
+                rs.getTimestamp("created_at").toInstant(), rs.getTimestamp("updated_at").toInstant(),
+                rs.getLong("membership_count"), rs.getLong("active_membership_count"), 0);
+    }
+
+    private TenantView withRoleCount(TenantView tenant) {
+        try (TenantContext.Scope ignored = TenantContext.open(tenant.id(), null)) {
+            Long roleCount = jdbc.queryForObject(
+                    "SELECT count(*) FROM roles WHERE tenant_id = ?", Long.class, tenant.id());
+            return new TenantView(tenant.id(), tenant.code(), tenant.name(), tenant.status(),
+                    tenant.version(), tenant.createdAt(), tenant.updatedAt(), tenant.membershipCount(),
+                    tenant.activeMembershipCount(), roleCount == null ? 0 : roleCount);
+        }
     }
 
     private static IdentityView identity(ResultSet rs, int row) throws SQLException {
@@ -498,7 +518,7 @@ public class PlatformControlPlaneRepository {
         return new MembershipView((UUID) rs.getObject("id"), (UUID) rs.getObject("tenant_id"),
                 rs.getLong("usuario_id"), rs.getString("nombre_usuario"), rs.getString("status"),
                 sqlArray(rs.getArray("roles")), rs.getTimestamp("valid_from").toInstant(),
-                instant(rs, "valid_until"), rs.getLong("security_version"));
+                instant(rs, "valid_until"), rs.getLong(SECURITY_VERSION_COLUMN));
     }
 
     private static RoleView role(ResultSet rs, int row) throws SQLException {
@@ -510,7 +530,7 @@ public class PlatformControlPlaneRepository {
         return new AdminView(rs.getLong("usuario_id"), rs.getString("nombre_usuario"),
                 rs.getBoolean("active") ? "ACTIVE" : "REVOKED", rs.getBoolean("mfa_enabled"),
                 rs.getTimestamp("granted_at").toInstant(), instant(rs, "revoked_at"),
-                rs.getLong("security_version"));
+                rs.getLong(SECURITY_VERSION_COLUMN));
     }
 
     private static AuditView audit(ResultSet rs, int row) throws SQLException {

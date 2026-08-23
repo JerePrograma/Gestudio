@@ -13,7 +13,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
@@ -33,8 +33,8 @@ class PlatformIdentityActivationAtomicityPostgreSqlTest {
     private static final String INITIAL_PASSWORD = "initial-platform-password";
     private static final String NEW_PASSWORD = "new-platform-password";
 
-    private static final PostgreSQLContainer<?> POSTGRESQL =
-            new PostgreSQLContainer<>("postgres:15.18-alpine3.24")
+    private static final PostgreSQLContainer POSTGRESQL =
+            new PostgreSQLContainer("postgres:15.18-alpine3.24")
                     .withDatabaseName("gestudio_activation_atomicity")
                     .withUsername("activation_atomicity")
                     .withPassword("activation_atomicity");

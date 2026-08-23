@@ -146,10 +146,15 @@ public class SecurityFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        String path = request.getServletPath();
+        String path = requestPath(request);
         return (path != null && path.startsWith("/api/platform/"))
                 || "/api/login".equals(path)
                 || "/api/login/refresh".equals(path)
                 || "/api/login/logout".equals(path);
+    }
+
+    private static String requestPath(HttpServletRequest request) {
+        String path = request.getServletPath();
+        return path == null || path.isBlank() ? request.getRequestURI() : path;
     }
 }

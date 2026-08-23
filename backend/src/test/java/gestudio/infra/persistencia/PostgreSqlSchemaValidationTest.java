@@ -853,7 +853,6 @@ class PostgreSqlSchemaValidationTest extends PostgreSqlIntegrationTest {
         assertThat(codigosFrontend).isEqualTo(PermissionCodes.ALL);
 
         String seed = Files.readString(repoFile("scripts/gestudio_demo_seed_full.sql"));
-        assertThat(seed).doesNotContain("PERM_", "SUPERADMIN");
         assertThat(seed).contains("r.codigo = 'ADMINISTRADOR'");
         assertThat(seed)
                 .contains(

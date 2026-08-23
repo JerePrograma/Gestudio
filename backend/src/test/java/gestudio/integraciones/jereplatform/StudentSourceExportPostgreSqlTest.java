@@ -261,11 +261,7 @@ class StudentSourceExportPostgreSqlTest extends PostgreSqlIntegrationTest {
     }
 
     private ActorFixture actor(String roleCode) {
-        Long roleId = jdbc.queryForObject(
-                "SELECT id FROM roles WHERE codigo = ?",
-                Long.class,
-                roleCode
-        );
+        Long roleId = defaultRoleId(jdbc, roleCode);
         Long userId = jdbc.queryForObject(
                 """
                 INSERT INTO usuarios(nombre_usuario, contrasena, rol_id, activo, auth_version, version)

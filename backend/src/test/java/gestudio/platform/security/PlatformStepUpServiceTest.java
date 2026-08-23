@@ -86,6 +86,48 @@ class PlatformStepUpServiceTest {
     }
 
     @Test
+    void challengeRejectsEveryUnsafeDescriptorShapeBeforePersistence() {
+        Object[][] invalidDescriptors = {
+                {null, "TENANT", "tenant-42", "request-1"},
+                {" ", "TENANT", "tenant-42", "request-1"},
+                {"X".repeat(101), "TENANT", "tenant-42", "request-1"},
+                {"TENANT\nSTATUS", "TENANT", "tenant-42", "request-1"},
+                {"TENANT_STATUS", null, "tenant-42", "request-1"},
+                {"TENANT_STATUS", "TENANT", null, "request-1"},
+                {"TENANT_STATUS", "TENANT", "tenant-42", null}
+        };
+
+        for (Object[] descriptor : invalidDescriptors) {
+            assertThatThrownBy(() -> service.challenge(PRINCIPAL,
+                    (String) descriptor[0], (String) descriptor[1],
+                    (String) descriptor[2], (String) descriptor[3], CORRELATION_ID))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessage("Descriptor step-up inv\u00e1lido");
+        }
+
+        verify(challenges, never()).createOrFind(any());
+    }
+
+    @Test
+    void challengeRejectsAbsentResultConsumedKeyAndExpiredKey() {
+        when(challenges.createOrFind(any())).thenReturn(null);
+        assertThatThrownBy(() -> service.challenge(PRINCIPAL, "TENANT_STATUS", "TENANT",
+                "tenant-42", "request-1", CORRELATION_ID))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Resultado step-up ausente");
+
+        when(challenges.createOrFind(any())).thenReturn(
+                challenge(NOW.plusSeconds(60), "hash", null, NOW.minusSeconds(1)),
+                challenge(NOW, null, null, null));
+        for (int attempt = 0; attempt < 2; attempt++) {
+            assertThatThrownBy(() -> service.challenge(PRINCIPAL, "TENANT_STATUS", "TENANT",
+                    "tenant-42", "request-1", CORRELATION_ID))
+                    .isInstanceOf(PlatformPreconditionRequiredException.class)
+                    .hasMessageContaining("consumido o vencido");
+        }
+    }
+
+    @Test
     void verifyRequiresSameUserAndSessionThenPersistsOnlyProofHash() {
         var available = challenge(NOW.plusSeconds(120), null, null, null);
         when(challenges.lockById(CHALLENGE_ID, PRINCIPAL.userId(), SESSION_ID))
@@ -119,6 +161,36 @@ class PlatformStepUpServiceTest {
     }
 
     @Test
+    void verifyRejectsMissingChallengeBeforeMfa() {
+        when(challenges.lockById(CHALLENGE_ID, PRINCIPAL.userId(), SESSION_ID))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.verify(PRINCIPAL, CHALLENGE_ID, "123456"))
+                .isInstanceOf(PlatformPreconditionRequiredException.class)
+                .hasMessage("Desaf\u00edo step-up inv\u00e1lido");
+        verify(mfa, never()).verifyTotp(anyLong(), any());
+    }
+
+    @Test
+    void verifyRejectsChallengeLostAfterMfaAndFailedProofPersistence() {
+        var available = challenge(NOW.plusSeconds(120), null, null, null);
+        when(challenges.lockById(CHALLENGE_ID, PRINCIPAL.userId(), SESSION_ID))
+                .thenReturn(Optional.of(available), Optional.empty());
+        when(mfa.verifyTotp(PRINCIPAL.userId(), "123456")).thenReturn(NOW);
+
+        assertThatThrownBy(() -> service.verify(PRINCIPAL, CHALLENGE_ID, "123456"))
+                .isInstanceOf(PlatformPreconditionRequiredException.class)
+                .hasMessage("Desaf\u00edo step-up inv\u00e1lido");
+
+        when(challenges.lockById(CHALLENGE_ID, PRINCIPAL.userId(), SESSION_ID))
+                .thenReturn(Optional.of(available));
+        when(challenges.verify(eq(CHALLENGE_ID), any(String.class), eq(NOW))).thenReturn(false);
+        assertThatThrownBy(() -> service.verify(PRINCIPAL, CHALLENGE_ID, "123456"))
+                .isInstanceOf(PlatformPreconditionRequiredException.class)
+                .hasMessage("Desaf\u00edo step-up no disponible");
+    }
+
+    @Test
     void proofCanBeConsumedOnceAndOnlyForExactPurposeTargetAndIdempotencyKey() {
         String rawProof = "proof-value";
         String expectedHash = PlatformStepUpService.hash(rawProof);
@@ -137,6 +209,18 @@ class PlatformStepUpServiceTest {
                 .isInstanceOf(PlatformPreconditionRequiredException.class);
         verify(challenges).consume(PRINCIPAL.userId(), SESSION_ID, "TENANT_UPDATE", "TENANT",
                 "tenant-42", "request-1", expectedHash, NOW);
+    }
+
+    @Test
+    void proofShapeIsValidatedBeforeRepositoryConsumption() {
+        for (String invalidProof : new String[]{null, "", " ", "X".repeat(257)}) {
+            assertThatThrownBy(() -> service.requireAndConsume(PRINCIPAL, invalidProof,
+                    "TENANT_STATUS", "TENANT", "tenant-42", "request-1"))
+                    .isInstanceOf(PlatformPreconditionRequiredException.class)
+                    .hasMessageContaining("step-up v\u00e1lido");
+        }
+
+        verify(challenges, never()).consume(anyLong(), any(), any(), any(), any(), any(), any(), any());
     }
 
     private PlatformStepUpRepository.Challenge challenge(

@@ -1,6 +1,5 @@
 package gestudio.repositorios;
 
-import jakarta.persistence.LockModeType;
 import gestudio.entidades.RefreshSession;
 import org.springframework.data.jpa.repository.*;
 import org.springframework.data.repository.query.Param;
@@ -10,14 +9,12 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface RefreshSessionRepositorio extends JpaRepository<RefreshSession, UUID> {
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("""
-            select s from RefreshSession s
-            join fetch s.usuario
-            join fetch s.tenant
-            join fetch s.membership
-            where s.tokenHash = :hash
-            """)
+    @Query(value = """
+            SELECT session.*
+            FROM refresh_sessions session
+            WHERE session.token_hash = :hash
+            FOR NO KEY UPDATE OF session
+            """, nativeQuery = true)
     Optional<RefreshSession> findByTokenHashForUpdate(@Param("hash") String hash);
 
     @Modifying

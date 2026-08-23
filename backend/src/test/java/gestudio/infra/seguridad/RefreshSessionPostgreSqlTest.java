@@ -158,10 +158,7 @@ class RefreshSessionPostgreSqlTest extends PostgreSqlIntegrationTest {
     private Usuario usuario() {
         String suffix = UUID.randomUUID().toString();
 
-        Long roleId = jdbc.queryForObject(
-                "SELECT id FROM roles WHERE descripcion = 'ADMINISTRADOR'",
-                Long.class
-        );
+        Long roleId = defaultRoleId(jdbc, "ADMINISTRADOR");
 
         Long id = jdbc.queryForObject("""
                 INSERT INTO usuarios(nombre_usuario, contrasena, rol_id, activo, auth_version)

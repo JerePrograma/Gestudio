@@ -132,10 +132,7 @@ class CondicionEconomicaPostgreSqlTest extends PostgreSqlIntegrationTest {
     private Fixture fixture(String prefix) {
         String suffix = prefix + "-" + UUID.randomUUID();
 
-        Long superRole = jdbc.queryForObject(
-                "SELECT id FROM roles WHERE descripcion = 'SUPERADMIN'",
-                Long.class
-        );
+        Long superRole = defaultRoleId(jdbc, "SUPERADMIN");
 
         garantizarPermiso(PERM_TARIFAS_ADMIN);
         garantizarPermiso(PERM_TARIFAS_HISTORICAS);

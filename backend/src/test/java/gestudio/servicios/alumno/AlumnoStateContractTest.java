@@ -38,6 +38,17 @@ class AlumnoStateContractTest {
     private final AlumnoMapper mapper = Mappers.getMapper(AlumnoMapper.class);
 
     @Test
+    void illegalArgumentsUseTheCanonicalValidationResponse() {
+        var response = new TratadorDeErrores(CLOCK)
+                .invalidArgument(new IllegalArgumentException("Solicitud inválida de prueba"));
+
+        assertThat(response.getStatusCode().value()).isEqualTo(400);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().code()).isEqualTo("VALIDATION_ERROR");
+        assertThat(response.getBody().message()).isEqualTo("Solicitud inválida de prueba");
+    }
+
+    @Test
     void mapperIgnoresIdentityStateAndDeactivationFields() {
         AlumnoRegistroRequest request = request(999L, false, LocalDate.of(2026, 7, 20));
 

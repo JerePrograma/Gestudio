@@ -217,10 +217,7 @@ class IdempotenciaCanonicaPostgreSqlTest extends PostgreSqlIntegrationTest {
     private Fixture fixture() {
         String suffix = UUID.randomUUID().toString();
 
-        Long role = jdbc.queryForObject(
-                "SELECT id FROM roles WHERE descripcion = 'ADMINISTRADOR'",
-                Long.class
-        );
+        Long role = defaultRoleId(jdbc, "ADMINISTRADOR");
 
         Long user = id("""
                 INSERT INTO usuarios(nombre_usuario, contrasena, rol_id, activo)

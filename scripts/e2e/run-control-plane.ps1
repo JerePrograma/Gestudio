@@ -253,9 +253,13 @@ function Set-PrivatePath {
         [Parameter(Mandatory)][bool] $Directory
     )
     if ($IsWindows) {
-        $acl = Get-Acl -LiteralPath $Path
+        $item = if ($Directory) { [IO.DirectoryInfo]::new($Path) } else { [IO.FileInfo]::new($Path) }
+        $sections = [Security.AccessControl.AccessControlSections]::Access
+        $acl = [IO.FileSystemAclExtensions]::GetAccessControl($item, $sections)
+        $existingRules = @($acl.GetAccessRules(
+            $true, $true, [Security.Principal.SecurityIdentifier]))
         $acl.SetAccessRuleProtection($true, $false)
-        foreach ($existingRule in @($acl.Access)) {
+        foreach ($existingRule in $existingRules) {
             [void]$acl.RemoveAccessRuleAll($existingRule)
         }
         $currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent().User
@@ -273,14 +277,14 @@ function Set-PrivatePath {
                 [Security.AccessControl.FileSystemRights]::FullControl,
                 [Security.AccessControl.AccessControlType]::Allow)
         }
-        $acl.SetOwner($currentIdentity)
         $acl.AddAccessRule($ownerRule)
-        Set-Acl -LiteralPath $Path -AclObject $acl
-        $effectiveAcl = Get-Acl -LiteralPath $Path
-        $unexpectedRules = @($effectiveAcl.Access | Where-Object {
+        [IO.FileSystemAclExtensions]::SetAccessControl($item, $acl)
+        $effectiveAcl = [IO.FileSystemAclExtensions]::GetAccessControl($item, $sections)
+        $effectiveRules = @($effectiveAcl.GetAccessRules(
+            $true, $true, [Security.Principal.SecurityIdentifier]))
+        $unexpectedRules = @($effectiveRules | Where-Object {
             $_.AccessControlType -eq [Security.AccessControl.AccessControlType]::Allow -and
-            $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value -cne
-                $currentIdentity.Value
+            $_.IdentityReference.Value -cne $currentIdentity.Value
         })
         if (-not $effectiveAcl.AreAccessRulesProtected -or $unexpectedRules.Count -gt 0) {
             throw 'No se pudo restringir el recurso E2E al usuario Windows actual.'
@@ -497,12 +501,14 @@ function Remove-LabeledResources {
     }
 
     $residual = @(
-        Invoke-Native -FilePath 'docker' -Arguments @('ps', '-aq', '--filter', "label=com.docker.compose.project=$project") -Capture
-        Invoke-Native -FilePath 'docker' -Arguments @('volume', 'ls', '-q', '--filter', "label=com.docker.compose.project=$project") -Capture
-        Invoke-Native -FilePath 'docker' -Arguments @('network', 'ls', '-q', '--filter', "label=com.docker.compose.project=$project") -Capture
-        Invoke-Native -FilePath 'docker' -Arguments @('image', 'ls', '-q', $backendImage) -Capture
-        Invoke-Native -FilePath 'docker' -Arguments @('image', 'ls', '-q', $frontendImage) -Capture
-    ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+        @(
+            Invoke-Native -FilePath 'docker' -Arguments @('ps', '-aq', '--filter', "label=com.docker.compose.project=$project") -Capture
+            Invoke-Native -FilePath 'docker' -Arguments @('volume', 'ls', '-q', '--filter', "label=com.docker.compose.project=$project") -Capture
+            Invoke-Native -FilePath 'docker' -Arguments @('network', 'ls', '-q', '--filter', "label=com.docker.compose.project=$project") -Capture
+            Invoke-Native -FilePath 'docker' -Arguments @('image', 'ls', '-q', $backendImage) -Capture
+            Invoke-Native -FilePath 'docker' -Arguments @('image', 'ls', '-q', $frontendImage) -Capture
+        ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    )
     if ($residual.Count -gt 0) { throw 'Cleanup E2E incompleto: persisten recursos con el label del proyecto.' }
 }
 
@@ -750,7 +756,7 @@ services:
     $baselineScripts = @(Get-ChildItem -LiteralPath $migrationRoot -File -Filter "B${latestMigration}__*.sql")
     if ($baselineScripts.Count -ne 1) { throw 'No existe un baseline fresh unico para la ultima version.' }
     $baselineScript = $baselineScripts[0].Name
-    $freshState = (Invoke-DatabaseSql -Sql @"
+    $freshOutput = Invoke-DatabaseSql -Sql @"
 DO `$fresh`$
 DECLARE item record; has_rows boolean;
 BEGIN
@@ -797,10 +803,16 @@ SELECT
          WHERE ix.attnum IS DISTINCT FROM fk.attnum
        )
    ))::text;
-"@).Trim()
+"@
+    $freshRows = @($freshOutput -split '[\r\n]+' |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and $_ -cne 'DO' })
+    if ($freshRows.Count -ne 1) {
+        throw 'La consulta fresh no produjo una unica fila de estado.'
+    }
+    $freshState = $freshRows[0].Trim()
     $expectedFresh = "0|0|0|0|0|0|1|${latestMigration}:SQL_BASELINE:${baselineScript}|0|32|32|0|GREEN|0"
     if ($freshState -cne $expectedFresh) {
-        throw 'La base fresh no quedo sin seed funcional o Flyway no quedo sano.'
+        throw "La base fresh no quedo sin seed funcional o Flyway no quedo sano. Estado actual: $freshState"
     }
 
     $bootstrapCounter = [long][Math]::Floor([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() / 30)

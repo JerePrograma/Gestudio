@@ -72,7 +72,7 @@ foreach ($relativePath in $untracked | Where-Object { $_ -like '*.java' }) {
 
 $jacoco = [xml](Get-Content -LiteralPath $jacocoPath -Raw)
 $sourceReports = [Collections.Generic.Dictionary[string, object]]::new([StringComparer]::OrdinalIgnoreCase)
-foreach ($package in @($jacoco.report.package)) {
+foreach ($package in @($jacoco.DocumentElement.SelectNodes('package'))) {
     foreach ($sourceFile in @($package.sourcefile)) {
         $relativePath = "backend/src/main/java/$($package.name)/$($sourceFile.name)"
         $sourceReports[$relativePath] = $sourceFile
@@ -89,7 +89,7 @@ foreach ($entry in $changedByFile.GetEnumerator() | Sort-Object Key) {
     }
 
     $lineReports = [Collections.Generic.Dictionary[int, object]]::new()
-    foreach ($lineReport in @($sourceReports[$entry.Key].line)) {
+    foreach ($lineReport in @($sourceReports[$entry.Key].SelectNodes('line'))) {
         $lineReports[[int]$lineReport.nr] = $lineReport
     }
 

@@ -284,8 +284,7 @@ class CargoSaldoPostgreSqlTest extends PostgreSqlIntegrationTest {
 
     private Fixture fixture(String cuota, String matricula) {
         String suffix = UUID.randomUUID().toString();
-        Long role = jdbc.queryForObject(
-                "SELECT id FROM roles WHERE descripcion = 'ADMINISTRADOR'", Long.class);
+        Long role = defaultRoleId(jdbc, "ADMINISTRADOR");
         Long user = id("""
                 INSERT INTO usuarios(nombre_usuario, contrasena, rol_id, activo)
                 VALUES (?, 'test-only', ?, true) RETURNING id

@@ -130,6 +130,7 @@ final class MembershipMutationCoordinator {
             if (claim.succeeded()) {
                 return new MutationOutcome<>(requireMembership(tenantId, membershipId), true);
             }
+            requireMembership(tenantId, membershipId);
             stepUp.requireAndConsume(actor, stepUpProof, MEMBERSHIP_ROLES,
                     TENANT_MEMBERSHIP_TARGET, membershipId.toString(), key);
             repository.lockTenantAdministratorInvariant(tenantId);

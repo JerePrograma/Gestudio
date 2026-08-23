@@ -6,7 +6,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
@@ -16,8 +16,8 @@ import java.util.Base64;
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class CucumberSpringConfiguration {
-    private static final PostgreSQLContainer<?> POSTGRESQL =
-            new PostgreSQLContainer<>("postgres:15.18-alpine3.24")
+    private static final PostgreSQLContainer POSTGRESQL =
+            new PostgreSQLContainer("postgres:15.18-alpine3.24")
                     .withDatabaseName("gestudio_bdd")
                     .withUsername("gestudio_bdd")
                     .withPassword("synthetic-bdd-database-password");

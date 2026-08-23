@@ -93,10 +93,10 @@ public class PlatformIdentityRepository {
         jdbc.update("""
                 INSERT INTO platform_mfa_credentials(
                     id, usuario_id, method, secret_ciphertext, key_version, verified_at,
-                    last_used_at, last_counter)
-                VALUES (?, ?, 'TOTP', ?, ?, ?, ?, ?)
+                    created_at, last_used_at, last_counter)
+                VALUES (?, ?, 'TOTP', ?, ?, ?, ?, ?, ?)
                 """, id, userId, ciphertext, keyVersion, Timestamp.from(verifiedAt),
-                Timestamp.from(verifiedAt), counter);
+                Timestamp.from(verifiedAt), Timestamp.from(verifiedAt), counter);
         return id;
     }
 

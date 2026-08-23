@@ -283,8 +283,24 @@ const createTenant = async (
     ),
   };
   await expect(page.getByRole("heading", { name: "Organización creada" })).toBeVisible();
-  await page.goto("/platform/tenants");
-  await expect(page.getByRole("heading", { name: "Organizaciones" })).toBeVisible();
+  const listStatuses: number[] = [];
+  const recordListStatus = (listResponse: Response) => {
+    if (endpoint(listResponse, "GET", "/platform/tenants")) {
+      listStatuses.push(listResponse.status());
+    }
+  };
+  page.on("response", recordListStatus);
+  try {
+    await page.goto("/platform/tenants");
+    await expect(page.getByRole("heading", { name: "Organizaciones" })).toBeVisible();
+  } catch {
+    const pathname = new URL(page.url()).pathname;
+    throw new Error(
+      `Listado posterior al alta no visible; ruta=${pathname}; respuestas=${listStatuses.join(",") || "ninguna"}`,
+    );
+  } finally {
+    page.off("response", recordListStatus);
+  }
   return result;
 };
 
@@ -386,7 +402,7 @@ const assertSuspendedLoginDenied = async (
     assertStatus(response.status(), 401, "Login con tenant suspendido");
     const body = await requireObject(response, "Login con tenant suspendido");
     if (body.code !== "UNAUTHORIZED") throw new Error("Login suspendido no fue UNAUTHORIZED");
-    await expect(page.getByRole("alert")).toBeVisible();
+    await expect(page.getByRole("main").getByRole("alert")).toHaveText("Credenciales inválidas");
   } finally {
     await context.close();
   }

@@ -96,11 +96,16 @@ public class PlatformSecurityFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        String path = request.getServletPath();
+        String path = requestPath(request);
         return path == null || !path.startsWith("/api/platform/")
                 || path.equals("/api/platform/auth/login")
                 || path.equals("/api/platform/auth/refresh")
                 || path.equals("/api/platform/auth/logout")
                 || path.equals("/api/platform/identity/activate");
+    }
+
+    private static String requestPath(HttpServletRequest request) {
+        String path = request.getServletPath();
+        return path == null || path.isBlank() ? request.getRequestURI() : path;
     }
 }

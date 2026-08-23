@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "baseSha": "53547baac50063de85fb694124241d9f58e256a1",
+  "baseSha": "0cb00b318db57f40ea10c31711686ed21c490c06",
   "findingCount": 115,
-  "provenance": "Derived from the 2026-08-13 PMD 7.14.0 report after exact de-duplication and restricted to the configured Error Prone, Security, CognitiveComplexity, CyclomaticComplexity and NPathComplexity rules. Only findings outside added/changed line ranges versus origin/main are admitted.",
+  "provenance": "Derived from the 2026-08-21 PMD 7.14.0 report after exact de-duplication and restricted to the configured Error Prone, Security, CognitiveComplexity, CyclomaticComplexity and NPathComplexity rules. Only findings outside added/changed line ranges versus origin/main are admitted.",
   "findings": [
     {
       "path": "backend/src/main/java/gestudio/controladores/AutenticacionControlador.java",
@@ -98,12 +98,6 @@
       "path": "backend/src/main/java/gestudio/infra/errores/SinStockException.java",
       "rule": "MissingSerialVersionUID",
       "message": "Classes implementing Serializable should set a serialVersionUID",
-      "count": 1
-    },
-    {
-      "path": "backend/src/main/java/gestudio/infra/errores/TratadorDeErrores.java",
-      "rule": "AvoidDuplicateLiterals",
-      "message": "The String literal \"VALIDATION_ERROR\" appears 4 times in this file; the first occurrence is on line 55",
       "count": 1
     },
     {
@@ -513,6 +507,12 @@
       "rule": "AvoidLiteralsInIfCondition",
       "message": "Avoid using literals in if statements",
       "count": 2
+    },
+    {
+      "path": "backend/src/main/java/gestudio/tenancy/TenantAwareDataSource.java",
+      "rule": "CloseResource",
+      "message": "Ensure that resources like this AutoCloseable object are closed after use",
+      "count": 1
     },
     {
       "path": "backend/src/main/java/gestudio/tenancy/TenantAwareDataSource.java",

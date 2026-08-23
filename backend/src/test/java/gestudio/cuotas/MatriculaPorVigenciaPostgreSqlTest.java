@@ -101,13 +101,14 @@ class MatriculaPorVigenciaPostgreSqlTest extends PostgreSqlIntegrationTest {
 
     private Base base(String prefix) {
         String suffix = prefix + "-" + UUID.randomUUID();
-        Long role = jdbc.queryForObject("SELECT id FROM roles WHERE codigo = 'SUPERADMIN'", Long.class);
+        Long role = defaultRoleId(jdbc, "SUPERADMIN");
         Long user = id("""
                 INSERT INTO usuarios(nombre_usuario, contrasena, rol_id, activo)
                 VALUES (?, 'test-only', ?, true) RETURNING id
                 """, "matricula-" + suffix, role);
         jdbc.update("INSERT INTO usuario_roles(usuario_id, rol_id) VALUES (?, ?) ON CONFLICT DO NOTHING",
                 user, role);
+        createActiveMembership(jdbc, user, role);
         Long profesor = id("""
                 INSERT INTO profesores(nombre, apellido, activo)
                 VALUES (?, 'Matrícula', true) RETURNING id

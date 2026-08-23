@@ -193,13 +193,14 @@ class LiquidacionPorVigenciaPostgreSqlTest extends PostgreSqlIntegrationTest {
 
     private Fixture fixture(String prefix, String costoLegacy, Long bonificacionLegacyId) {
         String suffix = prefix + "-" + UUID.randomUUID();
-        Long roleId = jdbc.queryForObject("SELECT id FROM roles WHERE codigo = 'SUPERADMIN'", Long.class);
+        Long roleId = defaultRoleId(jdbc, "SUPERADMIN");
         Long usuarioId = id("""
                 INSERT INTO usuarios(nombre_usuario, contrasena, rol_id, activo)
                 VALUES (?, 'test-only', ?, true) RETURNING id
                 """, "liquidador-" + suffix, roleId);
         jdbc.update("INSERT INTO usuario_roles(usuario_id, rol_id) VALUES (?, ?) ON CONFLICT DO NOTHING",
                 usuarioId, roleId);
+        createActiveMembership(jdbc, usuarioId, roleId);
         Long profesorId = id("""
                 INSERT INTO profesores(nombre, apellido, activo)
                 VALUES (?, 'Vigencia', true) RETURNING id

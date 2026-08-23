@@ -15,5 +15,6 @@ describe("Tabla", () => {
     );
 
     expect(screen.queryByText("undefined")).not.toBeInTheDocument();
+    expect(screen.getByRole("table").parentElement).toHaveAttribute("tabindex", "0");
   });
 });

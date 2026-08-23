@@ -9,6 +9,8 @@ import gestudio.platform.security.PlatformPreconditionRequiredException;
 import gestudio.platform.security.PlatformPrincipal;
 import gestudio.platform.security.PlatformStepUpService;
 import gestudio.platform.security.PlatformTokenService;
+import gestudio.tenancy.TenantAwareDataSource;
+import gestudio.tenancy.TenantContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -20,6 +22,7 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -122,6 +125,9 @@ class PlatformControlPlanePostgreSqlTest extends PostgreSqlIntegrationTest {
                 controlPlane.tenants(existingCode, "ACTIVE", 0, 10);
         assertThat(listing.content()).singleElement()
                 .satisfies(tenant -> assertThat(tenant.roleCount()).isEqualTo(6));
+        assertThat(controlPlane.tenants(null, null, 0, 25).content())
+                .extracting(PlatformControlPlaneRepository.TenantView::id)
+                .contains(existing.tenant().id());
 
         String newCode = tenantCode("new");
         String newKey = key("new");
@@ -402,7 +408,7 @@ class PlatformControlPlanePostgreSqlTest extends PostgreSqlIntegrationTest {
                                 "name", "Versión ausente"))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
-                .andExpect(jsonPath("$.fields[0].field").value("expectedVersion"));
+                .andExpect(jsonPath("$.fieldErrors[0].field").value("expectedVersion"));
 
         String firstKey = key("optimistic-first");
         PlatformControlPlaneRepository.TenantView firstUpdate = controlPlane.updateTenant(
@@ -603,6 +609,10 @@ class PlatformControlPlanePostgreSqlTest extends PostgreSqlIntegrationTest {
         PlatformIdentityActivationService.ActivationResult enrolled = identityActivation.activate(
                 granted.activation().token(), null, TOTP_SECRET_BASE32, currentTotp(), UUID.randomUUID());
         assertThat(enrolled.recoveryCodes()).hasSize(10).doesNotHaveDuplicates();
+        assertThat(jdbc.queryForObject("""
+                SELECT count(*) FROM platform_mfa_credentials
+                WHERE usuario_id=? AND verified_at=created_at AND last_used_at=created_at
+                """, Long.class, targetUser)).isOne();
         assertThat(jdbc.queryForObject(
                 "SELECT active FROM platform_admins WHERE usuario_id=?", Boolean.class, targetUser)).isTrue();
         long enrolledVersion = jdbc.queryForObject(
@@ -813,6 +823,9 @@ class PlatformControlPlanePostgreSqlTest extends PostgreSqlIntegrationTest {
         assertThatThrownBy(() -> controlPlane.tenants(null, null, 0, 101))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Paginación");
+        assertThat(controlPlane.admins(null, null, 0, 100).content())
+                .extracting(PlatformControlPlaneRepository.AdminView::userId)
+                .contains(actor.userId());
         assertThatThrownBy(() -> controlPlane.tenant(UUID.randomUUID()))
                 .isInstanceOf(RecursoNoEncontradoException.class);
 
@@ -985,6 +998,23 @@ class PlatformControlPlanePostgreSqlTest extends PostgreSqlIntegrationTest {
                     .isGreaterThanOrEqualTo(2);
             assertSqlState("42501", () -> scalar(connection, "SELECT count(*) FROM roles"));
             assertSqlState("42501", () -> scalar(connection, "SELECT count(*) FROM alumnos"));
+
+            PlatformControlPlaneRepository runtimeRepository = new PlatformControlPlaneRepository(
+                    new JdbcTemplate(new TenantAwareDataSource(
+                            new SingleConnectionDataSource(connection, true))));
+            TenantContext.clear();
+            try {
+                var runtimeListing = runtimeRepository.tenants(null, null, 0, 100);
+                assertThat(runtimeListing.content().stream()
+                        .filter(tenant -> tenant.id().equals(tenantA.tenant().id()))
+                        .findFirst().orElseThrow().roleCount()).isEqualTo(6);
+                assertThat(runtimeListing.content().stream()
+                        .filter(tenant -> tenant.id().equals(tenantB.tenant().id()))
+                        .findFirst().orElseThrow().roleCount()).isEqualTo(6);
+                assertThat(TenantContext.currentTenantId()).isEmpty();
+            } finally {
+                selectMembership(null);
+            }
 
             setTenant(connection, tenantA.tenant().id());
             assertThat(scalar(connection, "SELECT count(*) FROM roles")).isEqualTo(6);

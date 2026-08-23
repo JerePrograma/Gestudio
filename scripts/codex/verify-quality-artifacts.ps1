@@ -222,18 +222,21 @@ function Get-CoverageEntry {
 switch ($Scope) {
     'BackendCoverage' {
         $jacoco = Read-XmlArtifact 'backend\target\site\jacoco\jacoco.xml'
-        $lineCounter = @($jacoco.report.counter | Where-Object { $_.type -eq 'LINE' })
+        $jacocoRoot = $jacoco.DocumentElement
+        $lineCounter = @($jacocoRoot.SelectNodes("counter[@type='LINE']"))
         if ($lineCounter.Count -ne 1 -or
             ([int64]$lineCounter[0].covered + [int64]$lineCounter[0].missed) -eq 0) {
             throw 'JaCoCo no informó líneas backend ejecutables.'
         }
-        $packageNames = @($jacoco.report.package | ForEach-Object { $_.name -replace '/', '.' })
+        $packageNames = @($jacocoRoot.SelectNodes('package') |
+            ForEach-Object { $_.GetAttribute('name') -replace '/', '.' })
         foreach ($pattern in 'gestudio.platform*', 'gestudio.tenancy*', 'gestudio.infra.seguridad*') {
             if (@($packageNames | Where-Object { $_ -like $pattern }).Count -eq 0) {
                 throw "JaCoCo no informó paquetes que coincidan con la regla crítica $pattern."
             }
         }
-        $classNames = @($jacoco.report.package.class | ForEach-Object { $_.name -replace '/', '.' })
+        $classNames = @($jacocoRoot.SelectNodes('package/class') |
+            ForEach-Object { $_.GetAttribute('name') -replace '/', '.' })
         foreach ($pattern in 'gestudio.infra.seguridad.SecurityConfigurations*',
             'gestudio.infra.seguridad.SecurityFilter*') {
             if (@($classNames | Where-Object { $_ -like $pattern }).Count -eq 0) {

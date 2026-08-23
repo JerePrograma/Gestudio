@@ -14,7 +14,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.transaction.BeforeTransaction;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.util.UUID;
 import java.util.concurrent.Callable;
@@ -31,8 +31,8 @@ public abstract class PostgreSqlIntegrationTest {
 
     private TenantContext.Scope tenantScope;
 
-    protected static final PostgreSQLContainer<?> POSTGRESQL =
-            new PostgreSQLContainer<>("postgres:15.18-alpine3.24")
+    protected static final PostgreSQLContainer POSTGRESQL =
+            new PostgreSQLContainer("postgres:15.18-alpine3.24")
                     .withDatabaseName("gestudio_phase4a")
                     .withUsername("phase4a")
                     .withPassword("phase4a");

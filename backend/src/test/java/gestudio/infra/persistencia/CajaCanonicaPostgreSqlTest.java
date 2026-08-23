@@ -43,11 +43,12 @@ class CajaCanonicaPostgreSqlTest extends PostgreSqlIntegrationTest {
                 "Caja uno " + suffix);
         metodoDos = id("INSERT INTO metodo_pagos(descripcion, activo, recargo) VALUES (?, true, 0) RETURNING id",
                 "Caja dos " + suffix);
+        Long role = defaultRoleId(jdbc, "ADMINISTRADOR");
         usuario = id("""
                 INSERT INTO usuarios(nombre_usuario, contrasena, rol_id, activo)
-                VALUES (?, 'no-login', (SELECT id FROM roles WHERE descripcion = 'ADMINISTRADOR'), true)
+                VALUES (?, 'no-login', ?, true)
                 RETURNING id
-                """, "caja-" + suffix);
+                """, "caja-" + suffix, role);
         alumno = id("""
                 INSERT INTO alumnos(nombre, apellido, fecha_incorporacion, activo)
                 VALUES (?, 'Caja', ?, true) RETURNING id

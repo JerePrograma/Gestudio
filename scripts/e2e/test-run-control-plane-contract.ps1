@@ -69,12 +69,25 @@ foreach ($requirement in @(
     @('$projectBefore.Networks.Count -ne 0', 'Falta preflight de redes preexistentes.'),
     @('$playwrightOutput = Join-Path $runRoot ''playwright-output''', 'El output Playwright no pertenece al temporal privado del run.'),
     @('GESTUDIO_E2E_OUTPUT_DIR = $playwrightOutput', 'El runner no entrega a Playwright el output privado del run.'),
+    @('[Security.AccessControl.AccessControlSections]::Access', 'La ACL temporal no limita la lectura a la DACL.'),
+    @('[IO.FileSystemAclExtensions]::GetAccessControl', 'La ACL temporal no usa lectura de acceso sin privilegios de SACL.'),
+    @('[IO.FileSystemAclExtensions]::SetAccessControl', 'La ACL temporal no persiste la DACL restringida.'),
     @('Test-DockerProjectSnapshotInvariant -Before $projectBefore -After $projectAfter', 'Falta invariancia post-cleanup del proyecto E2E.'),
     @('Test-DockerProjectSnapshotInvariant -Before $protectedDemoBefore -After $protectedDemoAfter', 'Falta invariancia post-cleanup del demo protegido.'),
     @('protectedDemoInvariant = $protectedDemoInvariant', 'Falta resultado sanitizado de invariancia del demo.'),
-    @('composeProjectInvariant = $projectInvariant', 'Falta resultado sanitizado de invariancia del proyecto E2E.')
+    @('composeProjectInvariant = $projectInvariant', 'Falta resultado sanitizado de invariancia del proyecto E2E.'),
+    @("`$_ -cne 'DO'", 'La salida fresh no elimina exclusivamente el command tag DO conocido.'),
+    @('$freshRows.Count -ne 1', 'La salida fresh no exige una unica fila de estado.'),
+    @('Estado actual: $freshState', 'El fallo fresh no conserva evidencia sanitizada para diagnostico.')
 )) {
     Assert-Contains -Source $runner -Marker $requirement[0] -Failure $requirement[1]
+}
+
+if ($runner -notmatch '(?s)\$residual\s*=\s*@\(\s*@\(') {
+    throw 'El inventario residual debe conservar semantica de array con cero o un recurso.'
+}
+if ($runner.IndexOf('.SetOwner(', [StringComparison]::Ordinal) -ge 0) {
+    throw 'La ACL temporal no debe exigir privilegios de cambio de owner.'
 }
 
 Assert-Ordered -Source $runner `

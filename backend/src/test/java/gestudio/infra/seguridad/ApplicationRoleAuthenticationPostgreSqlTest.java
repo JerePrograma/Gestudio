@@ -5,6 +5,9 @@ import com.zaxxer.hikari.HikariDataSource;
 import gestudio.dto.request.LoginRequest;
 import gestudio.tenancy.TenantAwareDataSource;
 import gestudio.tenancy.TenantContext;
+import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.configuration.FluentConfiguration;
+import org.flywaydb.core.api.migration.baseline.BaselineMigrationConfigurationExtension;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,7 +21,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -38,6 +41,8 @@ import static org.assertj.core.api.Assertions.catchThrowableOfType;
 @ActiveProfiles("test")
 class ApplicationRoleAuthenticationPostgreSqlTest {
 
+    private static final String DISABLED_BASELINE_MIGRATION_PREFIX = "X_DISABLED_BASELINE";
+
     private static final UUID DEFAULT_TENANT_ID =
             UUID.fromString("00000000-0000-0000-0000-000000000001");
     private static final UUID OTHER_TENANT_ID =
@@ -50,8 +55,8 @@ class ApplicationRoleAuthenticationPostgreSqlTest {
     private static final String LOGIN_USERNAME = "app-role-login";
     private static final String LOGIN_PASSWORD = "Correcta-1234";
 
-    private static final PostgreSQLContainer<?> POSTGRESQL =
-            new PostgreSQLContainer<>("postgres:15.18-alpine3.24")
+    private static final PostgreSQLContainer POSTGRESQL =
+            new PostgreSQLContainer("postgres:15.18-alpine3.24")
                     .withDatabaseName("gestudio_app_role_auth")
                     .withUsername("migration_owner")
                     .withPassword("migration-owner-password");
@@ -59,6 +64,7 @@ class ApplicationRoleAuthenticationPostgreSqlTest {
     static {
         POSTGRESQL.start();
         createApplicationRoles();
+        versionedFlyway().migrate();
     }
 
     @DynamicPropertySource
@@ -67,11 +73,11 @@ class ApplicationRoleAuthenticationPostgreSqlTest {
         registry.add("spring.datasource.username", () -> APP_USERNAME);
         registry.add("spring.datasource.password", () -> APP_PASSWORD);
 
-        registry.add("spring.flyway.enabled", () -> true);
-        registry.add("spring.flyway.url", POSTGRESQL::getJdbcUrl);
-        registry.add("spring.flyway.user", POSTGRESQL::getUsername);
-        registry.add("spring.flyway.password", POSTGRESQL::getPassword);
-        registry.add("spring.flyway.baseline-on-migrate", () -> false);
+        registry.add("app.platform-datasource.url", POSTGRESQL::getJdbcUrl);
+        registry.add("app.platform-datasource.username", POSTGRESQL::getUsername);
+        registry.add("app.platform-datasource.password", POSTGRESQL::getPassword);
+
+        registry.add("spring.flyway.enabled", () -> false);
         registry.add("spring.jpa.hibernate.ddl-auto", () -> "validate");
 
         registry.add(
@@ -478,6 +484,17 @@ class ApplicationRoleAuthenticationPostgreSqlTest {
         } catch (Exception exception) {
             throw new ExceptionInInitializerError(exception);
         }
+    }
+
+    private static Flyway versionedFlyway() {
+        FluentConfiguration configuration = Flyway.configure()
+                .dataSource(POSTGRESQL.getJdbcUrl(), POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
+                .schemas("public")
+                .defaultSchema("public");
+        Flyway flyway = configuration.load();
+        flyway.getConfigurationExtension(BaselineMigrationConfigurationExtension.class)
+                .setBaselineMigrationPrefix(DISABLED_BASELINE_MIGRATION_PREFIX);
+        return flyway;
     }
 
     private static Connection ownerConnection() throws Exception {

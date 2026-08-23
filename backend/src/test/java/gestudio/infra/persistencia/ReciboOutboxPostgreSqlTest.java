@@ -48,11 +48,12 @@ class ReciboOutboxPostgreSqlTest extends PostgreSqlIntegrationTest {
         String suffix = UUID.randomUUID().toString();
         metodo = id("INSERT INTO metodo_pagos(descripcion, activo, recargo) VALUES (?, true, 0) RETURNING id",
                 "Outbox " + suffix);
+        Long role = defaultRoleId(jdbc, "ADMINISTRADOR");
         usuario = id("""
                 INSERT INTO usuarios(nombre_usuario, contrasena, rol_id, activo)
-                VALUES (?, 'no-login', (SELECT id FROM roles WHERE descripcion = 'ADMINISTRADOR'), true)
+                VALUES (?, 'no-login', ?, true)
                 RETURNING id
-                """, "outbox-" + suffix);
+                """, "outbox-" + suffix, role);
         alumno = id("""
                 INSERT INTO alumnos(nombre, fecha_incorporacion, email, activo)
                 VALUES (?, DATE '2026-01-01', 'outbox@example.test', true) RETURNING id

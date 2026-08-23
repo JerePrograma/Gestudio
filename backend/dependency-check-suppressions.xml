@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+    <suppress until="2026-11-30Z">
+        <notes><![CDATA[
+        docker-java-transport-zerodep 3.7.1 is the newest upstream transport available to
+        Testcontainers 2.0.5 as of 2026-08-21. CVE-2026-71290 affects only the asynchronous
+        HttpClient implementation; ApacheDockerHttpClientImpl uses CloseableHttpClient's
+        classic implementation. Re-evaluate when Docker Java publishes a newer transport.
+        ]]></notes>
+        <packageUrl regex="true">^pkg:maven/org\.apache\.httpcomponents\.client5/httpclient5@5\.5\.1$</packageUrl>
+        <cve>CVE-2026-71290</cve>
+    </suppress>
+    <suppress until="2026-11-30Z">
+        <notes><![CDATA[
+        docker-java-transport-zerodep 3.7.1 shades HttpCore 5.3.6 and has no patched upstream
+        release as of 2026-08-21. Testcontainers uses this test-scoped client only against the
+        trusted local Docker daemon: it does not use HTTP/2 (CVE-2026-54428), and a malicious
+        Docker daemon capable of exploiting the HTTP/1.1 parser (CVE-2026-54399) already owns
+        the privileged test boundary. Re-evaluate when Docker Java issue 2651 is resolved.
+        ]]></notes>
+        <packageUrl regex="true">^pkg:maven/org\.apache\.httpcomponents\.core5/httpcore5(?:-h2)?@5\.3\.6$</packageUrl>
+        <cve>CVE-2026-54399</cve>
+        <cve>CVE-2026-54428</cve>
+    </suppress>
+</suppressions>

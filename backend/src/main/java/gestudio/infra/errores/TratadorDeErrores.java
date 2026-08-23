@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import gestudio.infra.seguridad.InvalidTokenException;
 import gestudio.infra.seguridad.RefreshTokenReuseException;
 import gestudio.platform.security.PlatformPreconditionRequiredException;
@@ -31,6 +32,7 @@ import java.util.NoSuchElementException;
 
 @RestControllerAdvice
 public class TratadorDeErrores {
+    private static final String VALIDATION_ERROR_CODE = "VALIDATION_ERROR";
 
     private static final Logger log = LoggerFactory.getLogger(TratadorDeErrores.class);
     private final Clock clock;
@@ -52,13 +54,21 @@ public class TratadorDeErrores {
         List<ApiErrorResponse.FieldViolation> fields = exception.getFieldErrors().stream()
                 .map(error -> new ApiErrorResponse.FieldViolation(error.getField(), error.getDefaultMessage()))
                 .toList();
-        return response(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "La solicitud contiene campos inválidos", fields);
+        return response(HttpStatus.BAD_REQUEST, VALIDATION_ERROR_CODE,
+                "La solicitud contiene campos inválidos", fields);
     }
 
     @ExceptionHandler(MissingServletRequestParameterException.class)
     public ResponseEntity<ApiErrorResponse> missingParameter(MissingServletRequestParameterException exception) {
-        return response(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "Falta un parámetro requerido",
+        return response(HttpStatus.BAD_REQUEST, VALIDATION_ERROR_CODE, "Falta un parámetro requerido",
                 List.of(new ApiErrorResponse.FieldViolation(exception.getParameterName(), "es requerido")));
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiErrorResponse> typeMismatch(MethodArgumentTypeMismatchException exception) {
+        return response(HttpStatus.BAD_REQUEST, VALIDATION_ERROR_CODE,
+                "La solicitud contiene parámetros inválidos",
+                List.of(new ApiErrorResponse.FieldViolation(exception.getName(), "tiene un formato inválido")));
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
@@ -67,12 +77,14 @@ public class TratadorDeErrores {
                 .map(violation -> new ApiErrorResponse.FieldViolation(
                         violation.getPropertyPath().toString(), violation.getMessage()))
                 .toList();
-        return response(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "La solicitud contiene parámetros inválidos", fields);
+        return response(HttpStatus.BAD_REQUEST, VALIDATION_ERROR_CODE,
+                "La solicitud contiene parámetros inválidos", fields);
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiErrorResponse> invalidArgument(IllegalArgumentException exception) {
-        return response(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", safeMessage(exception, "Solicitud inválida"));
+        return response(HttpStatus.BAD_REQUEST, VALIDATION_ERROR_CODE,
+                safeMessage(exception, "Solicitud inválida"));
     }
 
     @ExceptionHandler({ErrorDeAutenticacionException.class, AuthenticationException.class})
