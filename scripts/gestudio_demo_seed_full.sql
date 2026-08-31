@@ -1817,7 +1817,8 @@ SET stock_id = EXCLUDED.stock_id,
 INSERT INTO public.recibos (tenant_id, pago_id, storage_key, generado_at, enviado_at)
 SELECT (SELECT tenant_id FROM _demo_config),
        p.id,
-       'demo/recibos/pago-' || lpad(x.payment_no::text, 3, '0') || '.pdf',
+       (SELECT tenant_id::text FROM _demo_config)
+           || '/recibos/pago-' || lpad(x.payment_no::text, 3, '0') || '.pdf',
        (SELECT anchor_ts FROM _demo_config) + (600 + x.payment_no) * interval '1 second',
        CASE WHEN x.payment_no % 4 = 0
             THEN (SELECT anchor_ts FROM _demo_config) + (700 + x.payment_no) * interval '1 second'

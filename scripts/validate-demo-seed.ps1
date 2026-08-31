@@ -342,7 +342,10 @@ function Assert-SeedStaticContract {
         "COMMIT;",
         "demo_business_date",
         "demo_expected_flyway_count",
-        "demo_expected_flyway_latest"
+        "demo_expected_flyway_latest",
+        "INSERT INTO public.roles",
+        "INSERT INTO public.rol_permisos",
+        "ON CONFLICT (tenant_id, codigo) DO NOTHING"
     )) {
         if (-not $seed.Contains($requiredText)) {
             throw "El seed no contiene el contrato obligatorio: $requiredText"
@@ -350,7 +353,8 @@ function Assert-SeedStaticContract {
     }
 
     $forbiddenPatterns = [ordered]@{
-        '(?im)^\s*(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:public\.)?(roles|permisos|rol_permisos)\b' = "El seed intenta modificar el RBAC productivo"
+        '(?im)^\s*(UPDATE|DELETE\s+FROM)\s+(?:public\.)?(roles|permisos|rol_permisos)\b' = "El seed intenta modificar RBAC existente"
+        '(?im)^\s*INSERT\s+INTO\s+(?:public\.)?permisos\b' = "El seed intenta crear permisos fuera de Flyway"
         '(?im)^\s*(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:public\.)?(refresh_sessions|bootstrap_ejecuciones|auditoria_eventos|cargo_eventos|notificaciones)\b' = "El seed intenta poblar tablas derivadas de servicios productivos"
         '(?im)^\s*TRUNCATE\b' = "El seed contiene TRUNCATE"
         '(?im)^\s*ALTER\s+TABLE\b' = "El seed intenta alterar el esquema"
@@ -368,7 +372,7 @@ function Assert-SeedStaticContract {
         }
     }
 
-    Add-Result -Stage "Contrato estático del seed" -Result "PASS" -Detail "Manual, transaccional, sin DML RBAC, secretos ni operaciones destructivas"
+    Add-Result -Stage "Contrato estático del seed" -Result "PASS" -Detail "Manual, transaccional, RBAC demo explícito, sin secretos ni operaciones destructivas"
 }
 
 function Test-ByteSequence {
@@ -398,7 +402,17 @@ function Assert-NoSecretsInTemporaryFiles {
         if ($file.Length -gt 20MB) {
             throw "No se puede auditar un temporal mayor a 20 MB: $($file.FullName)"
         }
-        $bytes = [IO.File]::ReadAllBytes($file.FullName)
+        $readDeadline = (Get-Date).AddSeconds(5)
+        while ($true) {
+            try {
+                $bytes = [IO.File]::ReadAllBytes($file.FullName)
+                break
+            }
+            catch {
+                if ((Get-Date) -ge $readDeadline) { throw }
+                Start-Sleep -Milliseconds 250
+            }
+        }
         if ($bytes.Length -eq 0) { continue }
         foreach ($secret in $script:secretValues) {
             if ([string]::IsNullOrEmpty($secret)) { continue }
@@ -796,15 +810,18 @@ function Wait-BackendAvailable {
 
 function Stop-Backend {
     if ($null -eq $script:backendProcess) { return }
+    $process = $script:backendProcess
     try {
-        if (-not $script:backendProcess.HasExited) {
-            Stop-Process -Id $script:backendProcess.Id -Force -ErrorAction SilentlyContinue
-            try { Wait-Process -Id $script:backendProcess.Id -Timeout 15 -ErrorAction SilentlyContinue }
-            catch { }
+        if (-not $process.HasExited) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            if (-not $process.WaitForExit(15000)) {
+                throw "El backend no terminó dentro de 15 segundos"
+            }
         }
+        $process.WaitForExit()
     }
     finally {
-        $script:backendProcess.Dispose()
+        $process.Dispose()
         $script:backendProcess = $null
     }
 }
@@ -931,12 +948,12 @@ function Assert-Endpoint {
 function Get-RbacSnapshot {
     return Invoke-Sql -Query @"
 SELECT jsonb_build_object(
-    'rolesCount', (SELECT count(*) FROM roles),
-    'rolesHash', (SELECT md5(COALESCE(string_agg(id::text || '|' || codigo || '|' || activo::text || '|' || sistema::text || '|' || editable::text, E'\n' ORDER BY id), '')) FROM roles),
+    'rolesCount', (SELECT count(*) FROM roles WHERE tenant_id IS DISTINCT FROM '00000000-0000-0000-0000-000000000001'::uuid),
+    'rolesHash', (SELECT md5(COALESCE(string_agg(tenant_id::text || '|' || id::text || '|' || codigo || '|' || activo::text || '|' || sistema::text || '|' || editable::text, E'\n' ORDER BY tenant_id, id), '')) FROM roles WHERE tenant_id IS DISTINCT FROM '00000000-0000-0000-0000-000000000001'::uuid),
     'permissionsCount', (SELECT count(*) FROM permisos),
     'permissionsHash', (SELECT md5(COALESCE(string_agg(id::text || '|' || codigo || '|' || activo::text || '|' || sistema::text || '|' || modulo || '|' || descripcion, E'\n' ORDER BY id), '')) FROM permisos),
-    'matrixCount', (SELECT count(*) FROM rol_permisos),
-    'matrixHash', (SELECT md5(COALESCE(string_agg(rol_id::text || '|' || permiso_id::text, E'\n' ORDER BY rol_id, permiso_id), '')) FROM rol_permisos)
+    'matrixCount', (SELECT count(*) FROM rol_permisos rp JOIN roles r ON r.id=rp.rol_id WHERE rp.tenant_id IS DISTINCT FROM '00000000-0000-0000-0000-000000000001'::uuid AND r.tenant_id IS DISTINCT FROM '00000000-0000-0000-0000-000000000001'::uuid),
+    'matrixHash', (SELECT md5(COALESCE(string_agg(rp.tenant_id::text || '|' || rp.rol_id::text || '|' || rp.permiso_id::text, E'\n' ORDER BY rp.tenant_id, rp.rol_id, rp.permiso_id), '')) FROM rol_permisos rp JOIN roles r ON r.id=rp.rol_id WHERE rp.tenant_id IS DISTINCT FROM '00000000-0000-0000-0000-000000000001'::uuid AND r.tenant_id IS DISTINCT FROM '00000000-0000-0000-0000-000000000001'::uuid)
 )::text;
 "@
 }
@@ -982,6 +999,10 @@ WITH demo_users AS (
     JOIN demo_inscripciones i ON i.id = aam.inscripcion_id
 )
 SELECT (jsonb_build_object(
+    'demoRolesCount', (SELECT count(*) FROM roles WHERE tenant_id='00000000-0000-0000-0000-000000000001'::uuid),
+    'demoRolesHash', (SELECT md5(COALESCE(string_agg(tenant_id::text || '|' || id::text || '|' || codigo || '|' || activo::text || '|' || sistema::text || '|' || editable::text, E'\n' ORDER BY id), '')) FROM roles WHERE tenant_id='00000000-0000-0000-0000-000000000001'::uuid),
+    'demoMatrixCount', (SELECT count(*) FROM rol_permisos WHERE tenant_id='00000000-0000-0000-0000-000000000001'::uuid),
+    'demoMatrixHash', (SELECT md5(COALESCE(string_agg(tenant_id::text || '|' || rol_id::text || '|' || permiso_id::text, E'\n' ORDER BY rol_id, permiso_id), '')) FROM rol_permisos WHERE tenant_id='00000000-0000-0000-0000-000000000001'::uuid),
     'usersCount', (SELECT count(*) FROM demo_users),
     'usersIds', (SELECT md5(COALESCE(string_agg(id::text, ',' ORDER BY id), '')) FROM demo_users),
     'usersHash', (SELECT md5(COALESCE(string_agg(u.id::text || '|' || lower(u.nombre_usuario) || '|' || u.rol_id::text || '|' || u.activo::text || '|' || u.auth_version::text, E'\n' ORDER BY u.id), '')) FROM usuarios u JOIN demo_users du ON du.id=u.id),
@@ -1457,8 +1478,10 @@ try {
 
     $rbacBefore = Get-RbacSnapshot
     Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM permisos WHERE activo AND sistema") -Expected "32" -Message "Catálogo RBAC productivo inesperado"
-    Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM roles WHERE codigo='PROFESOR' AND NOT activo AND sistema AND NOT editable") -Expected "1" -Message "PROFESOR no mantiene su contrato productivo"
-    Add-Result -Stage "Baseline RBAC" -Result "PASS" -Detail "32 permisos activos y rol Profesor deshabilitado"
+    Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM tenants") -Expected "0" -Message "El baseline limpio contiene tenants inesperados"
+    Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM roles") -Expected "0" -Message "El baseline limpio contiene roles funcionales inesperados"
+    Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM rol_permisos") -Expected "0" -Message "El baseline limpio contiene asignaciones RBAC inesperadas"
+    Add-Result -Stage "Baseline RBAC" -Result "PASS" -Detail "32 permisos activos; roles funcionales fuera de Flyway"
 
     Stop-Backend
 
@@ -1483,8 +1506,12 @@ try {
     $snapshotFirstRaw = Get-DemoSnapshot
     $snapshotFirst = $snapshotFirstRaw | ConvertFrom-Json
     Assert-ExpectedDemoCounts -Snapshot $snapshotFirst
+    Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM tenants") -Expected "1" -Message "El seed creó una cantidad inesperada de tenants"
+    Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM tenants WHERE id='00000000-0000-0000-0000-000000000001'::uuid AND code='gestudio-demo' AND status='ACTIVE'") -Expected "1" -Message "El tenant demo no cumple identidad y estado esperados"
+    Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM roles WHERE tenant_id='00000000-0000-0000-0000-000000000001'::uuid") -Expected "6" -Message "El tenant demo no contiene los 6 roles esperados"
+    Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM rol_permisos rp JOIN roles r ON r.id=rp.rol_id WHERE r.tenant_id='00000000-0000-0000-0000-000000000001'::uuid") -Expected "119" -Message "La matriz RBAC del tenant demo no contiene 119 relaciones"
     $rbacAfterFirst = Get-RbacSnapshot
-    Assert-Equal -Actual $rbacAfterFirst -Expected $rbacBefore -Message "El seed modificó RBAC"
+    Assert-Equal -Actual $rbacAfterFirst -Expected $rbacBefore -Message "El seed modificó RBAC fuera del tenant demo"
     Add-Result -Stage "Primera aplicación del seed" -Result "PASS" -Detail "Conteos esperados e invariantes internas satisfechas"
 
     Start-Backend

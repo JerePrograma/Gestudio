@@ -110,6 +110,12 @@ WITH demo_anchor AS (
     GROUP BY d.id, b.year_start
     HAVING count(t.id) <> 2
         OR min(t.vigente_desde) > b.year_start
+), invalid_receipt_storage AS (
+    SELECT r.id
+    FROM recibos r
+    JOIN demo_payments p ON p.id = r.pago_id
+    WHERE r.storage_key IS NULL
+       OR r.storage_key NOT LIKE r.tenant_id::text || '/recibos/%'
 )
 SELECT CASE WHEN
     (SELECT counts FROM actual) = (SELECT counts FROM expected)
@@ -120,6 +126,7 @@ SELECT CASE WHEN
     AND NOT EXISTS (SELECT 1 FROM matrix_diff)
     AND NOT EXISTS (SELECT 1 FROM demo_user_diff)
     AND NOT EXISTS (SELECT 1 FROM invalid_pricing_coverage)
+    AND NOT EXISTS (SELECT 1 FROM invalid_receipt_storage)
     AND (SELECT count(*) FROM demo_anchor WHERE anchor_date IS NOT NULL) = 1
     AND EXISTS (
         SELECT 1
