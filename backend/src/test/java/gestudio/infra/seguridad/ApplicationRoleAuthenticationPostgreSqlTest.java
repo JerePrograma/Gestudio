@@ -3,6 +3,12 @@ package gestudio.infra.seguridad;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import gestudio.dto.request.LoginRequest;
+import gestudio.dto.usuario.request.UsuarioModificacionRequest;
+import gestudio.dto.usuario.request.UsuarioRegistroRequest;
+import gestudio.entidades.Usuario;
+import gestudio.infra.errores.TratadorDeErrores.OperacionNoPermitidaException;
+import gestudio.repositorios.UsuarioRepositorio;
+import gestudio.servicios.usuario.UsuarioServicio;
 import gestudio.tenancy.TenantAwareDataSource;
 import gestudio.tenancy.TenantContext;
 import org.flywaydb.core.Flyway;
@@ -21,7 +27,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.postgresql.PostgreSQLContainer;
+import gestudio.infra.persistencia.PostgreSqlTestDatabase;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -31,6 +37,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.UUID;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -55,8 +62,8 @@ class ApplicationRoleAuthenticationPostgreSqlTest {
     private static final String LOGIN_USERNAME = "app-role-login";
     private static final String LOGIN_PASSWORD = "Correcta-1234";
 
-    private static final PostgreSQLContainer POSTGRESQL =
-            new PostgreSQLContainer("postgres:15.18-alpine3.24")
+    private static final PostgreSqlTestDatabase POSTGRESQL =
+            new PostgreSqlTestDatabase("postgres:15.18-alpine3.24")
                     .withDatabaseName("gestudio_app_role_auth")
                     .withUsername("migration_owner")
                     .withPassword("migration-owner-password");
@@ -105,16 +112,22 @@ class ApplicationRoleAuthenticationPostgreSqlTest {
     private final AutenticacionService autenticacion;
     private final SecurityFilter securityFilter;
     private final PasswordEncoder passwordEncoder;
+    private final UsuarioServicio usuarios;
+    private final UsuarioRepositorio usuarioRepositorio;
 
     @Autowired
     ApplicationRoleAuthenticationPostgreSqlTest(
             AutenticacionService autenticacion,
             SecurityFilter securityFilter,
-            PasswordEncoder passwordEncoder
+            PasswordEncoder passwordEncoder,
+            UsuarioServicio usuarios,
+            UsuarioRepositorio usuarioRepositorio
     ) {
         this.autenticacion = autenticacion;
         this.securityFilter = securityFilter;
         this.passwordEncoder = passwordEncoder;
+        this.usuarios = usuarios;
+        this.usuarioRepositorio = usuarioRepositorio;
     }
 
     @BeforeEach
@@ -208,6 +221,7 @@ class ApplicationRoleAuthenticationPostgreSqlTest {
         assertThat(result.usuario().tenantActivo().id()).isEqualTo(DEFAULT_TENANT_ID);
         assertThat(result.usuario().roles()).contains("SUPERADMIN");
         assertAccessTokenAccepted(result.accessToken(), DEFAULT_TENANT_ID, "ROLE_SUPERADMIN");
+        assertTenantUserManagementDoesNotWriteLegacyRolesOrChangeSharedCredentials(result.usuario().id());
 
         AutenticacionService.Resultado refreshed = autenticacion.refresh(
                 result.refreshToken(),
@@ -289,6 +303,66 @@ class ApplicationRoleAuthenticationPostgreSqlTest {
                 .extracting("authority")
                 .contains(expectedAuthority);
         assertThat(tenantId.get()).isEqualTo(expectedTenantId);
+    }
+
+    private void assertTenantUserManagementDoesNotWriteLegacyRolesOrChangeSharedCredentials(long actorId)
+            throws Exception {
+        UUID membershipId;
+        try (Connection connection = ownerConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     SELECT id FROM tenant_memberships WHERE usuario_id = ? AND tenant_id = ?
+                     """)) {
+            statement.setLong(1, actorId);
+            statement.setObject(2, DEFAULT_TENANT_ID);
+            try (ResultSet rows = statement.executeQuery()) {
+                rows.next();
+                membershipId = (UUID) rows.getObject(1);
+            }
+        }
+        try (TenantContext.Scope ignored = TenantContext.open(DEFAULT_TENANT_ID, membershipId)) {
+            Usuario actor = usuarioRepositorio.findById(actorId).orElseThrow();
+            String newUsername = "app-role-created-" + UUID.randomUUID();
+            var created = usuarios.registrarUsuario(new UsuarioRegistroRequest(
+                    newUsername, "synthetic-new-user-password", Set.of("CAJA")), actor);
+            assertThat(created.roles()).containsExactly("CAJA");
+            var updated = usuarios.editarUsuario(created.id(),
+                    new UsuarioModificacionRequest(null, null, Set.of("CAJA"), true), actor);
+            assertThat(updated.activo()).isTrue();
+            usuarios.eliminarUsuario(created.id(), actor);
+            assertThat(usuarios.obtenerUsuario(created.id()).activo()).isFalse();
+            try (Connection connection = ownerConnection();
+                 PreparedStatement statement = connection.prepareStatement("""
+                         SELECT rol_id, (SELECT count(*) FROM usuario_roles WHERE usuario_id = u.id)
+                         FROM usuarios u WHERE id = ?
+                         """)) {
+                statement.setLong(1, created.id());
+                try (ResultSet rows = statement.executeQuery()) {
+                    rows.next();
+                    assertThat(rows.getObject(1)).isNull();
+                    assertThat(rows.getLong(2)).isZero();
+                }
+            }
+            assertThatThrownBy(() -> usuarios.editarUsuario(actorId,
+                    new UsuarioModificacionRequest(null, "synthetic-changed-password", null, null), actor))
+                    .isInstanceOf(OperacionNoPermitidaException.class)
+                    .hasMessageContaining("gestión global");
+            assertThatThrownBy(() -> usuarios.editarUsuario(actorId,
+                    new UsuarioModificacionRequest("shared-identity-renamed", null, null, null), actor))
+                    .isInstanceOf(OperacionNoPermitidaException.class)
+                    .hasMessageContaining("gestión global");
+            try (Connection connection = ownerConnection();
+                 PreparedStatement statement = connection.prepareStatement("""
+                         INSERT INTO platform_admins(usuario_id, active, granted_at)
+                         VALUES (?, TRUE, CURRENT_TIMESTAMP)
+                         """)) {
+                statement.setLong(1, created.id());
+                statement.executeUpdate();
+            }
+            assertThatThrownBy(() -> usuarios.editarUsuario(created.id(),
+                    new UsuarioModificacionRequest(null, "synthetic-changed-password", null, null), actor))
+                    .isInstanceOf(OperacionNoPermitidaException.class)
+                    .hasMessageContaining("gestión global");
+        }
     }
 
     private void assertAccessTokenRejected(String token) throws Exception {
@@ -458,6 +532,8 @@ class ApplicationRoleAuthenticationPostgreSqlTest {
              Statement statement = connection.createStatement()) {
 
             statement.execute("""
+                    DO $$ BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'gestudio_app') THEN
                     CREATE ROLE gestudio_app
                     NOLOGIN
                     NOSUPERUSER
@@ -465,10 +541,14 @@ class ApplicationRoleAuthenticationPostgreSqlTest {
                     NOCREATEROLE
                     NOINHERIT
                     NOREPLICATION
-                    NOBYPASSRLS
+                    NOBYPASSRLS;
+                    END IF;
+                    END $$
                     """);
 
             statement.execute("""
+                    DO $$ BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'gestudio_app_test') THEN
                     CREATE ROLE gestudio_app_test
                     LOGIN
                     PASSWORD 'app-role-test-password'
@@ -477,7 +557,9 @@ class ApplicationRoleAuthenticationPostgreSqlTest {
                     NOCREATEROLE
                     INHERIT
                     NOREPLICATION
-                    NOBYPASSRLS
+                    NOBYPASSRLS;
+                    END IF;
+                    END $$
                     """);
 
             statement.execute("GRANT gestudio_app TO gestudio_app_test");

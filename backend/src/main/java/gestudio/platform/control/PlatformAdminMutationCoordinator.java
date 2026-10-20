@@ -65,7 +65,7 @@ final class PlatformAdminMutationCoordinator {
             if (claim.succeeded()) return new GrantedAdmin(requireAdmin(userId), null);
             stepUp.requireAndConsume(actor, stepUpProof, PLATFORM_ADMIN_GRANT,
                     PLATFORM_ADMIN_TARGET, Long.toString(userId), key);
-            var identity = repository.identity(userId)
+            var identity = repository.identityForUpdate(userId)
                     .filter(PlatformControlPlaneRepository.IdentityView::active)
                     .orElseThrow(() -> new IllegalArgumentException(
                             "Identidad activa no encontrada"));

@@ -81,7 +81,7 @@ class PlatformAdminMutationCoordinatorTest {
         when(commands.validateKey("key")).thenReturn("key");
         when(idempotency.claim(eq(PLATFORM_ADMIN_GRANT), eq("key"), eq(ACTOR.userId()), anyString()))
                 .thenReturn(pending(PLATFORM_ADMIN_GRANT));
-        when(repository.identity(TARGET_USER_ID))
+        when(repository.identityForUpdate(TARGET_USER_ID))
                 .thenReturn(Optional.of(new PlatformControlPlaneRepository.IdentityView(
                         TARGET_USER_ID, "target", true)));
         when(repository.admin(TARGET_USER_ID)).thenReturn(Optional.of(admin));

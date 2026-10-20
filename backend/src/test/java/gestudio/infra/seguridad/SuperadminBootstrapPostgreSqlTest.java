@@ -52,6 +52,7 @@ class SuperadminBootstrapPostgreSqlTest extends PostgreSqlIntegrationTest {
     @Timeout(40)
     void bootstrapEsPlatformOnlyMfaObligatorioAtomicoEIdempotente() throws Exception {
         String username = "bootstrap-platform-" + UUID.randomUUID();
+        String concurrentUsername = username + "-other";
 
         assertThatThrownBy(() -> bootstrap.bootstrap(username, "corta", TOTP_SECRET,
                 currentCode(), ignored -> { }))
@@ -62,7 +63,7 @@ class SuperadminBootstrapPostgreSqlTest extends PostgreSqlIntegrationTest {
                 "000000", ignored -> { }))
                 .isInstanceOf(RuntimeException.class);
         assertThat(claims()).isZero();
-        assertThat(platformAdmins()).isZero();
+        assertThat(platformAdmins(username, concurrentUsername)).isZero();
 
         assertThatThrownBy(() -> bootstrap.bootstrap(username, PASSWORD, TOTP_SECRET,
                 currentCode(), ignored -> { throw new IllegalStateException("sink seguro falló"); }))
@@ -74,7 +75,7 @@ class SuperadminBootstrapPostgreSqlTest extends PostgreSqlIntegrationTest {
         CountDownLatch start = new CountDownLatch(1);
         ExecutorService executor = Executors.newFixedThreadPool(2);
         Future<Object> first = executor.submit(() -> runBootstrap(start, username));
-        Future<Object> second = executor.submit(() -> runBootstrap(start, username + "-other"));
+        Future<Object> second = executor.submit(() -> runBootstrap(start, concurrentUsername));
         List<Object> results;
         try {
             start.countDown();
@@ -88,7 +89,7 @@ class SuperadminBootstrapPostgreSqlTest extends PostgreSqlIntegrationTest {
                 .hasSize(1);
         assertThat(results.stream().filter(RuntimeException.class::isInstance)).hasSize(1);
         assertThat(claims()).isOne();
-        assertThat(platformAdmins()).isOne();
+        assertThat(platformAdmins(username, concurrentUsername)).isOne();
 
         Long userId = jdbc.queryForObject("""
                 SELECT b.usuario_id FROM bootstrap_ejecuciones b
@@ -172,7 +173,12 @@ class SuperadminBootstrapPostgreSqlTest extends PostgreSqlIntegrationTest {
                 Integer.class);
     }
 
-    private int platformAdmins() {
-        return jdbc.queryForObject("SELECT count(*) FROM platform_admins", Integer.class);
+    private int platformAdmins(String username, String concurrentUsername) {
+        return jdbc.queryForObject("""
+                SELECT count(*)
+                FROM platform_admins pa
+                JOIN usuarios u ON u.id = pa.usuario_id
+                WHERE u.nombre_usuario IN (?, ?)
+                """, Integer.class, username, concurrentUsername);
     }
 }

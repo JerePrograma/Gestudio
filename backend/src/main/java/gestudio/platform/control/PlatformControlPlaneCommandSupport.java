@@ -55,7 +55,7 @@ final class PlatformControlPlaneCommandSupport {
 
     CreatedIdentity resolveIdentity(IdentityRequest request, long actorId, Instant now) {
         if (EXISTING_IDENTITY.equals(request.mode())) {
-            var identity = repository.identity(request.userId())
+            var identity = repository.identityForUpdate(request.userId())
                     .filter(PlatformControlPlaneRepository.IdentityView::active)
                     .orElseThrow(() -> new IllegalArgumentException("Identidad activa no encontrada"));
             return new CreatedIdentity(identity.id(), null);

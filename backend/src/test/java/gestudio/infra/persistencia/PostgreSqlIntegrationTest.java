@@ -14,7 +14,6 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.transaction.BeforeTransaction;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.util.UUID;
 import java.util.concurrent.Callable;
@@ -31,8 +30,8 @@ public abstract class PostgreSqlIntegrationTest {
 
     private TenantContext.Scope tenantScope;
 
-    protected static final PostgreSQLContainer POSTGRESQL =
-            new PostgreSQLContainer("postgres:15.18-alpine3.24")
+    protected static final PostgreSqlTestDatabase POSTGRESQL =
+            new PostgreSqlTestDatabase("postgres:15.18-alpine3.24")
                     .withDatabaseName("gestudio_phase4a")
                     .withUsername("phase4a")
                     .withPassword("phase4a");
@@ -180,8 +179,8 @@ public abstract class PostgreSqlIntegrationTest {
 
     @BeforeAll
     static void requireIsolatedRandomPort() {
-        assertThat(POSTGRESQL.getMappedPort(PostgreSQLContainer.POSTGRESQL_PORT))
+        assertThat(POSTGRESQL.getMappedPort(PostgreSqlTestDatabase.POSTGRESQL_PORT))
                 .as("PostgreSQL de test no debe usar localhost:5432")
-                .isNotEqualTo(PostgreSQLContainer.POSTGRESQL_PORT);
+                .isNotEqualTo(PostgreSqlTestDatabase.POSTGRESQL_PORT);
     }
 }

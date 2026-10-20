@@ -18,8 +18,6 @@ public interface TenantMembershipRepository extends Repository<TenantMembership,
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             select m from TenantMembership m
-            join fetch m.tenant
-            join fetch m.usuario
             where m.tenant.id = :tenantId and m.usuario.id = :userId
             """)
     Optional<TenantMembership> findByTenantAndUserForUpdate(@Param("tenantId") UUID tenantId,
@@ -28,8 +26,6 @@ public interface TenantMembershipRepository extends Repository<TenantMembership,
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             select m from TenantMembership m
-            join fetch m.tenant
-            join fetch m.usuario
             where m.tenant.id = :tenantId and m.id = :membershipId
             """)
     Optional<TenantMembership> findByTenantAndIdForUpdate(@Param("tenantId") UUID tenantId,
@@ -63,10 +59,25 @@ public interface TenantMembershipRepository extends Repository<TenantMembership,
             select count(distinct m.id) from TenantMembership m
             join m.roleAssignments a join a.role r
             where m.tenant.id = :tenantId
+              and m.usuario.activo = true
               and m.status = gestudio.tenancy.TenantMembershipStatus.ACTIVE
+              and m.validFrom <= :now
+              and (m.validUntil is null or m.validUntil > :now)
               and r.activo = true and upper(r.codigo) = 'SUPERADMIN'
             """)
-    long countActiveSuperadmins(@Param("tenantId") UUID tenantId);
+    long countActiveSuperadmins(@Param("tenantId") UUID tenantId, @Param("now") Instant now);
+
+    @Query("""
+            select count(distinct m.id) from TenantMembership m
+            join m.roleAssignments a join a.role r
+            where m.tenant.id = :tenantId
+              and m.usuario.activo = true
+              and m.status = gestudio.tenancy.TenantMembershipStatus.ACTIVE
+              and m.validFrom <= :now
+              and (m.validUntil is null or m.validUntil > :now)
+              and r.activo = true and upper(r.codigo) = 'ADMINISTRADOR'
+            """)
+    long countActiveAdministrators(@Param("tenantId") UUID tenantId, @Param("now") Instant now);
 
     @Modifying
     @Query(value = """

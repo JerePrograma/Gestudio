@@ -9,6 +9,7 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Repository
 public interface UsuarioRepositorio extends JpaRepository<Usuario, Long> {
@@ -16,6 +17,16 @@ public interface UsuarioRepositorio extends JpaRepository<Usuario, Long> {
     Optional<Usuario> findByNombreUsuario(String nombreUsuario);
 
     Optional<Usuario> findByNombreUsuarioIgnoreCase(String nombreUsuario);
+
+    @Query(value = """
+        SELECT EXISTS (SELECT 1 FROM platform_admins pa WHERE pa.usuario_id = :userId)
+            OR EXISTS (
+                SELECT 1 FROM tenant_memberships m
+                WHERE m.usuario_id = :userId AND m.tenant_id <> :tenantId
+            )
+        """, nativeQuery = true)
+    boolean requiereGestionIdentidadGlobal(@Param("userId") Long userId,
+                                           @Param("tenantId") UUID tenantId);
 
     @Query(value = """
         SELECT u.id,

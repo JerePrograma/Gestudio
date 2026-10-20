@@ -1,8 +1,11 @@
 package gestudio.platform.security;
 
 import gestudio.platform.control.PlatformIdentityActivationService;
+import gestudio.platform.control.PlatformControlPlaneRepository;
+import gestudio.infra.seguridad.InvalidTokenException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -13,13 +16,18 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
-import org.testcontainers.postgresql.PostgreSQLContainer;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+import gestudio.infra.persistencia.PostgreSqlTestDatabase;
 
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -33,8 +41,8 @@ class PlatformIdentityActivationAtomicityPostgreSqlTest {
     private static final String INITIAL_PASSWORD = "initial-platform-password";
     private static final String NEW_PASSWORD = "new-platform-password";
 
-    private static final PostgreSQLContainer POSTGRESQL =
-            new PostgreSQLContainer("postgres:15.18-alpine3.24")
+    private static final PostgreSqlTestDatabase POSTGRESQL =
+            new PostgreSqlTestDatabase("postgres:15.18-alpine3.24")
                     .withDatabaseName("gestudio_activation_atomicity")
                     .withUsername("activation_atomicity")
                     .withPassword("activation_atomicity");
@@ -61,6 +69,8 @@ class PlatformIdentityActivationAtomicityPostgreSqlTest {
     @Autowired private PlatformIdentityActivationService activation;
     @Autowired private PasswordEncoder passwordEncoder;
     @Autowired private Clock clock;
+    @Autowired private PlatformControlPlaneRepository platformRepository;
+    @Autowired @Qualifier("platformTransactionManager") private PlatformTransactionManager platformTransactions;
 
     private long creatorId;
 
@@ -131,6 +141,57 @@ class PlatformIdentityActivationAtomicityPostgreSqlTest {
                 WHERE actor_usuario_id=? AND action='PLATFORM_MFA_ENROLLED'
                   AND correlation_id=? AND result='SUCCESS'
                 """, Long.class, targetId, correlationId)).isOne();
+    }
+
+    @Test
+    @Timeout(25)
+    void regrantCannotDeadlockConcurrentActivationAndConsumedTokenIsRevalidated() throws Exception {
+        long targetId = insertUser("regrant-target-" + UUID.randomUUID(), true);
+        String rawToken = insertActivation(targetId);
+        CountDownLatch identityLocked = new CountDownLatch(1);
+        CountDownLatch consumePendingToken = new CountDownLatch(1);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var regrant = executor.submit(() -> new TransactionTemplate(platformTransactions).execute(status -> {
+                platformRepository.identityForUpdate(targetId).orElseThrow();
+                identityLocked.countDown();
+                try {
+                    if (!consumePendingToken.await(10, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("Regression barrier timed out");
+                    }
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(interrupted);
+                }
+                platformRepository.consumePendingActivation(targetId, clock.instant());
+                return true;
+            }));
+            try {
+                assertThat(identityLocked.await(10, TimeUnit.SECONDS)).isTrue();
+                var activating = executor.submit(() -> activation.activate(rawToken, null,
+                        TOTP_SECRET_BASE32, currentTotp(), UUID.randomUUID()));
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+                boolean waitingOnLock = false;
+                while (System.nanoTime() < deadline) {
+                    waitingOnLock = jdbc.queryForObject("""
+                            SELECT count(*) > 0 FROM pg_stat_activity
+                            WHERE datname = current_database() AND wait_event_type = 'Lock'
+                              AND query ILIKE '%FOR UPDATE%'
+                            """, Boolean.class);
+                    if (waitingOnLock) break;
+                    Thread.sleep(20);
+                }
+                assertThat(waitingOnLock).as("activation reached the concurrent identity lock").isTrue();
+                consumePendingToken.countDown();
+                assertThat(regrant.get(10, TimeUnit.SECONDS)).isTrue();
+                assertThatThrownBy(() -> activating.get(10, TimeUnit.SECONDS))
+                        .hasCauseInstanceOf(InvalidTokenException.class);
+                assertThat(jdbc.queryForObject("""
+                        SELECT consumed_at IS NOT NULL FROM platform_identity_activations WHERE token_hash = ?
+                        """, Boolean.class, PlatformStepUpService.hash(rawToken))).isTrue();
+            } finally {
+                consumePendingToken.countDown();
+            }
+        }
     }
 
     private void assertRolledBack(long targetId) {

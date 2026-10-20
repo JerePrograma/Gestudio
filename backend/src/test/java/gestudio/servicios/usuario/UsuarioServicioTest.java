@@ -80,7 +80,16 @@ class UsuarioServicioTest {
         when(tenantAccess.currentAccess(any(Usuario.class)))
                 .thenAnswer(invocation -> TenantTestAccess.from(invocation.getArgument(0)));
         when(tenantMemberships.create(any(Usuario.class), any(), any(Usuario.class)))
-                .thenAnswer(invocation -> TenantTestAccess.from(invocation.getArgument(0)).membership());
+                .thenAnswer(invocation -> {
+                    Usuario user = invocation.getArgument(0);
+                    @SuppressWarnings("unchecked")
+                    Set<Rol> requested = invocation.getArgument(1);
+                    TenantMembership membership = TenantTestAccess.from(user).membership();
+                    membership.getRoleAssignments().clear();
+                    requested.forEach(role -> membership.getRoleAssignments().add(
+                            new TenantMembershipRole(membership, membership.getTenant(), role)));
+                    return membership;
+                });
         when(tenantMemberships.require(any(Long.class))).thenAnswer(invocation -> {
             Long id = invocation.getArgument(0);
             Usuario user = id.equals(actor.getId())
@@ -143,7 +152,7 @@ class UsuarioServicioTest {
     }
 
     @Test
-    void creaUsuarioConMultiplesRolesYConservaRolLegado() {
+    void creaUsuarioConRolesTenantSinEscribirLaProyeccionLegacy() {
         Usuario nuevo = new Usuario();
 
         when(usuarios.findByNombreUsuarioIgnoreCase("nuevo-root"))
@@ -174,12 +183,35 @@ class UsuarioServicioTest {
                 actor
         );
 
-        assertThat(nuevo.getRoles()).containsExactlyInAnyOrder(superadmin, recepcion);
-        assertThat(nuevo.getRol()).isEqualTo(superadmin);
+        assertThat(nuevo.getRoles()).isEmpty();
+        assertThat(nuevo.getRol()).isNull();
         assertThat(nuevo.getContrasena()).isEqualTo("hash");
         assertThat(nuevo.getPasswordChangedAt()).isEqualTo(clock.instant());
 
         verify(usuarios).saveAndFlush(nuevo);
+    }
+
+    @Test
+    void noPermiteCambiarCredencialesGlobalesDesdeUnaAcademia() {
+        Usuario objetivo = usuario(8L, "compartido", true, recepcion);
+        when(usuarios.findByIdConRolesYPermisos(objetivo.getId())).thenReturn(Optional.of(objetivo));
+        when(usuarios.findByIdForUpdate(objetivo.getId())).thenReturn(Optional.of(objetivo));
+        when(usuarios.requiereGestionIdentidadGlobal(objetivo.getId(),
+                TenantTestAccess.from(objetivo).tenantId())).thenReturn(true);
+
+        assertThatThrownBy(() -> service.editarUsuario(objetivo.getId(),
+                new UsuarioModificacionRequest("otro-username", null, null, null), actor))
+                .isInstanceOf(OperacionNoPermitidaException.class)
+                .hasMessageContaining("gestión global");
+        assertThatThrownBy(() -> service.editarUsuario(objetivo.getId(),
+                new UsuarioModificacionRequest(null, "clave-nueva-segura", null, null), actor))
+                .isInstanceOf(OperacionNoPermitidaException.class)
+                .hasMessageContaining("gestión global");
+
+        assertThat(objetivo.getNombreUsuario()).isEqualTo("compartido");
+        assertThat(objetivo.getContrasena()).isEqualTo("hash");
+        verify(usuarios, never()).saveAndFlush(any());
+        verify(tenantMemberships, never()).update(any(), any(), any(), any());
     }
 
     @Test
@@ -305,6 +337,7 @@ class UsuarioServicioTest {
                 .thenReturn(Optional.of(objetivo));
         when(usuarios.saveAndFlush(any(Usuario.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
+        when(usuarios.findByIdForUpdate(objetivo.getId())).thenReturn(Optional.of(objetivo));
 
         service.editarUsuario(
                 objetivo.getId(),

@@ -23,6 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -119,7 +120,7 @@ class TenantMembershipManagementServiceTest {
         TenantMembership membership = membership(TenantMembershipStatus.ACTIVE, 4L, superadmin);
         when(memberships.findByTenantAndUserForUpdate(TENANT_ID, target.getId()))
                 .thenReturn(Optional.of(membership));
-        when(memberships.countActiveSuperadmins(TENANT_ID)).thenReturn(1L);
+        when(memberships.countActiveSuperadmins(TENANT_ID, NOW)).thenReturn(1L);
 
         assertThatThrownBy(() -> service.update(
                 target.getId(), List.of(operator), true, actor))
@@ -145,7 +146,7 @@ class TenantMembershipManagementServiceTest {
         service.update(target.getId(), List.of(operator), false, actor);
         service.update(target.getId(), List.of(superadmin), true, actor);
 
-        verify(memberships, never()).countActiveSuperadmins(TENANT_ID);
+        verify(memberships, never()).countActiveSuperadmins(TENANT_ID, NOW);
     }
 
     @Test
@@ -153,12 +154,42 @@ class TenantMembershipManagementServiceTest {
         TenantMembership membership = membership(TenantMembershipStatus.ACTIVE, 4L, superadmin);
         when(memberships.findByTenantAndUserForUpdate(TENANT_ID, target.getId()))
                 .thenReturn(Optional.of(membership));
-        when(memberships.countActiveSuperadmins(TENANT_ID)).thenReturn(2L);
+        when(memberships.countActiveSuperadmins(TENANT_ID, NOW)).thenReturn(2L);
 
         service.update(target.getId(), List.of(superadmin), false, actor);
 
         assertThat(membership.getStatus()).isEqualTo(TenantMembershipStatus.SUSPENDED);
         verify(memberships).save(membership);
+    }
+
+    @Test
+    void lastAdministratorCannotBeSuspendedOrLoseAdministrativeRole() {
+        Rol administrator = role(3L, "ADMINISTRADOR", true);
+        TenantMembership membership = membership(TenantMembershipStatus.ACTIVE, 4L, administrator);
+        when(memberships.findByTenantAndUserForUpdate(TENANT_ID, target.getId()))
+                .thenReturn(Optional.of(membership));
+
+        assertThatThrownBy(() -> service.update(target.getId(), List.of(operator), true, actor))
+                .isInstanceOf(OperacionNoPermitidaException.class)
+                .hasMessageContaining("último ADMINISTRADOR");
+        assertThatThrownBy(() -> service.update(target.getId(), null, false, actor))
+                .isInstanceOf(OperacionNoPermitidaException.class)
+                .hasMessageContaining("último ADMINISTRADOR");
+        verify(membershipRoles, never()).deleteByMembershipId(any());
+        verify(memberships, never()).save(any());
+    }
+
+    @Test
+    void membershipMutationLocksTenantBeforeMembershipToSerializeLastAdminChecks() {
+        TenantMembership membership = membership(TenantMembershipStatus.ACTIVE, 4L, operator);
+        when(memberships.findByTenantAndUserForUpdate(TENANT_ID, target.getId()))
+                .thenReturn(Optional.of(membership));
+
+        service.update(target.getId(), null, false, actor);
+
+        var locks = inOrder(tenants, memberships);
+        locks.verify(tenants).lockAdministratorMutations(TENANT_ID);
+        locks.verify(memberships).findByTenantAndUserForUpdate(TENANT_ID, target.getId());
     }
 
     @Test

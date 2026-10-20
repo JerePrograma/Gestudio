@@ -87,14 +87,21 @@ public class PlatformIdentityActivationService {
     }
 
     private Activation lockActivation(String hash) {
+        Long userId = jdbc.queryForList("""
+                SELECT usuario_id FROM platform_identity_activations WHERE token_hash = ?
+                """, Long.class, hash).stream().findFirst().orElseThrow(InvalidTokenException::new);
+        // Provisioning and regrant lock identity before activations. Read the
+        // token again under both locks so a concurrent regrant can consume it.
+        jdbc.queryForList("SELECT id FROM usuarios WHERE id = ? FOR UPDATE", Long.class, userId)
+                .stream().findFirst().orElseThrow(InvalidTokenException::new);
         Activation activation = jdbc.query("""
                 SELECT a.id, a.usuario_id, a.purpose, a.expires_at, a.consumed_at,
                        u.nombre_usuario, u.activo
                 FROM platform_identity_activations a
                 JOIN usuarios u ON u.id = a.usuario_id
-                WHERE a.token_hash = ?
-                FOR UPDATE OF a, u
-                """, PlatformIdentityActivationService::activation, hash).stream().findFirst()
+                WHERE a.token_hash = ? AND a.usuario_id = ?
+                FOR UPDATE OF a
+                """, PlatformIdentityActivationService::activation, hash, userId).stream().findFirst()
                 .orElseThrow(InvalidTokenException::new);
         Instant now = clock.instant();
         if (activation.consumedAt() != null || !activation.expiresAt().isAfter(now)) {

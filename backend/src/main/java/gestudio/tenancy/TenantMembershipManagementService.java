@@ -5,6 +5,7 @@ import gestudio.entidades.Rol;
 import gestudio.entidades.Usuario;
 import gestudio.infra.errores.TratadorDeErrores.OperacionNoPermitidaException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -53,8 +54,12 @@ public class TenantMembershipManagementService {
         return membership;
     }
 
+    @Transactional
     public TenantMembership update(Long userId, Collection<Rol> requestedRoles, Boolean active, Usuario actor) {
         UUID tenantId = TenantContext.requireTenantId();
+        // Serialize tenant and platform mutations before taking membership
+        // locks. The tenant DB role has SELECT-only access to tenants.
+        lockCurrentTenant();
         TenantMembership membership = memberships.findByTenantAndUserForUpdate(tenantId, userId)
                 .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado en el tenant"));
         Set<Rol> currentRoles = membership.roles();
@@ -67,12 +72,24 @@ public class TenantMembershipManagementService {
 
         boolean rolesChanged = !roleIds(currentRoles).equals(roleIds(nextRoles));
         boolean statusChanged = membership.getStatus() != nextStatus;
-        if (membership.getStatus() == TenantMembershipStatus.ACTIVE
+        Instant now = clock.instant();
+        boolean currentlyEffective = membership.getStatus() == TenantMembershipStatus.ACTIVE
+                && membership.getUsuario().isEnabled()
+                && !membership.getValidFrom().isAfter(now)
+                && (membership.getValidUntil() == null || membership.getValidUntil().isAfter(now));
+        if (currentlyEffective
                 && membership.isSuperadmin()
                 && (!containsSuperadmin(nextRoles) || nextStatus != TenantMembershipStatus.ACTIVE)
-                && memberships.countActiveSuperadmins(tenantId) <= 1) {
+                && memberships.countActiveSuperadmins(tenantId, now) <= 1) {
             throw new OperacionNoPermitidaException(
                     "No se puede degradar o suspender al último SUPERADMIN activo del tenant");
+        }
+        if (currentlyEffective
+                && hasAdministratorRole(currentRoles)
+                && (!hasAdministratorRole(nextRoles) || nextStatus != TenantMembershipStatus.ACTIVE)
+                && memberships.countActiveAdministrators(tenantId, now) <= 1) {
+            throw new OperacionNoPermitidaException(
+                    "No se puede degradar o suspender al último ADMINISTRADOR activo del tenant");
         }
 
         if (rolesChanged) {
@@ -89,6 +106,11 @@ public class TenantMembershipManagementService {
             memberships.save(membership);
         }
         return membership;
+    }
+
+    /** Must run inside the calling use case transaction, before changing any identity. */
+    public void lockCurrentTenant() {
+        tenants.lockAdministratorMutations(TenantContext.requireTenantId());
     }
 
     public TenantMembership require(Long userId) {
@@ -134,5 +156,10 @@ public class TenantMembershipManagementService {
 
     private static boolean containsSuperadmin(Collection<Rol> roles) {
         return roles.stream().anyMatch(Rol::esSuperadminSistema);
+    }
+
+    private static boolean hasAdministratorRole(Collection<Rol> roles) {
+        return roles.stream().anyMatch(role -> role.estaActivo()
+                && "ADMINISTRADOR".equalsIgnoreCase(role.getCodigo()));
     }
 }

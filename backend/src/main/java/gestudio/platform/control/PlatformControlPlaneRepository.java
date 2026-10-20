@@ -134,9 +134,10 @@ public class PlatformControlPlaneRepository {
                 Long.class, tenantId);
     }
 
-    public Optional<IdentityView> identity(long userId) {
+    public Optional<IdentityView> identityForUpdate(long userId) {
+        requireActiveTransaction();
         return jdbc.query("""
-                SELECT id, nombre_usuario, activo FROM usuarios WHERE id = ?
+                SELECT id, nombre_usuario, activo FROM usuarios WHERE id = ? FOR UPDATE
                 """, PlatformControlPlaneRepository::identity, userId).stream().findFirst();
     }
 
@@ -271,20 +272,28 @@ public class PlatformControlPlaneRepository {
         assignRoles(tenantId, membershipId, roleCodes, actorId);
     }
 
-    public long activeAdministrators(UUID tenantId, UUID excludingMembership) {
+    public long activeAdministrators(UUID tenantId, UUID excludingMembership, Instant now) {
         Long value = jdbc.queryForObject("""
                 SELECT count(DISTINCT m.id)
                 FROM tenant_memberships m
+                JOIN usuarios u ON u.id = m.usuario_id AND u.activo = TRUE
                 JOIN tenant_membership_roles mr ON mr.membership_id = m.id AND mr.tenant_id = m.tenant_id
                 JOIN roles r ON r.id = mr.role_id AND r.tenant_id = m.tenant_id
-                WHERE m.tenant_id = ? AND m.status = 'ACTIVE' AND r.codigo = 'ADMINISTRADOR'
+                WHERE m.tenant_id = ? AND m.status = 'ACTIVE'
+                  AND r.codigo = 'ADMINISTRADOR' AND r.activo = TRUE
+                  AND m.valid_from <= ? AND (m.valid_until IS NULL OR m.valid_until > ?)
                   AND (CAST(? AS uuid) IS NULL OR m.id <> ?)
-                """, Long.class, tenantId, excludingMembership, excludingMembership);
+                """, Long.class, tenantId, Timestamp.from(now), Timestamp.from(now),
+                excludingMembership, excludingMembership);
         return value == null ? 0 : value;
     }
 
     public void lockTenantAdministratorInvariant(UUID tenantId) {
         requireActiveTransaction();
+        jdbc.queryForObject("""
+                SELECT 1 FROM pg_advisory_xact_lock(
+                    hashtextextended('gestudio:tenant-admin:' || CAST(? AS text), 0))
+                """, Integer.class, tenantId);
         jdbc.queryForObject("SELECT id FROM tenants WHERE id = ? FOR UPDATE",
                 (result, row) -> (UUID) result.getObject(1), tenantId);
     }

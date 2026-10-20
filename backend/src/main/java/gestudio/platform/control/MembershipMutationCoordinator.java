@@ -210,7 +210,7 @@ final class MembershipMutationCoordinator {
             UUID tenantId, PlatformControlPlaneRepository.MembershipView current,
             boolean removingAdmin) {
         if (removingAdmin && current.roles().contains("ADMINISTRADOR")
-                && repository.activeAdministrators(tenantId, current.id()) == 0) {
+                && repository.activeAdministrators(tenantId, current.id(), clock.instant()) == 0) {
             throw new OperacionNoPermitidaException(
                     "No se puede revocar al último ADMINISTRADOR activo del tenant");
         }

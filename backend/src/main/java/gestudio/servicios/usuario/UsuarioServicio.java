@@ -81,8 +81,10 @@ public class UsuarioServicio {
         Usuario usuario = mapper.toEntity(request);
         usuario.setNombreUsuario(username);
         usuario.setContrasena(passwordEncoder.encode(request.contrasena()));
-        usuario.setRol(rolPrincipal(rolesNuevos));
-        usuario.setRoles(rolesNuevos);
+        usuario.setRol(null);
+        // usuario_roles is a read-only legacy projection since V12. Effective
+        // tenant roles are persisted atomically through tenant_membership_roles.
+        usuario.setRoles(new LinkedHashSet<>());
         usuario.setActivo(true);
         usuario.setAuthVersion(0L);
         usuario.setPasswordChangedAt(clock.instant());
@@ -109,8 +111,22 @@ public class UsuarioServicio {
     @Transactional
     public UsuarioResponse editarUsuario(Long idUsuario, UsuarioModificacionRequest request, Usuario actor) {
         Usuario actorActual = rbac.exigirPermiso(actor, PERM_USUARIOS_ADMIN, "MODIFICAR_USUARIO");
+        tenantMemberships.lockCurrentTenant();
         TenantMembership membership = tenantMemberships.require(idUsuario);
         Usuario usuario = membership.getUsuario();
+
+        boolean cambiaUsername = request.nombreUsuario() != null
+                && !request.nombreUsuario().isBlank()
+                && !normalizarUsername(request.nombreUsuario()).equals(usuario.getNombreUsuario());
+        boolean cambiaPassword = request.contrasena() != null && !request.contrasena().isBlank();
+        if (cambiaUsername || cambiaPassword) {
+            usuarios.findByIdForUpdate(idUsuario)
+                    .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
+            if (usuarios.requiereGestionIdentidadGlobal(idUsuario, membership.getTenant().getId())) {
+                throw new OperacionNoPermitidaException(
+                        "Las credenciales de una identidad compartida o de plataforma requieren gestión global");
+            }
+        }
 
         Map<String, ?> anterior = snapshot(membership);
 
@@ -299,15 +315,6 @@ public class UsuarioServicio {
                     "No se puede asignar un rol con permisos que el actor no posee"
             );
         }
-    }
-
-    private static Rol rolPrincipal(Set<Rol> roles) {
-        return roles.stream()
-                .filter(Rol::esSuperadminSistema)
-                .findFirst()
-                .orElseGet(() -> roles.stream()
-                        .findFirst()
-                        .orElseThrow(() -> new IllegalArgumentException("Debe indicar al menos un rol")));
     }
 
     private static boolean contieneSuperadmin(Set<Rol> roles) {

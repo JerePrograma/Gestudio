@@ -144,7 +144,7 @@ class TenantMembershipMutationCoordinatorTest {
                 List.of("ADMINISTRADOR"), 4L, ACTOR, "key", "proof", CORRELATION_ID))
                 .isSameAs(conflict);
 
-        verify(repository, never()).activeAdministrators(any(), any());
+        verify(repository, never()).activeAdministrators(any(), any(), any());
         verify(repository, never()).replaceMembershipRoles(any(), any(), anyList(), anyLong());
     }
 
@@ -168,7 +168,7 @@ class TenantMembershipMutationCoordinatorTest {
                 List.of("OPERADOR"), 4L, ACTOR, "key", "proof", CORRELATION_ID))
                 .isSameAs(updated);
 
-        verify(repository, never()).activeAdministrators(any(), any());
+        verify(repository, never()).activeAdministrators(any(), any(), any());
         verify(repository).replaceMembershipRoles(
                 TENANT_ID, MEMBERSHIP_ID, List.of("OPERADOR"), ACTOR.userId());
         verify(metrics).membershipEvent(PlatformMetrics.MembershipEvent.ROLES_CHANGED);
@@ -195,7 +195,7 @@ class TenantMembershipMutationCoordinatorTest {
                 ACTOR, "key", "proof", CORRELATION_ID))
                 .isSameAs(conflict);
 
-        verify(repository, never()).activeAdministrators(any(), any());
+        verify(repository, never()).activeAdministrators(any(), any(), any());
     }
 
     private void pendingMembershipMutation(String operation,
