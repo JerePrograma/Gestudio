@@ -28,8 +28,16 @@ interface PlatformRefreshResponse {
   profile: unknown;
 }
 
+interface RefreshContext {
+  session: AuthSession;
+  signal: AbortSignal;
+}
+
 let session: AuthSession = { scope: null, accessToken: null, profile: null };
-const refreshPromises = new Map<SessionScope, Promise<ActiveAuthSession>>();
+const refreshPromises = new Map<SessionScope, {
+  context: RefreshContext;
+  promise: Promise<ActiveAuthSession>;
+}>();
 const listeners = new Set<(nextSession: AuthSession) => void>();
 
 const publishSession = (nextSession: AuthSession): void => {
@@ -85,16 +93,30 @@ const validateRefreshScope = (scope: SessionScope): void => {
   }
 };
 
-const refreshTenantSession = async (): Promise<ActiveAuthSession> => {
-  const { data } = await axios.post<TenantRefreshResponse>(
-    `${API_BASE_URL}/login/refresh`,
-    {},
-    {
+const assertCurrentRefresh = (context: RefreshContext): void => {
+  if (context.signal.aborted || session !== context.session) {
+    throw new axios.CanceledError("La sesión cambió durante el refresh");
+  }
+};
+
+const requestRefresh = async <T>(path: string, context: RefreshContext): Promise<T> => {
+  try {
+    const { data } = await axios.post<T>(`${API_BASE_URL}${path}`, {}, {
       withCredentials: true,
       headers: { "Content-Type": "application/json" },
-      signal: tenantRequestSignal(),
-    },
-  );
+      signal: context.signal,
+    });
+    assertCurrentRefresh(context);
+    return data;
+  } catch (error) {
+    assertCurrentRefresh(context);
+    throw error;
+  }
+};
+
+const refreshTenantSession = async (context: RefreshContext): Promise<ActiveAuthSession> => {
+  const data = await requestRefresh<TenantRefreshResponse>("/login/refresh", context);
+  assertCurrentRefresh(context);
   const refreshedUser = sanitizeUserProfile(data.usuario);
 
   if (
@@ -104,20 +126,17 @@ const refreshTenantSession = async (): Promise<ActiveAuthSession> => {
     throw new Error("El refresh intentó cambiar la organización activa");
   }
 
+  if (session.scope === "TENANT" && refreshedUser.id !== session.profile.id) {
+    throw new Error("El refresh intentó cambiar la identidad del usuario");
+  }
+
   setTenantAuthSession(data.accessToken, refreshedUser);
   return getAuthSession() as ActiveAuthSession;
 };
 
-const refreshPlatformSession = async (): Promise<ActiveAuthSession> => {
-  const { data } = await axios.post<PlatformRefreshResponse>(
-    `${API_BASE_URL}/platform/auth/refresh`,
-    {},
-    {
-      withCredentials: true,
-      headers: { "Content-Type": "application/json" },
-      signal: tenantRequestSignal(),
-    },
-  );
+const refreshPlatformSession = async (context: RefreshContext): Promise<ActiveAuthSession> => {
+  const data = await requestRefresh<PlatformRefreshResponse>("/platform/auth/refresh", context);
+  assertCurrentRefresh(context);
   const refreshedProfile = sanitizePlatformProfile(data.profile);
 
   if (
@@ -136,15 +155,18 @@ export function refreshSession(requestedScope?: SessionScope): Promise<ActiveAut
   validateRefreshScope(scope);
 
   const pending = refreshPromises.get(scope);
-  if (pending) return pending;
+  if (pending && pending.context.session === session && !pending.context.signal.aborted) {
+    return pending.promise;
+  }
 
+  const context: RefreshContext = { session, signal: tenantRequestSignal() };
   const refresh = (scope === "PLATFORM"
-    ? refreshPlatformSession()
-    : refreshTenantSession()
+    ? refreshPlatformSession(context)
+    : refreshTenantSession(context)
   ).finally(() => {
-    refreshPromises.delete(scope);
+    if (refreshPromises.get(scope)?.promise === refresh) refreshPromises.delete(scope);
   });
 
-  refreshPromises.set(scope, refresh);
+  refreshPromises.set(scope, { context, promise: refresh });
   return refresh;
 }

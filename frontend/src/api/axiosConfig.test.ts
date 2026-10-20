@@ -315,6 +315,74 @@ describe("interceptor de autenticación", () => {
     expect(getAccessToken()).toBe("old-access");
   });
 
+  it("rechaza un refresh que cambie de usuario dentro de la misma organización", async () => {
+    vi.spyOn(axios, "post").mockResolvedValue({
+      data: { accessToken: "other-user-access", usuario: { ...user, id: 2 } },
+    });
+
+    await expect(refreshSession()).rejects.toThrow(
+      "El refresh intentó cambiar la identidad del usuario",
+    );
+    expect(getAccessToken()).toBe("old-access");
+  });
+
+  it("descarta un refresh tardío cuando ya cambió la sesión", async () => {
+    let completeRefresh!: (value: unknown) => void;
+    vi.spyOn(axios, "post").mockImplementation(() => new Promise((resolve) => {
+      completeRefresh = resolve;
+    }));
+
+    const pending = refreshSession();
+    const rejected = expect(pending).rejects.toSatisfy(axios.isCancel);
+    await resetTenantClientState();
+    setPlatformAuthSession("new-platform-access", platformProfile);
+    completeRefresh({ data: { accessToken: "late-access", usuario: user } });
+
+    await rejected;
+    expect(getAuthSession()).toMatchObject({
+      scope: "PLATFORM",
+      accessToken: "new-platform-access",
+    });
+  });
+
+  it("un refresh fallido de una sesión anterior no invalida el login nuevo", async () => {
+    let failRefresh!: (reason: Error) => void;
+    vi.spyOn(axios, "post").mockImplementation(() => new Promise((_resolve, reject) => {
+      failRefresh = reject;
+    }));
+
+    const pending = refreshSession();
+    const rejected = expect(pending).rejects.toSatisfy(axios.isCancel);
+    setAuthSession("new-login-access", user);
+    failRefresh(new Error("old refresh failed"));
+
+    await rejected;
+    expect(getAccessToken()).toBe("new-login-access");
+  });
+
+  it("comparte refresh sólo dentro de la sesión actual al rotar la academia", async () => {
+    let completeOld!: (value: unknown) => void;
+    let completeCurrent!: (value: unknown) => void;
+    const refresh = vi.spyOn(axios, "post")
+      .mockImplementationOnce(() => new Promise((resolve) => { completeOld = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { completeCurrent = resolve; }));
+    const old = refreshSession();
+    const rejected = expect(old).rejects.toSatisfy(axios.isCancel);
+    await resetTenantClientState();
+    const nextUser = { ...user, tenantActivo: otherTenant, tenantsDisponibles: [otherTenant] };
+    setAuthSession("other-tenant-access", nextUser);
+    const current = refreshSession();
+    expect(refresh).toHaveBeenCalledTimes(2);
+
+    completeOld({ data: { accessToken: "old-refresh-access", usuario: user } });
+    await rejected;
+    expect(refreshSession()).toBe(current);
+    completeCurrent({ data: { accessToken: "current-refresh-access", usuario: nextUser } });
+
+    await expect(current).resolves.toMatchObject({ accessToken: "current-refresh-access" });
+    expect(getAuthSession().profile).toMatchObject({ tenantActivo: otherTenant });
+  });
+
   it("rechaza, limpia sólo claves propias y no entra en loop si falla refresh", async () => {
     vi.spyOn(axios, "post").mockRejectedValue(new Error("refresh failed"));
 
