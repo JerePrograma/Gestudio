@@ -1,15 +1,63 @@
 const QUICK_TUNNEL_SUFFIX = ".trycloudflare.com";
 const API_PATH_PATTERN = /^\/api(?:\/|$)/;
-const FORWARDED_HEADERS = [
-  "cf-connecting-ip",
-  "cf-ipcountry",
-  "cf-ray",
+const SPOOFABLE_FORWARDING_HEADERS = new Set([
   "forwarded",
   "host",
-  "x-forwarded-for",
-  "x-forwarded-host",
-  "x-forwarded-proto",
-];
+  "true-client-ip",
+  "via",
+  "x-real-ip",
+]);
+const INTERNAL_URL_RESPONSE_HEADERS = ["Location", "Content-Location"];
+
+function removeSpoofableForwardingHeaders(headers) {
+  const namesToDelete = [];
+  for (const [name] of headers) {
+    const normalizedName = name.toLowerCase();
+    if (
+      normalizedName.startsWith("x-forwarded-") ||
+      normalizedName.startsWith("cf-") ||
+      SPOOFABLE_FORWARDING_HEADERS.has(normalizedName)
+    ) {
+      namesToDelete.push(name);
+    }
+  }
+
+  for (const name of namesToDelete) {
+    headers.delete(name);
+  }
+}
+
+function rewriteInternalResponseUrls(
+  headers,
+  backendOrigin,
+  publicOrigin,
+) {
+  for (const headerName of INTERNAL_URL_RESPONSE_HEADERS) {
+    const value = headers.get(headerName);
+    if (!value) {
+      continue;
+    }
+
+    let internalUrl;
+    try {
+      internalUrl = new URL(value);
+    } catch {
+      continue;
+    }
+
+    if (internalUrl.origin !== backendOrigin) {
+      continue;
+    }
+
+    headers.set(
+      headerName,
+      new URL(
+        `${internalUrl.pathname}${internalUrl.search}${internalUrl.hash}`,
+        `${publicOrigin}/`,
+      ).toString(),
+    );
+  }
+}
 
 function jsonError(status, code) {
   return Response.json(
@@ -73,10 +121,10 @@ export function resolveUpstreamUrl(requestUrl, backendOrigin) {
 
 export function buildUpstreamRequest(request, backendOrigin, proxyToken) {
   const upstreamUrl = resolveUpstreamUrl(request.url, backendOrigin);
-  const upstreamRequest = new Request(upstreamUrl, request);
-  for (const header of FORWARDED_HEADERS) {
-    upstreamRequest.headers.delete(header);
-  }
+  const upstreamRequest = new Request(new Request(upstreamUrl, request), {
+    redirect: "manual",
+  });
+  removeSpoofableForwardingHeaders(upstreamRequest.headers);
   upstreamRequest.headers.set("X-Gestudio-Pages-Proxy", "1");
   upstreamRequest.headers.set("X-Gestudio-Proxy-Token", proxyToken);
   return upstreamRequest;
@@ -105,9 +153,18 @@ export async function proxyPagesApi(context, fetchImplementation = fetch) {
 
   try {
     const upstreamResponse = await fetchImplementation(upstreamRequest);
-    const response = new Response(upstreamResponse.body, upstreamResponse);
-    response.headers.set("Cache-Control", "no-store");
-    return response;
+    const responseHeaders = new Headers(upstreamResponse.headers);
+    rewriteInternalResponseUrls(
+      responseHeaders,
+      backendOrigin,
+      new URL(context.request.url).origin,
+    );
+    responseHeaders.set("Cache-Control", "no-store");
+    return new Response(upstreamResponse.body, {
+      status: upstreamResponse.status,
+      statusText: upstreamResponse.statusText,
+      headers: responseHeaders,
+    });
   } catch {
     return jsonError(502, "BACKEND_UNAVAILABLE");
   }

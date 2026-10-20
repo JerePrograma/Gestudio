@@ -16,76 +16,107 @@ class RemoteDemoPublicDeploymentContractTest {
             .getParent();
 
     @Test
-    void despliegueEsperaConexionDnsYBackendAntesDePublicarPages() throws IOException {
+    void publicadorUsaLaDemoMultitenantPersistenteYElProyectoPagesExistente() throws IOException {
         String script = Files.readString(root.resolve("scripts/deploy-remote-demo-public.ps1"));
 
         assertThat(script)
                 .contains(
+                        "demo-local-multitenant.ps1",
+                        "-PublicOrigin",
+                        "-RotatePublicCredential",
+                        "STATUS: PASS",
                         "Registered tunnel connection",
                         "Wait-DnsResolution",
                         "--protocol", "http2",
-                        "Protección directa del túnel",
-                        "Quick Tunnel hacia backend",
                         "pages", "secret", "bulk",
                         "pages", "deploy", "dist",
-                        "Refresh público",
-                        "sin 530/1016",
-                        "CORS público"
+                        "gestudio-demo-jere-287b8c90",
+                        "--commit-dirty=true"
+                )
+                .doesNotContain(
+                        "demo-remote.ps1",
+                        ".env.remote-demo",
+                        "gestudio-remote-demo"
                 );
     }
 
     @Test
-    void refreshPublicoReproduceElOriginDelNavegador() throws IOException {
+    void certificacionPublicaCubreSesionCookieTenantYAislamiento() throws IOException {
         String script = Files.readString(root.resolve("scripts/deploy-remote-demo-public.ps1"));
 
         assertThat(script)
                 .contains(
-                        "$refreshCheck = @{",
-                        "Uri = \"$pagesOriginNormalized/api/login/refresh\"",
-                        "Method = \"POST\"",
-                        "Headers = @{ \"Origin\" = $pagesOriginNormalized }",
-                        "ExpectedStatuses = @(401)"
-                )
-                .doesNotContain("ExpectedStatuses = @(401, 403)");
+                        "alpha.demo.presentacion",
+                        "DEMO_COMERCIAL",
+                        "Escuela Danza Marcos Paz",
+                        "Beta E2E d3a010ca1001",
+                        "/api/login/refresh",
+                        "/api/login/logout",
+                        "SameSite=Strict",
+                        "Path=/api/login",
+                        "Refresh posterior a logout",
+                        "/api/platform/me",
+                        "/actuator/health/readiness"
+                );
     }
 
     @Test
-    void despliegueSoloDetieneTunelesRegistradosPorGestudio() throws IOException {
+    void proxyTokenYHostnameDelTunnelSeMantienenRedactadosYFueraDeGit() throws IOException {
         String script = Files.readString(root.resolve("scripts/deploy-remote-demo-public.ps1"));
 
         assertThat(script)
                 .contains(
                         "public-deployment.json",
-                        "quick-tunnel.json",
+                        "credentials.json",
+                        "Assert-SecretsOutsideGit",
+                        "GESTUDIO_BACKEND_ORIGIN",
+                        "GESTUDIO_PROXY_TOKEN",
+                        "QUICK_TUNNEL_REDACTED",
                         "Get-CimInstance Win32_Process",
-                        "$commandLine.Contains(",
-                        "Stop-Process -Id $trackedProcessId",
-                        "no corresponde al Quick Tunnel de Gestudio; no se detuvo"
+                        "ProcessStartedAt",
+                        "ExecutablePath",
+                        "Stop-Process -Id $process.Id"
                 )
                 .doesNotContain(
                         "Stop-Process -Name",
                         "taskkill",
-                        "Get-Process cloudflared | Stop-Process"
+                        "Get-Process cloudflared | Stop-Process",
+                        "Write-Host \"Quick Tunnel:"
                 );
     }
 
     @Test
-    void despliegueExigeMainLimpiaYNoUsaContinuacionesDeShellUnix() throws IOException {
+    void despliegueExigeMainSinDescartarUnWorktreeSucio() throws IOException {
         String script = Files.readString(root.resolve("scripts/deploy-remote-demo-public.ps1"));
 
         assertThat(script)
                 .contains(
                         "La rama actual debe ser main",
+                        "origin/main",
+                        "diff", "--check",
                         "status", "--porcelain=v1",
                         "fetch", "origin", "--prune",
-                        "main local no coincide con origin/main",
-                        "$startArguments = @{",
-                        "$frontendCheck = @{"
+                        "el worktree actual se conserva"
                 )
                 .doesNotContain(
-                        "Start-Process \\",
-                        "Wait-HttpStatus \\",
-                        "Write-TunnelState \\"
+                        "git reset --hard",
+                        "git checkout --",
+                        "Existen cambios locales versionables"
+                );
+    }
+
+    @Test
+    void launcherHumanoDelegaAccionesSinExigirElEnvLegacy() throws IOException {
+        String launcher = Files.readString(root.resolve("DESPLEGAR-DEMO-REMOTA.cmd"));
+
+        assertThat(launcher)
+                .contains(
+                        "deploy-remote-demo-public.ps1",
+                        "-RepoPath \"%REPO_ROOT%\" %*"
+                )
+                .doesNotContain(
+                        ".env.remote-demo",
+                        "demo-remote.ps1"
                 );
     }
 

@@ -49,7 +49,7 @@ const identifier = (name: string, pattern: RegExp): string => {
 
 const composeProject = identifier(
   "GESTUDIO_E2E_COMPOSE_PROJECT",
-  /^gestudio-e2e-[a-f0-9]{12}$/,
+  /^(?:gestudio-e2e-[a-f0-9]{12}|gestudio-demo-local)$/,
 );
 if (composeProject === "gestudio-remote-demo" || composeProject.includes("remote-demo")) {
   throw new Error("El proyecto protegido gestudio-remote-demo esta fuera del alcance E2E");

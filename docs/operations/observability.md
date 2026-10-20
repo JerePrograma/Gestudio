@@ -104,7 +104,11 @@ Formato admitido:
 - primer carácter alfanumérico;
 - resto limitado a letras, números, punto, guion, guion bajo y dos puntos.
 
-Cuando el valor falta o es inseguro, el backend genera un UUID. El valor efectivo siempre se devuelve en la respuesta.
+Un UUID válido se conserva. Un valor seguro que no sea UUID se canonicaliza de
+forma determinista como UUID v3 para mantener el tipo usado por auditoría. Si el
+valor falta o es inseguro, el backend genera un UUID v4. El valor efectivo
+siempre se devuelve en la respuesta; el cliente debe correlacionar con ese valor
+devuelto, no asumir que un identificador no UUID permanecerá literal.
 
 Para los orígenes CORS configurados, el navegador puede enviar `X-Request-ID` y leerlo en la respuesta. El contrato mantiene `Access-Control-Allow-Credentials: true`, por lo que las cookies de sesión siguen sujetas al origen explícitamente permitido; no se habilita un origen comodín.
 

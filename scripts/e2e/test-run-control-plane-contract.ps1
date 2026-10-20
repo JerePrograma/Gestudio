@@ -78,7 +78,9 @@ foreach ($requirement in @(
     @('composeProjectInvariant = $projectInvariant', 'Falta resultado sanitizado de invariancia del proyecto E2E.'),
     @("`$_ -cne 'DO'", 'La salida fresh no elimina exclusivamente el command tag DO conocido.'),
     @('$freshRows.Count -ne 1', 'La salida fresh no exige una unica fila de estado.'),
-    @('Estado actual: $freshState', 'El fallo fresh no conserva evidencia sanitizada para diagnostico.')
+    @('Estado actual: $freshState', 'El fallo fresh no conserva evidencia sanitizada para diagnostico.'),
+    @('$bootstrapCounter = $currentTotpCounter + 1', 'El bootstrap no compensa el arranque frio del one-shot TOTP.'),
+    @('Wait-BootstrapCommitted -Username $platformUsername', 'Falta confirmar el commit transaccional del bootstrap.')
 )) {
     Assert-Contains -Source $runner -Marker $requirement[0] -Failure $requirement[1]
 }

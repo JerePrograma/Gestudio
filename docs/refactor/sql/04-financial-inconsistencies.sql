@@ -39,7 +39,11 @@ WHERE p.estado = 'REGISTRADO' AND m.id IS NULL
 UNION ALL
 SELECT 'FIN-STOCK-PROYECCION', count(*)
 FROM public.stocks s LEFT JOIN (
-    SELECT stock_id, sum(CASE WHEN tipo IN ('INGRESO','REVERSO') THEN cantidad ELSE -cantidad END) cantidad
+    SELECT stock_id, sum(CASE
+        WHEN tipo IN ('INGRESO','AJUSTE_POSITIVO','REVERSO') THEN cantidad
+        WHEN tipo IN ('VENTA','AJUSTE_NEGATIVO') THEN -cantidad
+        ELSE 0
+    END) cantidad
     FROM public.movimientos_stock GROUP BY stock_id
 ) m ON m.stock_id = s.id
 WHERE s.requiere_control_de_stock AND s.cantidad_actual <> coalesce(m.cantidad, 0)

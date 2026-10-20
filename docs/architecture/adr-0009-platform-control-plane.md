@@ -1,7 +1,7 @@
 # ADR-0009: control plane SUPERADMIN separado del acceso tenant
 
 - Estado: `ACCEPTED`
-- Estado de implementación: `IMPLEMENTED_NOT_RUN`
+- Estado de implementación repo-local: `IMPLEMENTED_LOCAL`
 - Fecha: 2026-08-12
 - Alcance: identidad, sesiones, autorización, persistencia y operación del control plane de Gestudio
 - Relación: extiende `adr-0008-shared-schema-multitenancy.md`; no sustituye sus invariantes de aislamiento tenant
@@ -450,7 +450,7 @@ Como mínimo deben pasar sobre el mismo SHA definitivo:
 
 Hasta que esa evidencia exista, este ADR se mantiene `ACCEPTED` pero su estado
 de implementación continúa `PLANNED` o, durante el desarrollo,
-`IMPLEMENTED_NOT_RUN`.
+`IMPLEMENTED_LOCAL`; la promoción productiva continúa sujeta a evidencia externa.
 
 El detalle de amenazas, controles y evidencia pendiente se mantiene en el
 [threat model](threat-model-platform-control-plane.md); la ceremonia de acceso,

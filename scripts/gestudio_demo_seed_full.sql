@@ -4,6 +4,19 @@
 
 \set ON_ERROR_STOP on
 
+\if :{?demo_tenant_id}
+\else
+\set demo_tenant_id 00000000-0000-0000-0000-000000000001
+\endif
+\if :{?demo_tenant_code}
+\else
+\set demo_tenant_code gestudio-demo
+\endif
+\if :{?demo_tenant_name}
+\else
+\set demo_tenant_name 'Gestudio Demo'
+\endif
+
 BEGIN;
 
 SET LOCAL TIME ZONE 'America/Argentina/Buenos_Aires';
@@ -14,7 +27,9 @@ SELECT
     :'demo_business_date'::date AS business_date,
     :'demo_expected_flyway_count'::integer AS expected_flyway_count,
     :'demo_expected_flyway_latest'::integer AS expected_flyway_latest,
-    '00000000-0000-0000-0000-000000000001'::uuid AS tenant_id,
+    :'demo_tenant_id'::uuid AS tenant_id,
+    :'demo_tenant_code'::varchar(50) AS tenant_code,
+    :'demo_tenant_name'::varchar(160) AS tenant_name,
     date_trunc('month', :'demo_anchor_date'::date)::date AS month_0,
     (date_trunc('month', :'demo_anchor_date'::date) - interval '1 month')::date AS month_1,
     (date_trunc('month', :'demo_anchor_date'::date) - interval '2 months')::date AS month_2,
@@ -95,10 +110,45 @@ BEGIN
 END
 $$;
 
+-- Lecturas de negocio limitadas al tenant de la fixture, incluso con el owner de DB.
+-- Los usuarios demo-* y las guardas RBAC siguen teniendo alcance global.
+CREATE TEMP VIEW _demo_scope_alumnos AS SELECT * FROM public.alumnos WHERE tenant_id = (SELECT tenant_id FROM _demo_config);
+CREATE TEMP VIEW _demo_scope_salones AS SELECT * FROM public.salones WHERE tenant_id = (SELECT tenant_id FROM _demo_config);
+CREATE TEMP VIEW _demo_scope_profesores AS SELECT * FROM public.profesores WHERE tenant_id = (SELECT tenant_id FROM _demo_config);
+CREATE TEMP VIEW _demo_scope_observaciones_profesores AS SELECT * FROM public.observaciones_profesores WHERE tenant_id = (SELECT tenant_id FROM _demo_config);
+CREATE TEMP VIEW _demo_scope_disciplinas AS SELECT * FROM public.disciplinas WHERE tenant_id = (SELECT tenant_id FROM _demo_config);
+CREATE TEMP VIEW _demo_scope_disciplina_horarios AS SELECT * FROM public.disciplina_horarios WHERE tenant_id = (SELECT tenant_id FROM _demo_config);
+CREATE TEMP VIEW _demo_scope_inscripciones AS SELECT * FROM public.inscripciones WHERE tenant_id = (SELECT tenant_id FROM _demo_config);
+CREATE TEMP VIEW _demo_scope_bonificaciones AS SELECT * FROM public.bonificaciones WHERE tenant_id = (SELECT tenant_id FROM _demo_config);
+CREATE TEMP VIEW _demo_scope_recargos AS SELECT * FROM public.recargos WHERE tenant_id = (SELECT tenant_id FROM _demo_config);
+CREATE TEMP VIEW _demo_scope_metodo_pagos AS SELECT * FROM public.metodo_pagos WHERE tenant_id = (SELECT tenant_id FROM _demo_config);
+CREATE TEMP VIEW _demo_scope_sub_conceptos AS SELECT * FROM public.sub_conceptos WHERE tenant_id = (SELECT tenant_id FROM _demo_config);
+CREATE TEMP VIEW _demo_scope_conceptos AS SELECT * FROM public.conceptos WHERE tenant_id = (SELECT tenant_id FROM _demo_config);
+CREATE TEMP VIEW _demo_scope_disciplina_tarifas AS SELECT * FROM public.disciplina_tarifas WHERE tenant_id = (SELECT tenant_id FROM _demo_config);
+CREATE TEMP VIEW _demo_scope_inscripcion_condiciones_economicas AS SELECT * FROM public.inscripcion_condiciones_economicas WHERE tenant_id = (SELECT tenant_id FROM _demo_config);
+CREATE TEMP VIEW _demo_scope_mensualidades AS SELECT * FROM public.mensualidades WHERE tenant_id = (SELECT tenant_id FROM _demo_config);
+CREATE TEMP VIEW _demo_scope_matriculas AS SELECT * FROM public.matriculas WHERE tenant_id = (SELECT tenant_id FROM _demo_config);
+CREATE TEMP VIEW _demo_scope_cargos AS SELECT * FROM public.cargos WHERE tenant_id = (SELECT tenant_id FROM _demo_config);
+CREATE TEMP VIEW _demo_scope_cargo_liquidaciones AS SELECT * FROM public.cargo_liquidaciones WHERE tenant_id = (SELECT tenant_id FROM _demo_config);
+CREATE TEMP VIEW _demo_scope_pagos AS SELECT * FROM public.pagos WHERE tenant_id = (SELECT tenant_id FROM _demo_config);
+CREATE TEMP VIEW _demo_scope_aplicaciones_pago AS SELECT * FROM public.aplicaciones_pago WHERE tenant_id = (SELECT tenant_id FROM _demo_config);
+CREATE TEMP VIEW _demo_scope_egresos AS SELECT * FROM public.egresos WHERE tenant_id = (SELECT tenant_id FROM _demo_config);
+CREATE TEMP VIEW _demo_scope_movimientos_caja AS SELECT * FROM public.movimientos_caja WHERE tenant_id = (SELECT tenant_id FROM _demo_config);
+CREATE TEMP VIEW _demo_scope_movimientos_credito AS SELECT * FROM public.movimientos_credito WHERE tenant_id = (SELECT tenant_id FROM _demo_config);
+CREATE TEMP VIEW _demo_scope_stocks AS SELECT * FROM public.stocks WHERE tenant_id = (SELECT tenant_id FROM _demo_config);
+CREATE TEMP VIEW _demo_scope_ventas_stock AS SELECT * FROM public.ventas_stock WHERE tenant_id = (SELECT tenant_id FROM _demo_config);
+CREATE TEMP VIEW _demo_scope_movimientos_stock AS SELECT * FROM public.movimientos_stock WHERE tenant_id = (SELECT tenant_id FROM _demo_config);
+CREATE TEMP VIEW _demo_scope_asistencias_mensuales AS SELECT * FROM public.asistencias_mensuales WHERE tenant_id = (SELECT tenant_id FROM _demo_config);
+CREATE TEMP VIEW _demo_scope_asistencias_alumno_mensual AS SELECT * FROM public.asistencias_alumno_mensual WHERE tenant_id = (SELECT tenant_id FROM _demo_config);
+CREATE TEMP VIEW _demo_scope_asistencias_diarias AS SELECT * FROM public.asistencias_diarias WHERE tenant_id = (SELECT tenant_id FROM _demo_config);
+CREATE TEMP VIEW _demo_scope_recibos AS SELECT * FROM public.recibos WHERE tenant_id = (SELECT tenant_id FROM _demo_config);
+CREATE TEMP VIEW _demo_scope_recibos_pendientes AS SELECT * FROM public.recibos_pendientes WHERE tenant_id = (SELECT tenant_id FROM _demo_config);
+
 -- Fixture tenant/RBAC explícita. B12 no crea tenants ni roles funcionales;
 -- el demo descartable los materializa fuera de Flyway antes de cargar negocio.
 INSERT INTO public.tenants (id, code, name, status)
-VALUES ((SELECT tenant_id FROM _demo_config), 'gestudio-demo', 'Gestudio Demo', 'ACTIVE')
+VALUES ((SELECT tenant_id FROM _demo_config), (SELECT tenant_code FROM _demo_config),
+        (SELECT tenant_name FROM _demo_config), 'ACTIVE')
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO public.roles
@@ -178,6 +228,7 @@ BEGIN
     INTO full_role_count
     FROM public.roles r
     WHERE r.activo
+      AND r.tenant_id = (SELECT tenant_id FROM _demo_config)
       AND r.sistema
       AND NOT r.editable
       AND (SELECT count(*) FROM public.rol_permisos rp WHERE rp.rol_id = r.id) =
@@ -189,23 +240,28 @@ BEGIN
 
     IF NOT EXISTS (
         SELECT 1 FROM public.roles r
-        WHERE r.codigo = 'DIRECCION' AND r.activo
+        WHERE r.tenant_id = (SELECT tenant_id FROM _demo_config)
+          AND r.codigo = 'DIRECCION' AND r.activo
           AND (SELECT count(*) FROM public.rol_permisos rp WHERE rp.rol_id = r.id) = 31
     ) OR NOT EXISTS (
         SELECT 1 FROM public.roles r
-        WHERE r.codigo = 'ADMINISTRADOR' AND r.activo
+        WHERE r.tenant_id = (SELECT tenant_id FROM _demo_config)
+          AND r.codigo = 'ADMINISTRADOR' AND r.activo
           AND (SELECT count(*) FROM public.rol_permisos rp WHERE rp.rol_id = r.id) = 31
     ) OR NOT EXISTS (
         SELECT 1 FROM public.roles r
-        WHERE r.codigo = 'SECRETARIA' AND r.activo
+        WHERE r.tenant_id = (SELECT tenant_id FROM _demo_config)
+          AND r.codigo = 'SECRETARIA' AND r.activo
           AND (SELECT count(*) FROM public.rol_permisos rp WHERE rp.rol_id = r.id) = 17
     ) OR NOT EXISTS (
         SELECT 1 FROM public.roles r
-        WHERE r.codigo = 'CAJA' AND r.activo
+        WHERE r.tenant_id = (SELECT tenant_id FROM _demo_config)
+          AND r.codigo = 'CAJA' AND r.activo
           AND (SELECT count(*) FROM public.rol_permisos rp WHERE rp.rol_id = r.id) = 8
     ) OR NOT EXISTS (
         SELECT 1 FROM public.roles r
-        WHERE r.codigo = 'PROFESOR' AND NOT r.activo AND r.sistema AND NOT r.editable
+        WHERE r.tenant_id = (SELECT tenant_id FROM _demo_config)
+          AND r.codigo = 'PROFESOR' AND NOT r.activo AND r.sistema AND NOT r.editable
           AND NOT EXISTS (SELECT 1 FROM public.rol_permisos rp WHERE rp.rol_id = r.id)
     ) THEN
         RAISE EXCEPTION 'La matriz de roles base no coincide con el contrato productivo';
@@ -249,8 +305,9 @@ BEGIN
 
     IF namespace_exists AND NOT EXISTS (
         SELECT 1
-        FROM public.alumnos
-        WHERE documento = '49287134'
+        FROM _demo_scope_alumnos
+        WHERE tenant_id = (SELECT tenant_id FROM _demo_config)
+          AND documento = '49287134'
           AND otras_notas = expected_note
     ) THEN
         RAISE EXCEPTION 'El namespace demo ya existe con otra fecha ancla o está incompleto';
@@ -382,9 +439,9 @@ SET tenant_id = EXCLUDED.tenant_id,
 -- Catálogos visibles.
 INSERT INTO public.salones (tenant_id, nombre, descripcion, activo)
 VALUES
-    ('00000000-0000-0000-0000-000000000001', 'Sala Principal', 'Salón amplio con piso flotante, espejos y barras móviles.', TRUE),
-    ('00000000-0000-0000-0000-000000000001', 'Estudio Infantil', 'Espacio climatizado y equipado para grupos infantiles.', TRUE),
-    ('00000000-0000-0000-0000-000000000001', 'Sala de Ensayo', 'Sala multipropósito para ensayos, talleres y clases especiales.', TRUE)
+    ((SELECT tenant_id FROM _demo_config), 'Sala Principal', 'Salón amplio con piso flotante, espejos y barras móviles.', TRUE),
+    ((SELECT tenant_id FROM _demo_config), 'Estudio Infantil', 'Espacio climatizado y equipado para grupos infantiles.', TRUE),
+    ((SELECT tenant_id FROM _demo_config), 'Sala de Ensayo', 'Sala multipropósito para ensayos, talleres y clases especiales.', TRUE)
 ON CONFLICT (tenant_id, nombre) DO UPDATE
 SET descripcion = EXCLUDED.descripcion,
     activo = EXCLUDED.activo;
@@ -413,21 +470,23 @@ SET apellido = d.apellido,
     usuario_id = NULL,
     activo = d.activo
 FROM _demo_professors_desired d
-WHERE p.nombre = d.nombre;
+WHERE p.nombre = d.nombre
+  AND p.tenant_id = (SELECT tenant_id FROM _demo_config);
 
 INSERT INTO public.profesores (tenant_id, nombre, apellido, fecha_nacimiento, telefono, usuario_id, activo, version)
 SELECT (SELECT tenant_id FROM _demo_config), d.nombre, d.apellido, d.fecha_nacimiento, d.telefono, NULL, d.activo, 0
 FROM _demo_professors_desired d
 WHERE NOT EXISTS (
-    SELECT 1 FROM public.profesores p
+    SELECT 1 FROM _demo_scope_profesores p
     WHERE p.tenant_id = (SELECT tenant_id FROM _demo_config) AND p.nombre = d.nombre
 );
 
 UPDATE public.observaciones_profesores op
 SET fecha = (SELECT anchor_date - 20 FROM _demo_config),
     activa = TRUE
-FROM public.profesores p, _demo_professors_desired d
-WHERE op.profesor_id = p.id
+FROM _demo_scope_profesores p, _demo_professors_desired d
+WHERE op.tenant_id = (SELECT tenant_id FROM _demo_config)
+  AND op.profesor_id = p.id
   AND p.nombre = d.nombre
   AND op.observacion = 'Seguimiento pedagógico trimestral al día.';
 
@@ -438,9 +497,9 @@ SELECT (SELECT tenant_id FROM _demo_config),
        'Seguimiento pedagógico trimestral al día.',
        TRUE
 FROM _demo_professors_desired d
-JOIN public.profesores p ON p.nombre = d.nombre
+JOIN _demo_scope_profesores p ON p.nombre = d.nombre
 WHERE NOT EXISTS (
-    SELECT 1 FROM public.observaciones_profesores op
+    SELECT 1 FROM _demo_scope_observaciones_profesores op
     WHERE op.profesor_id = p.id
       AND op.observacion = 'Seguimiento pedagógico trimestral al día.'
 );
@@ -448,10 +507,10 @@ WHERE NOT EXISTS (
 INSERT INTO public.bonificaciones
     (tenant_id, descripcion, porcentaje_descuento, valor_fijo, activo, observaciones)
 VALUES
-    ('00000000-0000-0000-0000-000000000001', 'Descuento hermanos 10%', 10.0000, 0.00, TRUE, 'Beneficio para dos o más integrantes del mismo grupo familiar.'),
-    ('00000000-0000-0000-0000-000000000001', 'Beca institucional 25%', 25.0000, 0.00, TRUE, 'Beca parcial otorgada por dirección.'),
-    ('00000000-0000-0000-0000-000000000001', 'Convenio familiar', 0.0000, 3500.00, TRUE, 'Bonificación fija mensual por convenio.'),
-    ('00000000-0000-0000-0000-000000000001', 'Promoción apertura 2025', 5.0000, 0.00, FALSE, 'Beneficio histórico no asignable a nuevas inscripciones.')
+    ((SELECT tenant_id FROM _demo_config), 'Descuento hermanos 10%', 10.0000, 0.00, TRUE, 'Beneficio para dos o más integrantes del mismo grupo familiar.'),
+    ((SELECT tenant_id FROM _demo_config), 'Beca institucional 25%', 25.0000, 0.00, TRUE, 'Beca parcial otorgada por dirección.'),
+    ((SELECT tenant_id FROM _demo_config), 'Convenio familiar', 0.0000, 3500.00, TRUE, 'Bonificación fija mensual por convenio.'),
+    ((SELECT tenant_id FROM _demo_config), 'Promoción apertura 2025', 5.0000, 0.00, FALSE, 'Beneficio histórico no asignable a nuevas inscripciones.')
 ON CONFLICT (tenant_id, descripcion) DO UPDATE
 SET porcentaje_descuento = EXCLUDED.porcentaje_descuento,
     valor_fijo = EXCLUDED.valor_fijo,
@@ -461,9 +520,9 @@ SET porcentaje_descuento = EXCLUDED.porcentaje_descuento,
 INSERT INTO public.recargos
     (tenant_id, descripcion, porcentaje, valor_fijo, dia_del_mes_aplicacion, activo)
 VALUES
-    ('00000000-0000-0000-0000-000000000001', 'Mora por vencimiento 5%', 5.0000, 0.00, 11, TRUE),
-    ('00000000-0000-0000-0000-000000000001', 'Gastos administrativos', 0.0000, 2500.00, 16, TRUE),
-    ('00000000-0000-0000-0000-000000000001', 'Recargo extraordinario 2025', 8.0000, 0.00, 20, FALSE)
+    ((SELECT tenant_id FROM _demo_config), 'Mora por vencimiento 5%', 5.0000, 0.00, 11, TRUE),
+    ((SELECT tenant_id FROM _demo_config), 'Gastos administrativos', 0.0000, 2500.00, 16, TRUE),
+    ((SELECT tenant_id FROM _demo_config), 'Recargo extraordinario 2025', 8.0000, 0.00, 20, FALSE)
 ON CONFLICT (tenant_id, descripcion) DO UPDATE
 SET porcentaje = EXCLUDED.porcentaje,
     valor_fijo = EXCLUDED.valor_fijo,
@@ -472,20 +531,20 @@ SET porcentaje = EXCLUDED.porcentaje,
 
 INSERT INTO public.metodo_pagos (tenant_id, descripcion, activo, recargo)
 VALUES
-    ('00000000-0000-0000-0000-000000000001', 'Efectivo', TRUE, 0.0000),
-    ('00000000-0000-0000-0000-000000000001', 'Transferencia bancaria', TRUE, 0.0000),
-    ('00000000-0000-0000-0000-000000000001', 'Tarjeta de débito', TRUE, 0.0000),
-    ('00000000-0000-0000-0000-000000000001', 'Tarjeta de crédito', TRUE, 3.0000)
+    ((SELECT tenant_id FROM _demo_config), 'Efectivo', TRUE, 0.0000),
+    ((SELECT tenant_id FROM _demo_config), 'Transferencia bancaria', TRUE, 0.0000),
+    ((SELECT tenant_id FROM _demo_config), 'Tarjeta de débito', TRUE, 0.0000),
+    ((SELECT tenant_id FROM _demo_config), 'Tarjeta de crédito', TRUE, 3.0000)
 ON CONFLICT (tenant_id, descripcion) DO UPDATE
 SET activo = EXCLUDED.activo,
     recargo = EXCLUDED.recargo;
 
 INSERT INTO public.sub_conceptos (tenant_id, descripcion, activo)
 VALUES
-    ('00000000-0000-0000-0000-000000000001', 'Indumentaria', TRUE),
-    ('00000000-0000-0000-0000-000000000001', 'Materiales de clase', TRUE),
-    ('00000000-0000-0000-0000-000000000001', 'Eventos y talleres', TRUE),
-    ('00000000-0000-0000-0000-000000000001', 'Trámites administrativos', TRUE)
+    ((SELECT tenant_id FROM _demo_config), 'Indumentaria', TRUE),
+    ((SELECT tenant_id FROM _demo_config), 'Materiales de clase', TRUE),
+    ((SELECT tenant_id FROM _demo_config), 'Eventos y talleres', TRUE),
+    ((SELECT tenant_id FROM _demo_config), 'Trámites administrativos', TRUE)
 ON CONFLICT (tenant_id, descripcion) DO UPDATE SET activo = EXCLUDED.activo;
 
 CREATE TEMP TABLE _demo_concepts_desired (
@@ -508,7 +567,7 @@ INSERT INTO _demo_concepts_desired VALUES
 INSERT INTO public.conceptos (tenant_id, descripcion, precio, sub_concepto_id, activo)
 SELECT (SELECT tenant_id FROM _demo_config), d.description, d.price, sc.id, TRUE
 FROM _demo_concepts_desired d
-JOIN public.sub_conceptos sc ON sc.descripcion = d.sub_description
+JOIN _demo_scope_sub_conceptos sc ON sc.descripcion = d.sub_description
 ON CONFLICT (tenant_id, sub_concepto_id, descripcion) DO UPDATE
 SET precio = EXCLUDED.precio,
     activo = EXCLUDED.activo;
@@ -568,8 +627,8 @@ SET salon_id = s.id,
     clase_prueba = 5000.00,
     activo = TRUE
 FROM _demo_disciplines_desired x
-JOIN public.salones s ON s.nombre = x.room_name
-JOIN public.profesores p ON p.nombre = x.professor_name
+JOIN _demo_scope_salones s ON s.nombre = x.room_name
+JOIN _demo_scope_profesores p ON p.nombre = x.professor_name
 WHERE d.tenant_id = (SELECT tenant_id FROM _demo_config)
   AND d.nombre = x.nombre;
 
@@ -577,10 +636,10 @@ INSERT INTO public.disciplinas
     (tenant_id, nombre, salon_id, profesor_id, valor_cuota, matricula, clase_suelta, clase_prueba, activo, version)
 SELECT (SELECT tenant_id FROM _demo_config), x.nombre, s.id, p.id, x.cuota, x.matricula, 9000.00, 5000.00, TRUE, 0
 FROM _demo_disciplines_desired x
-JOIN public.salones s ON s.nombre = x.room_name
-JOIN public.profesores p ON p.nombre = x.professor_name
+JOIN _demo_scope_salones s ON s.nombre = x.room_name
+JOIN _demo_scope_profesores p ON p.nombre = x.professor_name
 WHERE NOT EXISTS (
-    SELECT 1 FROM public.disciplinas d
+    SELECT 1 FROM _demo_scope_disciplinas d
     WHERE d.tenant_id = (SELECT tenant_id FROM _demo_config) AND d.nombre = x.nombre
 );
 
@@ -592,7 +651,7 @@ SELECT (SELECT tenant_id FROM _demo_config),
        (time '17:00' + (x.seq - 1) * interval '30 minutes')::time,
        1.50
 FROM _demo_disciplines_desired x
-JOIN public.disciplinas d ON d.nombre = x.nombre
+JOIN _demo_scope_disciplinas d ON d.nombre = x.nombre
 ON CONFLICT (tenant_id, disciplina_id, dia_semana, horario_inicio) DO UPDATE
 SET duracion = EXCLUDED.duracion;
 
@@ -604,7 +663,7 @@ SELECT (SELECT tenant_id FROM _demo_config),
        (time '18:00' + (x.seq - 1) * interval '20 minutes')::time,
        1.25
 FROM _demo_disciplines_desired x
-JOIN public.disciplinas d ON d.nombre = x.nombre
+JOIN _demo_scope_disciplinas d ON d.nombre = x.nombre
 WHERE x.seq <= 5
 ON CONFLICT (tenant_id, disciplina_id, dia_semana, horario_inicio) DO UPDATE
 SET duracion = EXCLUDED.duracion;
@@ -719,10 +778,11 @@ SET bonificacion_id = CASE WHEN x.seq % 3 = 0 THEN b.id ELSE NULL END,
     estado = x.state,
     costo_particular = x.custom_cost
 FROM _demo_enrollments_desired x
-JOIN public.alumnos a ON a.documento = x.document
+JOIN _demo_scope_alumnos a ON a.documento = x.document
+ AND a.tenant_id = (SELECT tenant_id FROM _demo_config)
 JOIN _demo_disciplines_desired dd ON dd.seq = x.discipline_seq
-JOIN public.disciplinas d ON d.nombre = dd.nombre
-LEFT JOIN public.bonificaciones b ON b.descripcion = 'Descuento hermanos 10%'
+JOIN _demo_scope_disciplinas d ON d.nombre = dd.nombre
+LEFT JOIN _demo_scope_bonificaciones b ON b.descripcion = 'Descuento hermanos 10%'
 WHERE i.alumno_id = a.id
   AND i.disciplina_id = d.id
   AND i.tenant_id = (SELECT tenant_id FROM _demo_config);
@@ -739,12 +799,13 @@ SELECT (SELECT tenant_id FROM _demo_config),
        x.custom_cost,
        0
 FROM _demo_enrollments_desired x
-JOIN public.alumnos a ON a.documento = x.document
+JOIN _demo_scope_alumnos a ON a.documento = x.document
+ AND a.tenant_id = (SELECT tenant_id FROM _demo_config)
 JOIN _demo_disciplines_desired dd ON dd.seq = x.discipline_seq
-JOIN public.disciplinas d ON d.nombre = dd.nombre
-LEFT JOIN public.bonificaciones b ON b.descripcion = 'Descuento hermanos 10%'
+JOIN _demo_scope_disciplinas d ON d.nombre = dd.nombre
+LEFT JOIN _demo_scope_bonificaciones b ON b.descripcion = 'Descuento hermanos 10%'
 WHERE NOT EXISTS (
-    SELECT 1 FROM public.inscripciones i
+    SELECT 1 FROM _demo_scope_inscripciones i
     WHERE i.tenant_id = (SELECT tenant_id FROM _demo_config)
       AND i.alumno_id = a.id AND i.disciplina_id = d.id
 );
@@ -766,10 +827,13 @@ SELECT (SELECT tenant_id FROM _demo_config),
        (SELECT anchor_ts FROM _demo_config) + dd.seq * interval '1 second',
        0
 FROM _demo_disciplines_desired dd
-JOIN public.disciplinas d ON d.nombre = dd.nombre
+JOIN _demo_scope_disciplinas d ON d.nombre = dd.nombre
 CROSS JOIN LATERAL (
     VALUES
-        ((SELECT month_2 - interval '3 months' FROM _demo_config)::date, FALSE),
+        ((SELECT LEAST(
+            make_date(extract(year FROM anchor_date)::integer, 1, 1),
+            (month_2 - interval '3 months')::date
+        ) FROM _demo_config), FALSE),
         ((SELECT month_0 FROM _demo_config), TRUE)
 ) AS periods(start_date, current_rate)
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-administrador'
@@ -788,9 +852,9 @@ SELECT i.id,
        a.documento,
        i.disciplina_id,
        row_number() OVER (ORDER BY a.documento, d.nombre) AS seq
-FROM public.inscripciones i
-JOIN public.alumnos a ON a.id = i.alumno_id AND a.email LIKE '%@correo.local'
-JOIN public.disciplinas d ON d.id = i.disciplina_id
+FROM _demo_scope_inscripciones i
+JOIN _demo_scope_alumnos a ON a.id = i.alumno_id AND a.email LIKE '%@correo.local'
+JOIN _demo_scope_disciplinas d ON d.id = i.disciplina_id
 JOIN _demo_disciplines_desired dd ON dd.nombre = d.nombre;
 
 CREATE TEMP TABLE _demo_conditions_desired ON COMMIT DROP AS
@@ -804,7 +868,7 @@ SELECT e.id AS enrollment_id,
        'Condición económica histórica de la inscripción.'::varchar(500) AS reason,
        e.seq
 FROM _demo_enrollment_ids e
-LEFT JOIN public.bonificaciones b ON b.descripcion = 'Descuento hermanos 10%'
+LEFT JOIN _demo_scope_bonificaciones b ON b.descripcion = 'Descuento hermanos 10%'
 UNION ALL
 SELECT e.id,
        (SELECT month_0 FROM _demo_config),
@@ -816,7 +880,7 @@ SELECT e.id,
        'Actualización de la condición económica vigente.',
        100 + e.seq
 FROM _demo_enrollment_ids e
-JOIN public.bonificaciones b ON b.descripcion = 'Beca institucional 25%'
+JOIN _demo_scope_bonificaciones b ON b.descripcion = 'Beca institucional 25%'
 WHERE e.seq <= 6;
 
 INSERT INTO public.inscripcion_condiciones_economicas
@@ -868,7 +932,7 @@ FROM _demo_enrollment_ids e
 JOIN _demo_enrollments_desired desired
   ON desired.document = e.documento
  AND desired.discipline_seq = (
-      SELECT dd.seq FROM public.disciplinas d
+      SELECT dd.seq FROM _demo_scope_disciplinas d
       JOIN _demo_disciplines_desired dd ON dd.nombre = d.nombre
       WHERE d.id = e.disciplina_id
  )
@@ -889,8 +953,8 @@ SELECT (SELECT tenant_id FROM _demo_config),
        'EMITIDA',
        0
 FROM _demo_monthly_desired x
-LEFT JOIN public.bonificaciones b ON b.descripcion = 'Descuento hermanos 10%'
-LEFT JOIN public.recargos r ON r.descripcion = 'Mora por vencimiento 5%'
+LEFT JOIN _demo_scope_bonificaciones b ON b.descripcion = 'Descuento hermanos 10%'
+LEFT JOIN _demo_scope_recargos r ON r.descripcion = 'Mora por vencimiento 5%'
 ON CONFLICT (tenant_id, inscripcion_id, anio, mes) DO UPDATE
 SET bonificacion_id = EXCLUDED.bonificacion_id,
     recargo_id = EXCLUDED.recargo_id,
@@ -906,9 +970,10 @@ SELECT (SELECT tenant_id FROM _demo_config),
        make_date(extract(year FROM (SELECT anchor_date FROM _demo_config))::integer, 2, 15),
        'EMITIDA',
        0
-FROM public.alumnos a
+FROM _demo_scope_alumnos a
 JOIN _demo_students_desired student ON student.documento = a.documento
-WHERE student.seq <= 26
+WHERE a.tenant_id = (SELECT tenant_id FROM _demo_config)
+  AND student.seq <= 26
 ON CONFLICT (tenant_id, alumno_id, anio) DO UPDATE
 SET fecha_emision = EXCLUDED.fecha_emision,
     estado = EXCLUDED.estado;
@@ -918,7 +983,7 @@ SELECT (SELECT tenant_id FROM _demo_config),
        d.id,
        extract(month FROM (SELECT month_1 FROM _demo_config))::integer,
        extract(year FROM (SELECT month_1 FROM _demo_config))::integer
-FROM public.disciplinas d
+FROM _demo_scope_disciplinas d
 JOIN _demo_disciplines_desired dd ON dd.nombre = d.nombre
 ON CONFLICT (tenant_id, disciplina_id, anio, mes) DO NOTHING;
 
@@ -929,7 +994,7 @@ FROM (
            i.estado,
            row_number() OVER (PARTITION BY e.disciplina_id ORDER BY e.documento, e.id) AS position
     FROM _demo_enrollment_ids e
-    JOIN public.inscripciones i ON i.id = e.id
+    JOIN _demo_scope_inscripciones i ON i.id = e.id
     WHERE i.estado = 'ACTIVA'
 ) ranked
 WHERE position <= 3;
@@ -942,7 +1007,7 @@ SELECT (SELECT tenant_id FROM _demo_config),
        'Planilla mensual revisada por secretaría.',
        TRUE
 FROM _demo_attendance_enrollments e
-JOIN public.asistencias_mensuales am
+JOIN _demo_scope_asistencias_mensuales am
   ON am.disciplina_id = e.disciplina_id
  AND am.anio = extract(year FROM (SELECT month_1 FROM _demo_config))::integer
  AND am.mes = extract(month FROM (SELECT month_1 FROM _demo_config))::integer
@@ -957,9 +1022,9 @@ SELECT (SELECT tenant_id FROM _demo_config),
        (SELECT month_1 FROM _demo_config) + days.day_number - 1,
        CASE WHEN (aam.id + days.day_number) % 4 = 0 THEN 'AUSENTE' ELSE 'PRESENTE' END,
        TRUE
-FROM public.asistencias_alumno_mensual aam
+FROM _demo_scope_asistencias_alumno_mensual aam
 JOIN _demo_attendance_enrollments e ON e.enrollment_id = aam.inscripcion_id
-JOIN public.asistencias_mensuales am
+JOIN _demo_scope_asistencias_mensuales am
   ON am.id = aam.asistencia_mensual_id
  AND am.disciplina_id = e.disciplina_id
 CROSS JOIN (VALUES (5), (12), (19)) AS days(day_number)
@@ -984,9 +1049,11 @@ SELECT (SELECT tenant_id FROM _demo_config),
        CASE WHEN x.seq = 6 THEN repeat(md5('demo-seed:v1:venta-reversa:006'), 2) ELSE NULL END,
        0
 FROM _demo_stocks_desired x
-JOIN public.stocks s ON s.codigo_barras = x.barcode
+JOIN _demo_scope_stocks s ON s.codigo_barras = x.barcode
+ AND s.tenant_id = (SELECT tenant_id FROM _demo_config)
 JOIN _demo_students_desired student ON student.seq = x.seq
-JOIN public.alumnos a ON a.documento = student.documento
+JOIN _demo_scope_alumnos a ON a.documento = student.documento
+ AND a.tenant_id = (SELECT tenant_id FROM _demo_config)
 ON CONFLICT (tenant_id, idempotency_key) DO UPDATE
 SET alumno_id = EXCLUDED.alumno_id,
     stock_id = EXCLUDED.stock_id,
@@ -1008,10 +1075,10 @@ SELECT m.id AS monthly_id,
        m.fecha_generacion,
        m.fecha_vencimiento,
        row_number() OVER (ORDER BY a.documento, d.nombre, m.anio, m.mes) AS seq
-FROM public.mensualidades m
-JOIN public.inscripciones i ON i.id = m.inscripcion_id
-JOIN public.alumnos a ON a.id = i.alumno_id AND a.email LIKE '%@correo.local'
-JOIN public.disciplinas d ON d.id = i.disciplina_id
+FROM _demo_scope_mensualidades m
+JOIN _demo_scope_inscripciones i ON i.id = m.inscripcion_id
+JOIN _demo_scope_alumnos a ON a.id = i.alumno_id AND a.email LIKE '%@correo.local'
+JOIN _demo_scope_disciplinas d ON d.id = i.disciplina_id
 JOIN _demo_disciplines_desired dd ON dd.nombre = d.nombre;
 
 INSERT INTO public.cargos
@@ -1058,8 +1125,8 @@ SELECT (SELECT tenant_id FROM _demo_config),
        'demo-seed:v1:cargo:matricula:' || a.documento || ':' || m.anio,
        0,
        (SELECT anchor_ts FROM _demo_config) + (100 + row_number() OVER (ORDER BY a.documento)) * interval '1 second'
-FROM public.matriculas m
-JOIN public.alumnos a ON a.id = m.alumno_id AND a.email LIKE '%@correo.local'
+FROM _demo_scope_matriculas m
+JOIN _demo_scope_alumnos a ON a.id = m.alumno_id AND a.email LIKE '%@correo.local'
 ON CONFLICT (tenant_id, idempotency_key) DO UPDATE
 SET alumno_id = EXCLUDED.alumno_id,
     descripcion = EXCLUDED.descripcion,
@@ -1086,8 +1153,8 @@ SELECT (SELECT tenant_id FROM _demo_config),
        'demo-seed:v1:cargo:' || v.idempotency_key,
        0,
        (SELECT anchor_ts FROM _demo_config) + (140 + row_number() OVER (ORDER BY v.idempotency_key)) * interval '1 second'
-FROM public.ventas_stock v
-JOIN public.stocks s ON s.id = v.stock_id
+FROM _demo_scope_ventas_stock v
+JOIN _demo_scope_stocks s ON s.id = v.stock_id
 WHERE v.idempotency_key LIKE 'demo-seed:v1:venta:%'
 ON CONFLICT (tenant_id, idempotency_key) DO UPDATE
 SET alumno_id = EXCLUDED.alumno_id,
@@ -1116,10 +1183,11 @@ SELECT (SELECT tenant_id FROM _demo_config),
        0,
        (SELECT anchor_ts FROM _demo_config) + (160 + x.seq) * interval '1 second'
 FROM _demo_concepts_desired x
-JOIN public.sub_conceptos sc ON sc.descripcion = x.sub_description
-JOIN public.conceptos c ON c.sub_concepto_id = sc.id AND c.descripcion = x.description
+JOIN _demo_scope_sub_conceptos sc ON sc.descripcion = x.sub_description
+JOIN _demo_scope_conceptos c ON c.sub_concepto_id = sc.id AND c.descripcion = x.description
 JOIN _demo_students_desired student ON student.seq = x.seq
-JOIN public.alumnos a ON a.documento = student.documento
+JOIN _demo_scope_alumnos a ON a.documento = student.documento
+ AND a.tenant_id = (SELECT tenant_id FROM _demo_config)
 ON CONFLICT (tenant_id, idempotency_key) DO UPDATE
 SET alumno_id = EXCLUDED.alumno_id,
     descripcion = EXCLUDED.descripcion,
@@ -1134,8 +1202,8 @@ CREATE TEMP TABLE _demo_surcharge_origins ON COMMIT DROP AS
 SELECT c.id,
        c.alumno_id,
        row_number() OVER (ORDER BY student.seq, c.idempotency_key) AS seq
-FROM public.cargos c
-JOIN public.alumnos a ON a.id = c.alumno_id
+FROM _demo_scope_cargos c
+JOIN _demo_scope_alumnos a ON a.id = c.alumno_id
 JOIN _demo_students_desired student ON student.documento = a.documento
 WHERE c.idempotency_key LIKE 'demo-seed:v1:cargo:mensualidad:%'
 ORDER BY student.seq, c.idempotency_key
@@ -1189,8 +1257,8 @@ SELECT (SELECT tenant_id FROM _demo_config),
        'Liquidación consolidada al momento de emisión del cargo.',
        u.id,
        c.created_at
-FROM public.cargos c
-JOIN public.alumnos a ON a.id = c.alumno_id AND a.email LIKE '%@correo.local'
+FROM _demo_scope_cargos c
+JOIN _demo_scope_alumnos a ON a.id = c.alumno_id AND a.email LIKE '%@correo.local'
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-administrador'
 ON CONFLICT (tenant_id, cargo_id) DO UPDATE
 SET periodo_desde = EXCLUDED.periodo_desde,
@@ -1217,8 +1285,8 @@ WITH target_charges AS (
            student.seq AS student_seq,
            'M'::text AS source_kind,
            c.idempotency_key
-    FROM public.cargos c
-    JOIN public.alumnos a ON a.id = c.alumno_id AND a.email LIKE '%@correo.local'
+    FROM _demo_scope_cargos c
+    JOIN _demo_scope_alumnos a ON a.id = c.alumno_id AND a.email LIKE '%@correo.local'
     JOIN _demo_students_desired student ON student.documento = a.documento
     WHERE c.tipo = 'MENSUALIDAD'
       AND c.idempotency_key LIKE 'demo-seed:v1:cargo:mensualidad:%'
@@ -1229,8 +1297,8 @@ WITH target_charges AS (
            student.seq,
            'R'::text,
            c.idempotency_key
-    FROM public.cargos c
-    JOIN public.alumnos a ON a.id = c.alumno_id
+    FROM _demo_scope_cargos c
+    JOIN _demo_scope_alumnos a ON a.id = c.alumno_id
     JOIN _demo_students_desired student ON student.documento = a.documento
     WHERE c.tipo = 'MATRICULA'
       AND a.documento IN (SELECT documento FROM _demo_students_desired WHERE seq BETWEEN 3 AND 14)
@@ -1266,7 +1334,7 @@ BEGIN
        OR EXISTS (
             SELECT 1
             FROM _demo_application_targets t
-            JOIN public.cargos c ON c.id = t.charge_id
+            JOIN _demo_scope_cargos c ON c.id = t.charge_id
             WHERE t.applied_amount > c.importe_original
        ) THEN
         RAISE EXCEPTION 'No se pudo construir la distribución determinista 82 aplicaciones / 48 pagos';
@@ -1307,7 +1375,7 @@ SELECT (SELECT tenant_id FROM _demo_config),
        (SELECT anchor_ts FROM _demo_config) + (200 + x.payment_no) * interval '1 second'
 FROM _demo_payments_desired x
 JOIN _demo_stocks_desired ordinal ON ordinal.seq = ((x.payment_no - 1) % 4) + 1
-JOIN public.metodo_pagos mp ON mp.descripcion = CASE ordinal.seq
+JOIN _demo_scope_metodo_pagos mp ON mp.descripcion = CASE ordinal.seq
     WHEN 1 THEN 'Efectivo' WHEN 2 THEN 'Transferencia bancaria'
     WHEN 3 THEN 'Tarjeta de débito' ELSE 'Tarjeta de crédito' END
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-caja'
@@ -1341,7 +1409,7 @@ SELECT (SELECT tenant_id FROM _demo_config),
        0,
        (SELECT anchor_ts FROM _demo_config) + (260 + t.application_no) * interval '1 second'
 FROM _demo_application_targets t
-JOIN public.pagos p ON p.idempotency_key = 'demo-seed:v1:pago:' || lpad(t.payment_no::text, 3, '0')
+JOIN _demo_scope_pagos p ON p.idempotency_key = 'demo-seed:v1:pago:' || lpad(t.payment_no::text, 3, '0')
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-caja'
 ON CONFLICT (tenant_id, pago_id, cargo_id) DO UPDATE
 SET usuario_id = EXCLUDED.usuario_id,
@@ -1360,8 +1428,8 @@ SELECT c.id AS charge_id,
                                 WHEN 'MATRICULA' THEN 3 ELSE 4 END,
                     c.idempotency_key
        )::integer AS seq
-FROM public.cargos c
-JOIN public.alumnos a ON a.id = c.alumno_id AND a.documento = '49287134'
+FROM _demo_scope_cargos c
+JOIN _demo_scope_alumnos a ON a.id = c.alumno_id AND a.documento = '49287134'
 WHERE c.estado <> 'ANULADO'
   AND NOT EXISTS (SELECT 1 FROM _demo_application_targets t WHERE t.charge_id = c.id)
 ORDER BY seq
@@ -1411,9 +1479,10 @@ SELECT (SELECT tenant_id FROM _demo_config),
        x.reason,
        (SELECT anchor_ts FROM _demo_config) + (360 + x.seq) * interval '1 second'
 FROM _demo_credit_originals x
-JOIN public.alumnos a ON a.documento = '49287134'
+JOIN _demo_scope_alumnos a ON a.documento = '49287134'
+ AND a.tenant_id = (SELECT tenant_id FROM _demo_config)
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-caja'
-LEFT JOIN public.pagos p
+LEFT JOIN _demo_scope_pagos p
   ON p.idempotency_key = 'demo-seed:v1:pago:' || lpad(x.payment_no::text, 3, '0')
 LEFT JOIN _demo_credit_context cc ON cc.seq = x.charge_seq
 ON CONFLICT (tenant_id, idempotency_key) DO UPDATE
@@ -1447,7 +1516,7 @@ FROM (VALUES
     (6, 'demo-seed:v1:credito:006', 'demo-seed:v1:credito:005'),
     (11, 'demo-seed:v1:credito:011', 'demo-seed:v1:credito:010')
 ) AS reversal(seq, key_value, original_key)
-JOIN public.movimientos_credito original ON original.idempotency_key = reversal.original_key
+JOIN _demo_scope_movimientos_credito original ON original.idempotency_key = reversal.original_key
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-caja'
 ON CONFLICT (tenant_id, idempotency_key) DO UPDATE
 SET alumno_id = EXCLUDED.alumno_id,
@@ -1464,19 +1533,19 @@ SET alumno_id = EXCLUDED.alumno_id,
 -- El estado materializado se deriva de aplicaciones y consumo neto de crédito.
 WITH paid AS (
     SELECT ap.cargo_id, sum(ap.importe_aplicado) AS amount
-    FROM public.aplicaciones_pago ap
+    FROM _demo_scope_aplicaciones_pago ap
     WHERE ap.estado = 'APLICADA'
     GROUP BY ap.cargo_id
 ), credit AS (
     SELECT cargo_id, sum(amount) AS amount
     FROM (
         SELECT mc.cargo_id, mc.importe AS amount
-        FROM public.movimientos_credito mc
+        FROM _demo_scope_movimientos_credito mc
         WHERE mc.tipo = 'CONSUMO'
         UNION ALL
         SELECT original.cargo_id, -reversal.importe
-        FROM public.movimientos_credito reversal
-        JOIN public.movimientos_credito original ON original.id = reversal.movimiento_revertido_id
+        FROM _demo_scope_movimientos_credito reversal
+        JOIN _demo_scope_movimientos_credito original ON original.id = reversal.movimiento_revertido_id
         WHERE reversal.tipo = 'REVERSO' AND original.tipo = 'CONSUMO'
     ) movements
     GROUP BY cargo_id
@@ -1487,22 +1556,23 @@ WITH paid AS (
            c.venta_stock_id,
            COALESCE(paid.amount, 0) AS paid_amount,
            COALESCE(credit.amount, 0) AS credit_amount
-    FROM public.cargos c
-    JOIN public.alumnos a ON a.id = c.alumno_id AND a.email LIKE '%@correo.local'
+    FROM _demo_scope_cargos c
+    JOIN _demo_scope_alumnos a ON a.id = c.alumno_id AND a.email LIKE '%@correo.local'
     LEFT JOIN paid ON paid.cargo_id = c.id
     LEFT JOIN credit ON credit.cargo_id = c.id
 )
 UPDATE public.cargos c
 SET estado = CASE
     WHEN balances.estado = 'ANULADO' OR EXISTS (
-        SELECT 1 FROM public.ventas_stock v WHERE v.id = balances.venta_stock_id AND v.estado = 'ANULADA'
+        SELECT 1 FROM _demo_scope_ventas_stock v WHERE v.id = balances.venta_stock_id AND v.estado = 'ANULADA'
     ) THEN 'ANULADO'
     WHEN balances.importe_original - balances.paid_amount - balances.credit_amount = 0 THEN 'PAGADO'
     WHEN balances.importe_original - balances.paid_amount - balances.credit_amount < balances.importe_original THEN 'PARCIAL'
     ELSE 'PENDIENTE'
 END
 FROM balances
-WHERE c.id = balances.id;
+WHERE c.id = balances.id
+  AND c.tenant_id = (SELECT tenant_id FROM _demo_config);
 
 -- Egresos y libro de caja.
 CREATE TEMP TABLE _demo_expenses_desired ON COMMIT DROP AS
@@ -1537,7 +1607,7 @@ SELECT (SELECT tenant_id FROM _demo_config),
        CASE WHEN x.seq = 7 THEN (SELECT anchor_ts + interval '7 minutes' FROM _demo_config) ELSE NULL END,
        0
 FROM _demo_expenses_desired x
-JOIN public.metodo_pagos mp ON mp.descripcion = CASE WHEN x.seq % 2 = 0
+JOIN _demo_scope_metodo_pagos mp ON mp.descripcion = CASE WHEN x.seq % 2 = 0
     THEN 'Transferencia bancaria' ELSE 'Efectivo' END
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-administrador'
 ON CONFLICT (tenant_id, idempotency_key) DO UPDATE
@@ -1569,7 +1639,7 @@ SELECT (SELECT tenant_id FROM _demo_config),
        NULL,
        (SELECT anchor_ts FROM _demo_config) + (400 + x.payment_no) * interval '1 second'
 FROM _demo_payments_desired x
-JOIN public.pagos p ON p.idempotency_key = x.idempotency_key
+JOIN _demo_scope_pagos p ON p.idempotency_key = x.idempotency_key
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-caja'
 ON CONFLICT (tenant_id, idempotency_key) DO UPDATE
 SET tipo = EXCLUDED.tipo,
@@ -1598,7 +1668,7 @@ SELECT (SELECT tenant_id FROM _demo_config),
        'demo-seed:v1:caja:reversa-pago:048',
        'Reversión automática del pago anulado.',
        (SELECT anchor_ts + interval '7 minutes' FROM _demo_config)
-FROM public.movimientos_caja original
+FROM _demo_scope_movimientos_caja original
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-caja'
 WHERE original.idempotency_key = 'demo-seed:v1:caja:pago:048'
 ON CONFLICT (tenant_id, idempotency_key) DO UPDATE
@@ -1629,7 +1699,7 @@ SELECT (SELECT tenant_id FROM _demo_config),
        NULL,
        (SELECT anchor_ts FROM _demo_config) + (460 + x.seq) * interval '1 second'
 FROM _demo_expenses_desired x
-JOIN public.egresos e ON e.idempotency_key = x.key_value
+JOIN _demo_scope_egresos e ON e.idempotency_key = x.key_value
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-administrador'
 ON CONFLICT (tenant_id, idempotency_key) DO UPDATE
 SET tipo = EXCLUDED.tipo,
@@ -1658,7 +1728,7 @@ SELECT (SELECT tenant_id FROM _demo_config),
        'demo-seed:v1:caja:reversa-egreso:007',
        'Reversión automática del egreso anulado.',
        (SELECT anchor_ts + interval '8 minutes' FROM _demo_config)
-FROM public.movimientos_caja original
+FROM _demo_scope_movimientos_caja original
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-administrador'
 WHERE original.idempotency_key = 'demo-seed:v1:caja:egreso:007'
 ON CONFLICT (tenant_id, idempotency_key) DO UPDATE
@@ -1690,7 +1760,7 @@ SELECT (SELECT tenant_id FROM _demo_config),
             ELSE 'Ajuste negativo por diferencia de cierre.' END,
        (SELECT anchor_ts FROM _demo_config) + (480 + n) * interval '1 second'
 FROM generate_series(1, 4) AS g(n)
-JOIN public.metodo_pagos mp ON mp.descripcion = 'Efectivo'
+JOIN _demo_scope_metodo_pagos mp ON mp.descripcion = 'Efectivo'
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-administrador'
 ON CONFLICT (tenant_id, idempotency_key) DO UPDATE
 SET tipo = EXCLUDED.tipo,
@@ -1719,7 +1789,8 @@ SELECT (SELECT tenant_id FROM _demo_config),
        'Ingreso de existencia inicial del período.',
        (SELECT anchor_ts FROM _demo_config) + (500 + x.seq) * interval '1 second'
 FROM _demo_stocks_desired x
-JOIN public.stocks s ON s.codigo_barras = x.barcode
+JOIN _demo_scope_stocks s ON s.codigo_barras = x.barcode
+ AND s.tenant_id = (SELECT tenant_id FROM _demo_config)
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-administrador'
 WHERE x.seq <= 5
 ON CONFLICT (tenant_id, idempotency_key) DO UPDATE
@@ -1746,7 +1817,7 @@ SELECT (SELECT tenant_id FROM _demo_config),
        NULL,
        (SELECT anchor_ts FROM _demo_config) + (510 + x.seq) * interval '1 second'
 FROM _demo_stocks_desired x
-JOIN public.ventas_stock v ON v.idempotency_key = 'demo-seed:v1:venta:' || lpad(x.seq::text, 3, '0')
+JOIN _demo_scope_ventas_stock v ON v.idempotency_key = 'demo-seed:v1:venta:' || lpad(x.seq::text, 3, '0')
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-administrador'
 ON CONFLICT (tenant_id, idempotency_key) DO UPDATE
 SET stock_id = EXCLUDED.stock_id,
@@ -1775,7 +1846,8 @@ FROM (VALUES
     (520, '7790000000012', 'AJUSTE_POSITIVO', 2, 'demo-seed:v1:stock:ajuste-positivo:001', 'Ajuste positivo por recuento físico.'),
     (521, '7790000000029', 'AJUSTE_NEGATIVO', 1, 'demo-seed:v1:stock:ajuste-negativo:002', 'Ajuste negativo por producto deteriorado.')
 ) AS adjustment(seq, barcode, movement_type, quantity, key_value, reason)
-JOIN public.stocks s ON s.codigo_barras = adjustment.barcode
+JOIN _demo_scope_stocks s ON s.codigo_barras = adjustment.barcode
+ AND s.tenant_id = (SELECT tenant_id FROM _demo_config)
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-administrador'
 ON CONFLICT (tenant_id, idempotency_key) DO UPDATE
 SET stock_id = EXCLUDED.stock_id,
@@ -1800,7 +1872,7 @@ SELECT (SELECT tenant_id FROM _demo_config),
        'demo-seed:v1:stock:reversa-venta:006',
        'Restitución de unidades por venta anulada.',
        (SELECT anchor_ts + interval '9 minutes' FROM _demo_config)
-FROM public.movimientos_stock original
+FROM _demo_scope_movimientos_stock original
 JOIN public.usuarios u ON lower(u.nombre_usuario) = 'demo-administrador'
 WHERE original.idempotency_key = 'demo-seed:v1:stock:venta:006'
 ON CONFLICT (tenant_id, idempotency_key) DO UPDATE
@@ -1817,14 +1889,14 @@ SET stock_id = EXCLUDED.stock_id,
 INSERT INTO public.recibos (tenant_id, pago_id, storage_key, generado_at, enviado_at)
 SELECT (SELECT tenant_id FROM _demo_config),
        p.id,
-       (SELECT tenant_id::text FROM _demo_config)
-           || '/recibos/pago-' || lpad(x.payment_no::text, 3, '0') || '.pdf',
+       (SELECT tenant_id::text FROM _demo_config) || '/recibos/demo-pago-'
+           || lpad(x.payment_no::text, 3, '0') || '.pdf',
        (SELECT anchor_ts FROM _demo_config) + (600 + x.payment_no) * interval '1 second',
        CASE WHEN x.payment_no % 4 = 0
             THEN (SELECT anchor_ts FROM _demo_config) + (700 + x.payment_no) * interval '1 second'
             ELSE NULL END
 FROM _demo_payments_desired x
-JOIN public.pagos p ON p.idempotency_key = x.idempotency_key
+JOIN _demo_scope_pagos p ON p.idempotency_key = x.idempotency_key
 ON CONFLICT (tenant_id, pago_id) DO UPDATE
 SET storage_key = EXCLUDED.storage_key,
     generado_at = EXCLUDED.generado_at,
@@ -1849,7 +1921,7 @@ SELECT (SELECT tenant_id FROM _demo_config),
             THEN (SELECT anchor_ts FROM _demo_config) + (800 + x.payment_no) * interval '1 second'
             ELSE NULL END
 FROM _demo_payments_desired x
-JOIN public.pagos p ON p.idempotency_key = x.idempotency_key
+JOIN _demo_scope_pagos p ON p.idempotency_key = x.idempotency_key
 ON CONFLICT (tenant_id, pago_id, tipo) DO UPDATE
 SET estado = EXCLUDED.estado,
     intentos = EXCLUDED.intentos,
@@ -1876,83 +1948,84 @@ BEGIN
     SELECT jsonb_build_object(
         'usuarios', (SELECT count(*) FROM public.usuarios WHERE lower(nombre_usuario) LIKE 'demo-%'),
         'usuario_roles', (SELECT count(*) FROM public.usuario_roles ur JOIN public.usuarios u ON u.id = ur.usuario_id WHERE lower(u.nombre_usuario) LIKE 'demo-%'),
-        'salones', (SELECT count(*) FROM public.salones WHERE nombre IN ('Sala Principal', 'Estudio Infantil', 'Sala de Ensayo')),
-        'profesores', (SELECT count(*) FROM public.profesores p JOIN _demo_professors_desired d ON d.nombre = p.nombre),
-        'observaciones_profesores', (SELECT count(*) FROM public.observaciones_profesores op JOIN public.profesores p ON p.id = op.profesor_id JOIN _demo_professors_desired d ON d.nombre = p.nombre),
-        'bonificaciones', (SELECT count(*) FROM public.bonificaciones WHERE descripcion IN ('Descuento hermanos 10%', 'Beca institucional 25%', 'Convenio familiar', 'Promoción apertura 2025')),
-        'recargos', (SELECT count(*) FROM public.recargos WHERE descripcion IN ('Mora por vencimiento 5%', 'Gastos administrativos', 'Recargo extraordinario 2025')),
-        'metodo_pagos', (SELECT count(*) FROM public.metodo_pagos WHERE descripcion IN ('Efectivo', 'Transferencia bancaria', 'Tarjeta de débito', 'Tarjeta de crédito')),
-        'sub_conceptos', (SELECT count(*) FROM public.sub_conceptos WHERE descripcion IN ('Indumentaria', 'Materiales de clase', 'Eventos y talleres', 'Trámites administrativos')),
-        'conceptos', (SELECT count(*) FROM public.conceptos c JOIN _demo_concepts_desired d ON d.description = c.descripcion),
-        'stocks', (SELECT count(*) FROM public.stocks s JOIN _demo_stocks_desired d ON d.barcode = s.codigo_barras),
-        'disciplinas', (SELECT count(*) FROM public.disciplinas d JOIN _demo_disciplines_desired desired ON desired.nombre = d.nombre),
+        'salones', (SELECT count(*) FROM _demo_scope_salones WHERE nombre IN ('Sala Principal', 'Estudio Infantil', 'Sala de Ensayo')),
+        'profesores', (SELECT count(*) FROM _demo_scope_profesores p JOIN _demo_professors_desired d ON d.nombre = p.nombre),
+        'observaciones_profesores', (SELECT count(*) FROM _demo_scope_observaciones_profesores op JOIN _demo_scope_profesores p ON p.id = op.profesor_id JOIN _demo_professors_desired d ON d.nombre = p.nombre),
+        'bonificaciones', (SELECT count(*) FROM _demo_scope_bonificaciones WHERE descripcion IN ('Descuento hermanos 10%', 'Beca institucional 25%', 'Convenio familiar', 'Promoción apertura 2025')),
+        'recargos', (SELECT count(*) FROM _demo_scope_recargos WHERE descripcion IN ('Mora por vencimiento 5%', 'Gastos administrativos', 'Recargo extraordinario 2025')),
+        'metodo_pagos', (SELECT count(*) FROM _demo_scope_metodo_pagos WHERE descripcion IN ('Efectivo', 'Transferencia bancaria', 'Tarjeta de débito', 'Tarjeta de crédito')),
+        'sub_conceptos', (SELECT count(*) FROM _demo_scope_sub_conceptos WHERE descripcion IN ('Indumentaria', 'Materiales de clase', 'Eventos y talleres', 'Trámites administrativos')),
+        'conceptos', (SELECT count(*) FROM _demo_scope_conceptos c JOIN _demo_concepts_desired d ON d.description = c.descripcion),
+        'stocks', (SELECT count(*) FROM _demo_scope_stocks s JOIN _demo_stocks_desired d ON d.barcode = s.codigo_barras
+                   WHERE s.tenant_id = (SELECT tenant_id FROM _demo_config)),
+        'disciplinas', (SELECT count(*) FROM _demo_scope_disciplinas d JOIN _demo_disciplines_desired desired ON desired.nombre = d.nombre),
         'disciplina_horarios', (
-            SELECT count(*) FROM public.disciplina_horarios h
-            JOIN public.disciplinas d ON d.id = h.disciplina_id
+            SELECT count(*) FROM _demo_scope_disciplina_horarios h
+            JOIN _demo_scope_disciplinas d ON d.id = h.disciplina_id
             JOIN _demo_disciplines_desired desired ON desired.nombre = d.nombre
         ),
-        'alumnos', (SELECT count(*) FROM public.alumnos WHERE email LIKE '%@correo.local'),
+        'alumnos', (SELECT count(*) FROM _demo_scope_alumnos WHERE email LIKE '%@correo.local'),
         'inscripciones', (
-            SELECT count(*) FROM public.inscripciones i
-            JOIN public.alumnos a ON a.id = i.alumno_id WHERE a.email LIKE '%@correo.local'
+            SELECT count(*) FROM _demo_scope_inscripciones i
+            JOIN _demo_scope_alumnos a ON a.id = i.alumno_id WHERE a.email LIKE '%@correo.local'
         ),
         'disciplina_tarifas', (
-            SELECT count(*) FROM public.disciplina_tarifas t
-            JOIN public.disciplinas d ON d.id = t.disciplina_id
+            SELECT count(*) FROM _demo_scope_disciplina_tarifas t
+            JOIN _demo_scope_disciplinas d ON d.id = t.disciplina_id
             JOIN _demo_disciplines_desired desired ON desired.nombre = d.nombre
         ),
         'inscripcion_condiciones_economicas', (
-            SELECT count(*) FROM public.inscripcion_condiciones_economicas c
-            JOIN public.inscripciones i ON i.id = c.inscripcion_id
-            JOIN public.alumnos a ON a.id = i.alumno_id WHERE a.email LIKE '%@correo.local'
+            SELECT count(*) FROM _demo_scope_inscripcion_condiciones_economicas c
+            JOIN _demo_scope_inscripciones i ON i.id = c.inscripcion_id
+            JOIN _demo_scope_alumnos a ON a.id = i.alumno_id WHERE a.email LIKE '%@correo.local'
         ),
         'mensualidades', (
-            SELECT count(*) FROM public.mensualidades m
-            JOIN public.inscripciones i ON i.id = m.inscripcion_id
-            JOIN public.alumnos a ON a.id = i.alumno_id WHERE a.email LIKE '%@correo.local'
+            SELECT count(*) FROM _demo_scope_mensualidades m
+            JOIN _demo_scope_inscripciones i ON i.id = m.inscripcion_id
+            JOIN _demo_scope_alumnos a ON a.id = i.alumno_id WHERE a.email LIKE '%@correo.local'
         ),
         'matriculas', (
-            SELECT count(*) FROM public.matriculas m
-            JOIN public.alumnos a ON a.id = m.alumno_id WHERE a.email LIKE '%@correo.local'
+            SELECT count(*) FROM _demo_scope_matriculas m
+            JOIN _demo_scope_alumnos a ON a.id = m.alumno_id WHERE a.email LIKE '%@correo.local'
         ),
         'asistencias_mensuales', (
-            SELECT count(*) FROM public.asistencias_mensuales am
-            JOIN public.disciplinas d ON d.id = am.disciplina_id
+            SELECT count(*) FROM _demo_scope_asistencias_mensuales am
+            JOIN _demo_scope_disciplinas d ON d.id = am.disciplina_id
             JOIN _demo_disciplines_desired desired ON desired.nombre = d.nombre
         ),
         'asistencias_alumno_mensual', (
-            SELECT count(*) FROM public.asistencias_alumno_mensual aam
-            JOIN public.inscripciones i ON i.id = aam.inscripcion_id
-            JOIN public.alumnos a ON a.id = i.alumno_id WHERE a.email LIKE '%@correo.local'
+            SELECT count(*) FROM _demo_scope_asistencias_alumno_mensual aam
+            JOIN _demo_scope_inscripciones i ON i.id = aam.inscripcion_id
+            JOIN _demo_scope_alumnos a ON a.id = i.alumno_id WHERE a.email LIKE '%@correo.local'
         ),
         'asistencias_diarias', (
-            SELECT count(*) FROM public.asistencias_diarias ad
-            JOIN public.asistencias_alumno_mensual aam ON aam.id = ad.asistencia_alumno_mensual_id
-            JOIN public.inscripciones i ON i.id = aam.inscripcion_id
-            JOIN public.alumnos a ON a.id = i.alumno_id WHERE a.email LIKE '%@correo.local'
+            SELECT count(*) FROM _demo_scope_asistencias_diarias ad
+            JOIN _demo_scope_asistencias_alumno_mensual aam ON aam.id = ad.asistencia_alumno_mensual_id
+            JOIN _demo_scope_inscripciones i ON i.id = aam.inscripcion_id
+            JOIN _demo_scope_alumnos a ON a.id = i.alumno_id WHERE a.email LIKE '%@correo.local'
         ),
-        'ventas_stock', (SELECT count(*) FROM public.ventas_stock WHERE idempotency_key LIKE 'demo-seed:v1:%'),
-        'cargos', (SELECT count(*) FROM public.cargos WHERE idempotency_key LIKE 'demo-seed:v1:%'),
+        'ventas_stock', (SELECT count(*) FROM _demo_scope_ventas_stock WHERE idempotency_key LIKE 'demo-seed:v1:%'),
+        'cargos', (SELECT count(*) FROM _demo_scope_cargos WHERE idempotency_key LIKE 'demo-seed:v1:%'),
         'cargo_liquidaciones', (
-            SELECT count(*) FROM public.cargo_liquidaciones cl
-            JOIN public.cargos c ON c.id = cl.cargo_id WHERE c.idempotency_key LIKE 'demo-seed:v1:%'
+            SELECT count(*) FROM _demo_scope_cargo_liquidaciones cl
+            JOIN _demo_scope_cargos c ON c.id = cl.cargo_id WHERE c.idempotency_key LIKE 'demo-seed:v1:%'
         ),
-        'pagos', (SELECT count(*) FROM public.pagos WHERE idempotency_key LIKE 'demo-seed:v1:%'),
+        'pagos', (SELECT count(*) FROM _demo_scope_pagos WHERE idempotency_key LIKE 'demo-seed:v1:%'),
         'aplicaciones_pago', (
-            SELECT count(*) FROM public.aplicaciones_pago ap
-            JOIN public.pagos p ON p.id = ap.pago_id WHERE p.idempotency_key LIKE 'demo-seed:v1:%'
+            SELECT count(*) FROM _demo_scope_aplicaciones_pago ap
+            JOIN _demo_scope_pagos p ON p.id = ap.pago_id WHERE p.idempotency_key LIKE 'demo-seed:v1:%'
         ),
-        'egresos', (SELECT count(*) FROM public.egresos WHERE idempotency_key LIKE 'demo-seed:v1:%'),
-        'movimientos_caja', (SELECT count(*) FROM public.movimientos_caja WHERE idempotency_key LIKE 'demo-seed:v1:%'),
-        'movimientos_credito', (SELECT count(*) FROM public.movimientos_credito WHERE idempotency_key LIKE 'demo-seed:v1:%'),
-        'movimientos_stock', (SELECT count(*) FROM public.movimientos_stock WHERE idempotency_key LIKE 'demo-seed:v1:%'),
+        'egresos', (SELECT count(*) FROM _demo_scope_egresos WHERE idempotency_key LIKE 'demo-seed:v1:%'),
+        'movimientos_caja', (SELECT count(*) FROM _demo_scope_movimientos_caja WHERE idempotency_key LIKE 'demo-seed:v1:%'),
+        'movimientos_credito', (SELECT count(*) FROM _demo_scope_movimientos_credito WHERE idempotency_key LIKE 'demo-seed:v1:%'),
+        'movimientos_stock', (SELECT count(*) FROM _demo_scope_movimientos_stock WHERE idempotency_key LIKE 'demo-seed:v1:%'),
         'recibos', (
-            SELECT count(*) FROM public.recibos r
-            JOIN public.pagos p ON p.id = r.pago_id WHERE p.idempotency_key LIKE 'demo-seed:v1:%'
+            SELECT count(*) FROM _demo_scope_recibos r
+            JOIN _demo_scope_pagos p ON p.id = r.pago_id WHERE p.idempotency_key LIKE 'demo-seed:v1:%'
         ),
         'recibos_pendientes', (
-            SELECT count(*) FROM public.recibos_pendientes rp
-            JOIN public.pagos p ON p.id = rp.pago_id WHERE p.idempotency_key LIKE 'demo-seed:v1:%'
+            SELECT count(*) FROM _demo_scope_recibos_pendientes rp
+            JOIN _demo_scope_pagos p ON p.id = rp.pago_id WHERE p.idempotency_key LIKE 'demo-seed:v1:%'
         )
     ) INTO actual_counts;
 
@@ -2007,8 +2080,9 @@ BEGIN
 
     IF NOT EXISTS (
         SELECT 1
-        FROM public.alumnos
-        WHERE documento = '49287134'
+        FROM _demo_scope_alumnos
+        WHERE tenant_id = (SELECT tenant_id FROM _demo_config)
+          AND documento = '49287134'
           AND activo
           AND extract(month FROM fecha_nacimiento) = extract(month FROM (SELECT business_date FROM _demo_config))
           AND extract(day FROM fecha_nacimiento) = extract(day FROM (SELECT business_date FROM _demo_config))
@@ -2018,19 +2092,19 @@ BEGIN
 
     SELECT COALESCE(sum(p.monto_recibido), 0)
     INTO registered_payments
-    FROM public.pagos p
+    FROM _demo_scope_pagos p
     WHERE p.idempotency_key LIKE 'demo-seed:v1:%' AND p.estado = 'REGISTRADO';
 
     SELECT COALESCE(sum(ap.importe_aplicado), 0)
     INTO active_applications
-    FROM public.aplicaciones_pago ap
-    JOIN public.pagos p ON p.id = ap.pago_id
+    FROM _demo_scope_aplicaciones_pago ap
+    JOIN _demo_scope_pagos p ON p.id = ap.pago_id
     WHERE p.idempotency_key LIKE 'demo-seed:v1:%' AND ap.estado = 'APLICADA';
 
     SELECT COALESCE(sum(CASE mc.tipo WHEN 'GENERACION' THEN mc.importe
                                      WHEN 'REVERSO' THEN -mc.importe ELSE 0 END), 0)
     INTO active_payment_credit
-    FROM public.movimientos_credito mc
+    FROM _demo_scope_movimientos_credito mc
     WHERE mc.idempotency_key LIKE 'demo-seed:v1:%'
       AND (mc.pago_id IS NOT NULL OR mc.idempotency_key LIKE 'demo-seed:v1:credito:reversa-generacion%');
 
@@ -2042,8 +2116,8 @@ BEGIN
         WHEN 'REVERSO' THEN CASE WHEN original.tipo = 'CONSUMO' THEN mc.importe ELSE -mc.importe END
         ELSE 0 END), 0)
     INTO net_credit
-    FROM public.movimientos_credito mc
-    LEFT JOIN public.movimientos_credito original ON original.id = mc.movimiento_revertido_id
+    FROM _demo_scope_movimientos_credito mc
+    LEFT JOIN _demo_scope_movimientos_credito original ON original.id = mc.movimiento_revertido_id
     WHERE mc.idempotency_key LIKE 'demo-seed:v1:%';
 
     IF registered_payments <> 1956700.00
@@ -2058,13 +2132,13 @@ BEGIN
     IF EXISTS (
         WITH applications AS (
             SELECT pago_id, sum(importe_aplicado) AS amount
-            FROM public.aplicaciones_pago WHERE estado = 'APLICADA' GROUP BY pago_id
+            FROM _demo_scope_aplicaciones_pago WHERE estado = 'APLICADA' GROUP BY pago_id
         ), generated_credit AS (
             SELECT pago_id, sum(importe) AS amount
-            FROM public.movimientos_credito WHERE tipo = 'GENERACION' GROUP BY pago_id
+            FROM _demo_scope_movimientos_credito WHERE tipo = 'GENERACION' GROUP BY pago_id
         )
         SELECT 1
-        FROM public.pagos p
+        FROM _demo_scope_pagos p
         LEFT JOIN applications ap ON ap.pago_id = p.id
         LEFT JOIN generated_credit mc ON mc.pago_id = p.id
         WHERE p.idempotency_key LIKE 'demo-seed:v1:%'
@@ -2076,8 +2150,8 @@ BEGIN
 
     IF EXISTS (
         SELECT 1
-        FROM public.pagos p
-        JOIN public.aplicaciones_pago ap ON ap.pago_id = p.id
+        FROM _demo_scope_pagos p
+        JOIN _demo_scope_aplicaciones_pago ap ON ap.pago_id = p.id
         WHERE p.idempotency_key = 'demo-seed:v1:pago:048'
           AND (p.estado <> 'ANULADO' OR ap.estado <> 'REVERTIDA')
     ) THEN
@@ -2087,22 +2161,22 @@ BEGIN
     IF EXISTS (
         WITH paid AS (
             SELECT cargo_id, sum(importe_aplicado) AS amount
-            FROM public.aplicaciones_pago WHERE estado = 'APLICADA' GROUP BY cargo_id
+            FROM _demo_scope_aplicaciones_pago WHERE estado = 'APLICADA' GROUP BY cargo_id
         ), credit AS (
             SELECT cargo_id, sum(amount) AS amount
             FROM (
                 SELECT cargo_id, importe AS amount
-                FROM public.movimientos_credito WHERE tipo = 'CONSUMO'
+                FROM _demo_scope_movimientos_credito WHERE tipo = 'CONSUMO'
                 UNION ALL
                 SELECT original.cargo_id, -reversal.importe
-                FROM public.movimientos_credito reversal
-                JOIN public.movimientos_credito original ON original.id = reversal.movimiento_revertido_id
+                FROM _demo_scope_movimientos_credito reversal
+                JOIN _demo_scope_movimientos_credito original ON original.id = reversal.movimiento_revertido_id
                 WHERE reversal.tipo = 'REVERSO' AND original.tipo = 'CONSUMO'
             ) movements GROUP BY cargo_id
         )
         SELECT 1
-        FROM public.cargos c
-        JOIN public.alumnos a ON a.id = c.alumno_id AND a.email LIKE '%@correo.local'
+        FROM _demo_scope_cargos c
+        JOIN _demo_scope_alumnos a ON a.id = c.alumno_id AND a.email LIKE '%@correo.local'
         LEFT JOIN paid ON paid.cargo_id = c.id
         LEFT JOIN credit ON credit.cargo_id = c.id
         WHERE COALESCE(paid.amount, 0) + COALESCE(credit.amount, 0) > c.importe_original
@@ -2117,8 +2191,8 @@ BEGIN
 
     IF EXISTS (
         SELECT 1
-        FROM public.cargo_liquidaciones cl
-        JOIN public.cargos c ON c.id = cl.cargo_id AND c.idempotency_key LIKE 'demo-seed:v1:%'
+        FROM _demo_scope_cargo_liquidaciones cl
+        JOIN _demo_scope_cargos c ON c.id = cl.cargo_id AND c.idempotency_key LIKE 'demo-seed:v1:%'
         WHERE cl.importe_final <> cl.importe_base - cl.descuento_importe + cl.recargo_importe
            OR cl.importe_final <> c.importe_original
     ) THEN
@@ -2136,8 +2210,8 @@ BEGIN
                        WHEN 'AJUSTE_DEBITO' THEN -mc.importe
                        WHEN 'REVERSO' THEN CASE WHEN original.tipo = 'CONSUMO' THEN mc.importe ELSE -mc.importe END
                        ELSE 0 END) AS balance
-            FROM public.movimientos_credito mc
-            LEFT JOIN public.movimientos_credito original ON original.id = mc.movimiento_revertido_id
+            FROM _demo_scope_movimientos_credito mc
+            LEFT JOIN _demo_scope_movimientos_credito original ON original.id = mc.movimiento_revertido_id
             WHERE mc.idempotency_key LIKE 'demo-seed:v1:%'
             GROUP BY mc.alumno_id
         ) balances
@@ -2154,12 +2228,12 @@ BEGIN
                                     WHEN 'REVERSO' THEN ms.cantidad
                                     WHEN 'VENTA' THEN -ms.cantidad
                                     WHEN 'AJUSTE_NEGATIVO' THEN -ms.cantidad ELSE 0 END) AS quantity
-            FROM public.movimientos_stock ms
+            FROM _demo_scope_movimientos_stock ms
             WHERE ms.idempotency_key LIKE 'demo-seed:v1:%'
             GROUP BY ms.stock_id
         )
         SELECT 1
-        FROM public.stocks s
+        FROM _demo_scope_stocks s
         JOIN book ON book.stock_id = s.id
         WHERE s.codigo_barras IN (SELECT barcode FROM _demo_stocks_desired)
           AND s.requiere_control_de_stock
@@ -2170,10 +2244,10 @@ BEGIN
 
     IF EXISTS (
         SELECT 1
-        FROM public.ventas_stock v
-        LEFT JOIN public.cargos c ON c.venta_stock_id = v.id
-        LEFT JOIN public.movimientos_stock original ON original.venta_stock_id = v.id AND original.tipo = 'VENTA'
-        LEFT JOIN public.movimientos_stock reversal ON reversal.movimiento_revertido_id = original.id AND reversal.tipo = 'REVERSO'
+        FROM _demo_scope_ventas_stock v
+        LEFT JOIN _demo_scope_cargos c ON c.venta_stock_id = v.id
+        LEFT JOIN _demo_scope_movimientos_stock original ON original.venta_stock_id = v.id AND original.tipo = 'VENTA'
+        LEFT JOIN _demo_scope_movimientos_stock reversal ON reversal.movimiento_revertido_id = original.id AND reversal.tipo = 'REVERSO'
         WHERE v.idempotency_key LIKE 'demo-seed:v1:%'
           AND (c.id IS NULL OR original.id IS NULL
                OR (v.estado = 'REGISTRADA' AND (c.estado = 'ANULADO' OR reversal.id IS NOT NULL))
@@ -2196,15 +2270,15 @@ BEGIN
     IF EXISTS (
         SELECT 1
         FROM (
-            SELECT movimiento_revertido_id FROM public.movimientos_caja
+            SELECT movimiento_revertido_id FROM _demo_scope_movimientos_caja
             WHERE idempotency_key LIKE 'demo-seed:v1:%' AND movimiento_revertido_id IS NOT NULL
             GROUP BY movimiento_revertido_id HAVING count(*) > 1
             UNION ALL
-            SELECT movimiento_revertido_id FROM public.movimientos_credito
+            SELECT movimiento_revertido_id FROM _demo_scope_movimientos_credito
             WHERE idempotency_key LIKE 'demo-seed:v1:%' AND movimiento_revertido_id IS NOT NULL
             GROUP BY movimiento_revertido_id HAVING count(*) > 1
             UNION ALL
-            SELECT movimiento_revertido_id FROM public.movimientos_stock
+            SELECT movimiento_revertido_id FROM _demo_scope_movimientos_stock
             WHERE idempotency_key LIKE 'demo-seed:v1:%' AND movimiento_revertido_id IS NOT NULL
             GROUP BY movimiento_revertido_id HAVING count(*) > 1
         ) duplicates
@@ -2246,6 +2320,39 @@ BEGIN
     RAISE NOTICE 'Seed demo validado: 914 filas, RBAC intacto y libros conciliados.';
 END
 $$;
+
+DROP VIEW
+    _demo_scope_alumnos,
+    _demo_scope_salones,
+    _demo_scope_profesores,
+    _demo_scope_observaciones_profesores,
+    _demo_scope_disciplinas,
+    _demo_scope_disciplina_horarios,
+    _demo_scope_inscripciones,
+    _demo_scope_bonificaciones,
+    _demo_scope_recargos,
+    _demo_scope_metodo_pagos,
+    _demo_scope_sub_conceptos,
+    _demo_scope_conceptos,
+    _demo_scope_disciplina_tarifas,
+    _demo_scope_inscripcion_condiciones_economicas,
+    _demo_scope_mensualidades,
+    _demo_scope_matriculas,
+    _demo_scope_cargos,
+    _demo_scope_cargo_liquidaciones,
+    _demo_scope_pagos,
+    _demo_scope_aplicaciones_pago,
+    _demo_scope_egresos,
+    _demo_scope_movimientos_caja,
+    _demo_scope_movimientos_credito,
+    _demo_scope_stocks,
+    _demo_scope_ventas_stock,
+    _demo_scope_movimientos_stock,
+    _demo_scope_asistencias_mensuales,
+    _demo_scope_asistencias_alumno_mensual,
+    _demo_scope_asistencias_diarias,
+    _demo_scope_recibos,
+    _demo_scope_recibos_pendientes;
 
 COMMIT;
 

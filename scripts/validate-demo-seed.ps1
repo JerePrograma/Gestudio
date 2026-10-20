@@ -372,7 +372,17 @@ function Assert-SeedStaticContract {
         }
     }
 
-    Add-Result -Stage "Contrato estático del seed" -Result "PASS" -Detail "Manual, transaccional, RBAC demo explícito, sin secretos ni operaciones destructivas"
+    foreach ($tenantScopedMarker in @(
+        'ON CONFLICT (tenant_id, codigo) DO NOTHING',
+        'ON CONFLICT (rol_id, permiso_id) DO NOTHING',
+        'r.tenant_id = (SELECT tenant_id FROM _demo_config)'
+    )) {
+        if (-not $seed.Contains($tenantScopedMarker)) {
+            throw "El RBAC de compatibilidad del fixture no demuestra scope tenant: $tenantScopedMarker"
+        }
+    }
+
+    Add-Result -Stage "Contrato estático del seed" -Result "PASS" -Detail "Manual, transaccional, RBAC limitado al tenant demo, sin secretos ni operaciones destructivas"
 }
 
 function Test-ByteSequence {
@@ -958,6 +968,16 @@ SELECT jsonb_build_object(
 "@
 }
 
+function Get-PermissionCatalogSnapshot {
+    return Invoke-Sql -Query @"
+SELECT jsonb_build_object(
+    'permissionsCount', count(*),
+    'permissionsHash', md5(COALESCE(string_agg(id::text || '|' || codigo || '|' || activo::text || '|' || sistema::text || '|' || modulo || '|' || descripcion, E'\n' ORDER BY id), ''))
+)::text
+FROM permisos;
+"@
+}
+
 function Get-DemoSnapshot {
     return Invoke-Sql -Query @"
 WITH demo_users AS (
@@ -1477,11 +1497,14 @@ try {
     Write-Host "[INFO] flyway_schema_history:`n$history"
 
     $rbacBefore = Get-RbacSnapshot
+    $permissionsBefore = Get-PermissionCatalogSnapshot
     Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM permisos WHERE activo AND sistema") -Expected "32" -Message "Catálogo RBAC productivo inesperado"
     Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM tenants") -Expected "0" -Message "El baseline limpio contiene tenants inesperados"
     Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM roles") -Expected "0" -Message "El baseline limpio contiene roles funcionales inesperados"
     Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM rol_permisos") -Expected "0" -Message "El baseline limpio contiene asignaciones RBAC inesperadas"
-    Add-Result -Stage "Baseline RBAC" -Result "PASS" -Detail "32 permisos activos; roles funcionales fuera de Flyway"
+    Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM usuarios") -Expected "0" -Message "El baseline fresh contiene usuarios funcionales"
+    Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM tenant_memberships") -Expected "0" -Message "El baseline fresh contiene memberships funcionales"
+    Add-Result -Stage "Baseline RBAC" -Result "PASS" -Detail "32 permisos activos; cero tenants, roles, usuarios y memberships"
 
     Stop-Backend
 
@@ -1512,6 +1535,7 @@ try {
     Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM rol_permisos rp JOIN roles r ON r.id=rp.rol_id WHERE r.tenant_id='00000000-0000-0000-0000-000000000001'::uuid") -Expected "119" -Message "La matriz RBAC del tenant demo no contiene 119 relaciones"
     $rbacAfterFirst = Get-RbacSnapshot
     Assert-Equal -Actual $rbacAfterFirst -Expected $rbacBefore -Message "El seed modificó RBAC fuera del tenant demo"
+    Assert-Equal -Actual (Get-PermissionCatalogSnapshot) -Expected $permissionsBefore -Message "El seed modificó el catálogo productivo de permisos"
     Add-Result -Stage "Primera aplicación del seed" -Result "PASS" -Detail "Conteos esperados e invariantes internas satisfechas"
 
     Start-Backend
@@ -1608,7 +1632,7 @@ ORDER BY i.id LIMIT 1;
 
     Invoke-IntegrityChecks
     $rbacAfterHttp = Get-RbacSnapshot
-    Assert-Equal -Actual $rbacAfterHttp -Expected $rbacBefore -Message "Los smoke HTTP modificaron RBAC"
+    Assert-Equal -Actual $rbacAfterHttp -Expected $rbacAfterFirst -Message "Los smoke HTTP modificaron RBAC"
     Add-Result -Stage "RBAC tras smoke HTTP" -Result "PASS" -Detail "Catálogo y matrices sin cambios"
 
     Stop-Backend
@@ -1617,7 +1641,7 @@ ORDER BY i.id LIMIT 1;
     $snapshotSecond = $snapshotSecondRaw | ConvertFrom-Json
     Assert-ExpectedDemoCounts -Snapshot $snapshotSecond
     Assert-Equal -Actual $snapshotSecondRaw -Expected $snapshotFirstRaw -Message "La segunda ejecución cambió conteos, IDs o totales"
-    Assert-Equal -Actual (Get-RbacSnapshot) -Expected $rbacBefore -Message "La segunda ejecución modificó RBAC"
+    Assert-Equal -Actual (Get-RbacSnapshot) -Expected $rbacAfterFirst -Message "La segunda ejecución modificó RBAC"
     Add-Result -Stage "Segunda aplicación del seed" -Result "PASS" -Detail "Idempotencia completa; snapshot idéntico"
 
     Start-Backend

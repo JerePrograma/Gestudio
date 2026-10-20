@@ -44,6 +44,15 @@ $fixtureMembershipId = [Guid]::NewGuid().ToString()
 $fixtureMfaId = [Guid]::NewGuid().ToString()
 $fixtureRecoveryId = [Guid]::NewGuid().ToString()
 $fixtureAuditCorrelationId = [Guid]::NewGuid().ToString()
+$fixtureHashAlgorithm = [Security.Cryptography.SHA256]::Create()
+try {
+    $fixtureRecoveryHash = ([BitConverter]::ToString(
+        $fixtureHashAlgorithm.ComputeHash([Text.Encoding]::UTF8.GetBytes($suffix))) -replace '-', '').ToLowerInvariant()
+}
+finally { $fixtureHashAlgorithm.Dispose() }
+if ($fixtureRecoveryHash -notmatch '^[a-f0-9]{64}$') {
+    throw 'No se pudo generar un hash sintético válido para el fixture de recovery.'
+}
 $fixtureRoleCode = "BACKUP_$($suffix.ToUpperInvariant())"
 $fixtureTenantUsername = "backup_tenant_$suffix"
 $fixturePlatformUsername = "backup_platform_$suffix"
@@ -328,7 +337,7 @@ SELECT '$fixtureMfaId', id, 'TOTP', decode('0011223344556677', 'hex'), 1, CURREN
 FROM usuarios WHERE nombre_usuario = '$fixturePlatformUsername';
 
 INSERT INTO platform_recovery_codes(id, credential_id, code_hash)
-VALUES ('$fixtureRecoveryId', '$fixtureMfaId', repeat('$suffix', 8));
+VALUES ('$fixtureRecoveryId', '$fixtureMfaId', '$fixtureRecoveryHash');
 
 INSERT INTO platform_audit_events(
     actor_usuario_id, actor_username_snapshot, actor_type, session_scope,
@@ -851,6 +860,9 @@ try {
 catch {
     $failures++
     Write-Host "[FAIL] $($_.Exception.Message)" -ForegroundColor Red
+    if (-not [string]::IsNullOrWhiteSpace($_.ScriptStackTrace)) {
+        Write-Host "[FAIL] Ubicación: $($_.ScriptStackTrace)" -ForegroundColor Red
+    }
     if ($stackAttempted) { Show-Diagnostics }
 }
 finally {

@@ -10,10 +10,11 @@ Add-Type -AssemblyName System.Net.Http
 
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $startedAt = Get-Date
-$deadline = $startedAt.AddMinutes(20)
+$deadline = $startedAt.AddMinutes(30)
 $suffix = ([Guid]::NewGuid().ToString("N")).Substring(0, 8)
 $project = "gestudio-smoke-$PID-$suffix"
 $envFile = Join-Path ([IO.Path]::GetTempPath()) "$project.env"
+$credentialManifest = Join-Path ([IO.Path]::GetTempPath()) "$project-credentials.json"
 $passes = 0
 $failures = 0
 $stackAttempted = $false
@@ -405,7 +406,7 @@ $adminPassword = New-HexSecret 24
 $secretariaPassword = New-HexSecret 24
 $cajaPassword = New-HexSecret 24
 $limitedPassword = New-HexSecret 24
-$adminUsername = "smoke-admin-$suffix"
+$adminUsername = "demo-superadmin"
 $apiBase = "http://127.0.0.1:$backendPort/api"
 $frontendOrigin = "http://127.0.0.1:$frontendPort"
 
@@ -469,6 +470,40 @@ try {
         Assert-Equal -Actual $front.Status -Expected 200 -Message "Frontend no responde"
         Pass "Stack healthy"
 
+        $credentialState = [ordered]@{
+            schemaVersion = 1
+            actors = [ordered]@{
+                'demo-superadmin' = $adminPassword
+                'demo-direccion' = $limitedPassword
+                'demo-administrador' = $adminPassword
+                'demo-secretaria' = $secretariaPassword
+                'demo-caja' = $cajaPassword
+            }
+        }
+        [IO.File]::WriteAllText(
+            $credentialManifest,
+            (($credentialState | ConvertTo-Json -Depth 4) + "`n"),
+            [Text.UTF8Encoding]::new($false))
+        $previousPgPassword = [Environment]::GetEnvironmentVariable('PGPASSWORD', 'Process')
+        try {
+            [Environment]::SetEnvironmentVariable('PGPASSWORD', $postgresPassword, 'Process')
+            $seedArguments = @(
+                '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $PSScriptRoot 'demo-local.ps1'),
+                '-Action', 'SeedNative', '-DatabaseHost', '127.0.0.1', '-DatabasePort', [string]$dbPort,
+                '-DatabaseName', $postgresDb, '-DatabaseUser', $postgresUser,
+                '-CredentialManifestPath', $credentialManifest
+            )
+            $seedOutput = @(& pwsh @seedArguments 2>&1 | ForEach-Object { [string]$_ })
+            if ($LASTEXITCODE -ne 0) {
+                throw "Seed funcional falló: $(Redact (($seedOutput | Select-Object -Last 80) -join [Environment]::NewLine))"
+            }
+            foreach ($line in $seedOutput) { Write-Host (Redact $line) }
+        }
+        finally {
+            [Environment]::SetEnvironmentVariable('PGPASSWORD', $previousPgPassword, 'Process')
+        }
+        Pass "Fixture funcional externo a Flyway"
+
         $migrationManifest = Assert-FlywayHistory
         Write-Host "[INFO] Flyway V1-V$($migrationManifest.LatestVersion): $($migrationManifest.Count) checksums registrados"
         Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM permisos") -Expected "32" -Message "Catalogo RBAC inesperado"
@@ -479,11 +514,11 @@ try {
         Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM roles WHERE codigo = 'PROFESOR' AND NOT activo AND sistema") -Expected "1" -Message "PROFESOR debe estar inactivo"
         $matrixDiff = Invoke-Sql "WITH expected(role_code, permission_code) AS (SELECT 'SUPERADMIN', codigo FROM permisos UNION ALL SELECT 'DIRECCION', codigo FROM permisos WHERE codigo <> 'PERM_ROLES_ADMIN' UNION ALL SELECT 'ADMINISTRADOR', codigo FROM permisos WHERE codigo <> 'PERM_ROLES_ADMIN' UNION ALL SELECT 'SECRETARIA', codigo FROM permisos WHERE codigo IN ('PERM_APP_ACCESO','PERM_PAGOS_REGISTRAR','PERM_CREDITOS_CONSUMIR','PERM_CONDICIONES_ECONOMICAS_ADMIN','PERM_ALUMNOS_LEER','PERM_ALUMNOS_ADMIN','PERM_INSCRIPCIONES_LEER','PERM_INSCRIPCIONES_ADMIN','PERM_DISCIPLINAS_LEER','PERM_PROFESORES_LEER','PERM_ASISTENCIAS_LEER','PERM_ASISTENCIAS_REGISTRAR','PERM_PAGOS_LEER','PERM_CAJA_LEER','PERM_STOCK_LEER','PERM_REPORTES_LEER','PERM_CONFIG_LEER') UNION ALL SELECT 'CAJA', codigo FROM permisos WHERE codigo IN ('PERM_APP_ACCESO','PERM_ALUMNOS_LEER','PERM_PAGOS_LEER','PERM_PAGOS_REGISTRAR','PERM_CAJA_LEER','PERM_STOCK_LEER','PERM_CONFIG_LEER','PERM_CREDITOS_CONSUMIR')), actual AS (SELECT r.codigo, p.codigo FROM roles r JOIN rol_permisos rp ON rp.rol_id=r.id JOIN permisos p ON p.id=rp.permiso_id WHERE r.codigo IN ('SUPERADMIN','DIRECCION','ADMINISTRADOR','SECRETARIA','CAJA','PROFESOR')), differences AS ((SELECT * FROM expected EXCEPT SELECT * FROM actual) UNION ALL (SELECT * FROM actual EXCEPT SELECT * FROM expected)) SELECT count(*) FROM differences"
         Assert-Equal -Actual $matrixDiff -Expected "0" -Message "La matriz de roles base no es exacta"
-        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM usuarios WHERE nombre_usuario LIKE 'demo-%'") -Expected "0" -Message "El smoke no debe depender del seed demo"
+        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM usuarios WHERE nombre_usuario LIKE 'demo-%'") -Expected "5" -Message "El fixture funcional no creó sus cinco actores"
         Pass "Flyway V1-V$($migrationManifest.LatestVersion) y matriz RBAC"
 
         $quotedUser = $adminUsername.Replace("'", "''")
-        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM usuarios") -Expected "1" -Message "El bootstrap no creo exactamente un usuario"
+        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM usuarios") -Expected "5" -Message "El fixture no creó exactamente cinco usuarios"
         $bootstrap = Invoke-Sql "SELECT u.id, u.activo, r.descripcion, u.contrasena FROM usuarios u JOIN roles r ON r.id=u.rol_id WHERE u.nombre_usuario='$quotedUser'"
         $bootstrapParts = $bootstrap.Split("|")
         Assert-Equal -Actual $bootstrapParts.Count -Expected 4 -Message "Usuario bootstrap no encontrado"
@@ -526,7 +561,7 @@ try {
         [Environment]::SetEnvironmentVariable("APP_BOOTSTRAP_SUPERADMIN_ENABLED", "false", "Process")
         Restart-Backend
         Login | Out-Null
-        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM usuarios") -Expected "1" -Message "El reinicio creo otro usuario"
+        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM usuarios") -Expected "5" -Message "El reinicio creó otro usuario"
         Pass "Bootstrap deshabilitado y reinicio"
 
         $salon = (Invoke-Api -Method "POST" -Path "/salones" -Body @{
@@ -564,6 +599,14 @@ Assert-Equal -Actual $tarifa.vigenteDesde -Expected $tarifaVigenteDesde -Message
 
         $businessNow = Get-BusinessNow
         $today = $businessNow.ToString("yyyy-MM-dd")
+        $cajaBaseline = (Invoke-Api -Method "GET" -Path "/caja/resumen?desde=$today&hasta=$today&page=0&size=100" -ExpectedStatus 200).Json
+        $expectedCajaIngresos = ([decimal]$cajaBaseline.totalIngresos + [decimal]100).ToString(
+            "0.00", [Globalization.CultureInfo]::InvariantCulture)
+        $expectedCajaSaldo = ([decimal]$cajaBaseline.saldo + [decimal]100).ToString(
+            "0.00", [Globalization.CultureInfo]::InvariantCulture)
+        $expectedPaymentMovements = @($cajaBaseline.movimientos.content | Where-Object {
+            $_.tipo -eq "INGRESO_PAGO"
+        }).Count + 2
         $alumnoName = "Alumno-$suffix"
         $alumno = (Invoke-Api -Method "POST" -Path "/alumnos" -Body @{
             id = $null; nombre = $alumnoName; apellido = "Smoke"; fechaNacimiento = "2000-01-01"
@@ -655,9 +698,9 @@ Pass "Inscripcion y liquidacion por vigencia"
         Pass "Recibo/outbox"
 
         $caja = (Invoke-Api -Method "GET" -Path "/caja/resumen?desde=$today&hasta=$today&page=0&size=100" -ExpectedStatus 200).Json
-        Assert-Equal -Actual $caja.totalIngresos -Expected "100.00" -Message "Ingresos de caja incorrectos"
-        Assert-Equal -Actual $caja.saldo -Expected "100.00" -Message "Saldo de caja incorrecto"
-        Assert-Equal -Actual @($caja.movimientos.content | Where-Object { $_.tipo -eq "INGRESO_PAGO" }).Count -Expected 2 -Message "Movimientos de pago incorrectos"
+        Assert-Equal -Actual $caja.totalIngresos -Expected $expectedCajaIngresos -Message "Ingresos de caja incorrectos"
+        Assert-Equal -Actual $caja.saldo -Expected $expectedCajaSaldo -Message "Saldo de caja incorrecto"
+        Assert-Equal -Actual @($caja.movimientos.content | Where-Object { $_.tipo -eq "INGRESO_PAGO" }).Count -Expected $expectedPaymentMovements -Message "Movimientos de pago incorrectos"
         $egreso = (Invoke-Api -Method "POST" -Path "/egresos" -Body @{
             fecha = $today; monto = "15.00"; observaciones = "Egreso smoke"; metodoPagoId = $metodo.id
             idempotencyKey = "egreso-$suffix"
@@ -666,7 +709,7 @@ Pass "Inscripcion y liquidacion por vigencia"
         Invoke-Api -Method "POST" -Path "/egresos/$($egreso.id)/anulacion" -Body $egresoReversal -ExpectedStatus 200 | Out-Null
         Invoke-Api -Method "POST" -Path "/egresos/$($egreso.id)/anulacion" -Body $egresoReversal -ExpectedStatus 200 | Out-Null
         $cajaAfterEgreso = (Invoke-Api -Method "GET" -Path "/caja/resumen?desde=$today&hasta=$today&page=0&size=100" -ExpectedStatus 200).Json
-        Assert-Equal -Actual $cajaAfterEgreso.saldo -Expected "100.00" -Message "Reversion de egreso no recompuso caja"
+        Assert-Equal -Actual $cajaAfterEgreso.saldo -Expected $expectedCajaSaldo -Message "Reversion de egreso no recompuso caja"
         Pass "Caja"
 
         $saleKey = "venta-$suffix"
@@ -735,11 +778,11 @@ Pass "Inscripcion y liquidacion por vigencia"
         Assert-Equal -Actual (Invoke-Api -Method "GET" -Path "/cargos/$($cargo.id)" -ExpectedStatus 200).Json.estado -Expected "PAGADO" -Message "Cargo perdido tras reinicio"
         Assert-Equal -Actual (Invoke-Api -Method "GET" -Path "/pagos/$($partial.id)" -ExpectedStatus 200).Json.id -Expected $partial.id -Message "Pago perdido tras reinicio"
         Assert-Equal -Actual (Invoke-Api -Method "GET" -Path "/stocks/$($stock.id)" -ExpectedStatus 200).Json.stock -Expected 5 -Message "Stock incoherente tras reinicio"
-        Assert-Equal -Actual (Invoke-Api -Method "GET" -Path "/caja/resumen?desde=$today&hasta=$today&page=0&size=100" -ExpectedStatus 200).Json.saldo -Expected "100.00" -Message "Caja incoherente tras reinicio"
+        Assert-Equal -Actual (Invoke-Api -Method "GET" -Path "/caja/resumen?desde=$today&hasta=$today&page=0&size=100" -ExpectedStatus 200).Json.saldo -Expected $expectedCajaSaldo -Message "Caja incoherente tras reinicio"
         Assert-Equal -Actual (Invoke-Sql "SELECT estado FROM ventas_stock WHERE id=$saleId") -Expected "ANULADA" -Message "Reversion perdida tras reinicio"
         Pass "Persistencia tras reinicio"
 
-        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM usuarios") -Expected "4" -Message "Cantidad final de usuarios incorrecta"
+        Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM usuarios") -Expected "8" -Message "Cantidad final de usuarios incorrecta"
         $finalHash = Invoke-Sql "SELECT contrasena FROM usuarios WHERE nombre_usuario='$quotedUser'"
         Assert-True -Condition ($finalHash -ne $adminPassword -and $finalHash -match '^\$2[aby]\$') -Message "Hash final del bootstrap invalido"
         Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM (SELECT idempotency_key FROM pagos GROUP BY idempotency_key HAVING count(*) <> 1) x") -Expected "0" -Message "Idempotencia de pagos inconsistente"
@@ -786,6 +829,7 @@ finally {
         }
     }
     if (Test-Path -LiteralPath $envFile) { Remove-Item -LiteralPath $envFile -Force }
+    if (Test-Path -LiteralPath $credentialManifest) { Remove-Item -LiteralPath $credentialManifest -Force }
     foreach ($entry in $originalEnvironment.GetEnumerator()) {
         [Environment]::SetEnvironmentVariable($entry.Key, $entry.Value, "Process")
     }

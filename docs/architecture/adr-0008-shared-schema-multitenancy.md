@@ -8,8 +8,9 @@
 ## Contexto
 
 Gestudio es un monolito Spring Boot con PostgreSQL, Flyway, JPA y consultas
-JDBC puntuales. El esquema publicado V1-V7 representa una academia por
-deployment. El `tenantId` de la exportación Jere Platform es una etiqueta del
+JDBC puntuales. El esquema original V1-V7 representaba una academia por
+deployment; V8-V12 incorporan aislamiento interno y B12 instala ese esquema
+multitenant sin datos funcionales. El `tenantId` de la exportación Jere Platform es una etiqueta del
 receptor externo configurada globalmente y no una frontera interna.
 
 La implementación debe aislar academia, finanzas, archivos, sesiones, jobs y

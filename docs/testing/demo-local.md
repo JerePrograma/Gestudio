@@ -1,128 +1,162 @@
-# Demo local persistente
+# Demo local multitenant persistente
 
-Requisitos: Docker Desktop/Engine con Compose v2 y JDK 21 disponible. El
-proyecto Compose reservado es `gestudio-demo-local`; los puertos son PostgreSQL
-`15432`, backend `18080` y frontend `18081`.
+La demo canónica compone el control plane y el fixture funcional existentes. No
+duplica Flyway ni el E2E: usa `scripts/e2e/run-control-plane.ps1` para el
+aprovisionamiento real y `scripts/gestudio_demo_seed_full.sql` para datos de
+negocio externos a Flyway.
 
-## Inicio
+Requisitos: Windows, PowerShell 7, Git, JDK 21, Node 22, Docker Compose v2 y un
+daemon Docker Desktop local en modo Linux. El script rechaza un daemon remoto,
+puertos ocupados y los proyectos protegidos.
 
-Desde la raíz:
+## Operación canónica
+
+Desde la raíz del repositorio:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass `
+pwsh -NoProfile -ExecutionPolicy Bypass `
   -File .\scripts\demo-local.ps1 `
   -Action Start
-```
 
-`Start`:
-
-1. deriva el manifiesto contiguo de migraciones desde
-   `backend/src/main/resources/db/migration`; hoy resulta V1-V7;
-2. construye backend y frontend con revisión Git, hash de Compose y metadata
-   Flyway;
-3. fuerza la recreación de backend y frontend aunque los contenedores previos
-   estén healthy;
-4. conserva PostgreSQL y sus volúmenes;
-5. aplica el seed dos veces con la misma ancla y las mismas credenciales;
-6. valida snapshot idéntico, RBAC, frontend, CORS, cookie, login, cumpleaños y
-   denegaciones HTTP;
-7. exige que `Status` confirme un stack vigente antes de terminar en cero.
-
-No se reutiliza silenciosamente un contenedor sano creado desde una imagen
-anterior. No se borran volúmenes durante `Start`.
-
-## Fecha del dataset y cumpleaños
-
-El seed separa dos conceptos:
-
-- `demo_anchor_date`: ancla estable de períodos, importes y hechos históricos;
-- `demo_business_date`: día civil de la ejecución en
-  `America/Argentina/Buenos_Aires`.
-
-La reejecución conserva el ancla histórica, pero alinea el cumpleaños designado
-con el día comercial actual. El endpoint de cumpleaños incluye sólo personas
-activas cuyo día corresponde exactamente a hoy. No adelanta cumpleaños
-próximos. Un nacimiento del 29 de febrero se observa el 28 de febrero en años
-no bisiestos y el 29 en años bisiestos.
-
-## Acceso
-
-- Frontend: `http://localhost:18081`
-- Backend: `http://localhost:18080`
-- API: `http://localhost:18080/api`
-- PostgreSQL: `localhost:15432`, base `gestudio_demo_local`
-- Liveness: `http://localhost:18080/actuator/health/liveness`
-- Readiness: `http://localhost:18080/actuator/health/readiness`
-
-Usuarios:
-
-- `demo-superadmin`
-- `demo-direccion`
-- `demo-administrador`
-- `demo-secretaria`
-- `demo-caja`
-
-Las contraseñas se solicitan como `SecureString`, se definen sólo localmente y
-no se escriben en Git, logs ni archivos temporales. No reutilizar credenciales
-reales.
-
-## Estado, stop y reset
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\demo-local.ps1 -Action Status
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\demo-local.ps1 -Action Stop
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\demo-local.ps1 -Action Reset
-```
-
-`Status` diferencia y muestra:
-
-- imagen inexistente;
-- contenedor inexistente;
-- contenedor basado en otra image ID;
-- revisión Git o hash Compose incompatible;
-- metadata Flyway incompatible;
-- servicio no healthy;
-- historial Flyway incompleto o con scripts inesperados;
-- frontend no disponible;
-- seed incompleto o cumpleaños diario desalineado.
-
-La demo sólo está disponible cuando todas las condiciones son válidas. En caso
-contrario imprime `Demo disponible: NO` y termina con exit code `1`. La versión
-Flyway mostrada se deriva del manifiesto y de `flyway_schema_history`; no hay una
-comparación fija con V7 que deba editarse cuando aparezca V8.
-
-`Stop` ejecuta el descenso del proyecto y conserva datos. `Reset` usa el nombre
-Compose fijo `gestudio-demo-local` y elimina únicamente contenedores, red y
-volúmenes de ese proyecto; no afecta otros proyectos Docker.
-
-## Cookies y seguridad local
-
-Las cookies de `localhost` no se aíslan por puerto. La demo usa la cookie
-host-only `gestudio_demo_refresh`, con `Secure=false`, `SameSite=Strict` y
-`Path=/api/login`, para no colisionar con `gestudio_refresh`. No define
-`Domain`. El Compose productivo exige cookie `Secure=true`.
-
-Health es público y mínimo. `/actuator/prometheus` permanece protegido por un
-token independiente: falta, error o cabeceras duplicadas producen `401`.
-
-## Seed nativo
-
-Para una base local vacía con la cadena Flyway completa:
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass `
+pwsh -NoProfile -ExecutionPolicy Bypass `
   -File .\scripts\demo-local.ps1 `
-  -Action SeedNative
+  -Action Status
+
+pwsh -NoProfile -ExecutionPolicy Bypass `
+  -File .\scripts\demo-local.ps1 `
+  -Action Stop
+
+pwsh -NoProfile -ExecutionPolicy Bypass `
+  -File .\scripts\demo-local.ps1 `
+  -Action Reset `
+  -ConfirmReset
 ```
 
-La acción localiza `psql.exe`, solicita la clave de base y las cinco claves
-demo, genera BCrypt y aplica el mismo SQL. Falla antes de escribir si encuentra
-datos ajenos al namespace permitido. Admite `-DatabaseHost`, `-DatabasePort`,
-`-DatabaseName`, `-DatabaseUser` y `-PsqlPath`.
+`Start` construye desde el checkout, crea o reutiliza configuración privada,
+levanta PostgreSQL, verifica B12/Flyway/Hibernate, ejecuta el bootstrap one-shot
+del primer `PLATFORM_SUPERADMIN`, exige MFA TOTP, aprovisiona Alpha y Beta por el
+control plane, carga los fixtures tenant-aware y termina sólo si `Status` pasa.
+Un segundo `Start` conserva IDs, datos, auditoría y secretos; no duplica el
+escenario.
 
-## Evidencia del ciclo 2026-07-22
+`Status` es estrictamente de sólo lectura. `Stop` baja contenedores pero conserva
+los dos volúmenes y el estado privado. `Reset` no funciona sin `-ConfirmReset`;
+elimina exclusivamente contenedores, red y volúmenes etiquetados con el proyecto
+exacto, borra su configuración privada y reconstruye desde cero. Nunca ejecuta
+una limpieza Docker global.
 
-`Reset` recreó la demo desde volúmenes vacíos y aprobó 914 filas, cinco hashes,
-cinco logins, CORS, cookie, RBAC y dos aplicaciones idénticas del seed. El
-recorrido headed de navegador aprobó los cinco roles en escritorio y móvil. El
-detalle está en `human-role-walkthrough.md` y en el cierre técnico 23.
+## Identidad y direcciones
+
+- proyecto Compose: `gestudio-demo-local`;
+- PostgreSQL: `127.0.0.1:15432`;
+- backend/API: `http://127.0.0.1:18080` y
+  `http://127.0.0.1:18080/api`;
+- frontend: `http://127.0.0.1:18081`;
+- control plane: `http://127.0.0.1:18081/platform/login`;
+- liveness/readiness: `/actuator/health/liveness` y
+  `/actuator/health/readiness` sobre el backend.
+
+Los puertos se publican explícitamente en `127.0.0.1`; no se depende del binding
+implícito del Compose productivo.
+
+## Actores y tenants
+
+Plataforma:
+
+- `platform.demo.admin`: `PLATFORM_SUPERADMIN`, MFA verificado y cero
+  memberships tenant.
+
+Tenant Alpha, código `escuela-danza-marcos-paz`, nombre visible
+`Escuela Danza Marcos Paz`:
+
+- `alpha.demo.admin`, administrador inicial aprovisionado por control plane;
+- `demo-superadmin`, `demo-direccion`, `demo-administrador`,
+  `demo-secretaria` y `demo-caja`;
+- fixture amplio de 914 filas con alumnos, profesores, disciplinas, horarios,
+  inscripciones, tarifas, condiciones económicas, cargos, pagos, recibos, caja,
+  egresos, stock, asistencias y reportes.
+
+Tenant Beta, código `escuela-beta-demo`, nombre visible `Escuela Beta Demo`:
+
+- `beta.demo.admin`;
+- un alumno, profesor, salón, disciplina y stock mínimo;
+- el mismo documento y código de barras representativos que Alpha para probar
+  unicidad tenant-scoped sin compartir filas.
+
+`SUPERADMIN` sigue siendo un rol tenant legacy. No equivale a
+`PLATFORM_SUPERADMIN` y no autoriza `/api/platform/**`.
+
+## Credenciales, MFA y recuperación
+
+En la primera ejecución se generan secretos criptográficamente aleatorios y se
+guardan fuera del checkout en:
+
+```text
+%LOCALAPPDATA%\Gestudio\gestudio-demo-local
+```
+
+El directorio, `e2e.env`, `credentials.json` y
+`platform-recovery-codes.txt` reciben ACL para el usuario Windows actual. El
+script nunca imprime passwords, secreto TOTP ni recovery codes. `Status` sólo
+muestra la ruta del manifiesto privado.
+
+Para la ceremonia de presentación:
+
+1. el operador abre localmente `credentials.json` desde su sesión Windows;
+2. importa el secreto TOTP sintético de `platform.demo.admin` en su autenticador;
+3. inicia sesión con password y código actual en `/platform/login`;
+4. custodia los recovery codes fuera de screenshots, tickets y grabaciones;
+5. no copia el manifiesto al repositorio ni reutiliza sus valores fuera de la
+   demo.
+
+`Start` posterior a `Stop` reutiliza estos valores. Sólo `Reset -ConfirmReset`
+los rota porque reconstruye toda la demo.
+
+## Qué acredita Status
+
+Un exit code cero exige, como mínimo:
+
+- tres contenedores exactos, healthy, del proyecto exacto;
+- puertos loopback, image ID, revisión Git, hash Compose y fingerprints de
+  fuentes sin drift;
+- Flyway válido en la última versión derivada, cero migraciones fallidas y
+  ningún seed dentro de Flyway;
+- `gestudio_multitenancy_health() = GREEN`;
+- runtime tenant y control plane sin `SUPERUSER` ni `BYPASSRLS`;
+- plataforma inicializada, MFA verificado y bootstrap platform-only sin
+  membership;
+- Alpha/Beta activos, memberships, datasets, claves naturales repetidas e
+  integridad del libro de stock;
+- RLS forzado en alumnos, pagos y stock; lectura Alpha sin filas Beta;
+- control runtime sin lectura funcional global y auditoría append-only;
+- logins sintéticos activos, auditoría presente y sin material sensible;
+- frontend, API, liveness y readiness reales.
+
+Ante cualquier diferencia imprime `Demo disponible: NO`, explica la condición
+sin exponer secretos y devuelve un exit code distinto de cero.
+
+## Recorrido sugerido
+
+1. Plataforma: login MFA, tenants, detalle, memberships, administradores,
+   auditoría, suspensión/reactivación y logout.
+2. Alpha: dashboard, alumnos, profesores, disciplinas/horarios, inscripción,
+   tarifa/condición, cargos, pagos/recibos, caja/egresos, stock, asistencias,
+   reportes y logout.
+3. Roles Alpha: verificar rutas permitidas y `403` para Secretaría/Caja donde
+   corresponda.
+4. Beta: login, datos propios, operación mínima e intento de recurso Alpha
+   rechazado.
+5. Persistencia: `Stop`, `Start`, `Status`; comprobar que no cambian tenants,
+   datos, auditoría ni configuración.
+
+SMTP/IMAP reales, DNS, TLS público, métricas externas, secret manager cloud y
+Jere Platform desplegado no forman parte de la demo local. Permanecen
+fail-closed o deshabilitados.
+
+## Fixture nativo de compatibilidad
+
+`-Action SeedNative` sigue disponible para validaciones locales controladas. El
+flujo multitenant canónico ya aprovisiona tenant, roles y memberships mediante
+el control plane antes de cargar negocio. El SQL conserva un modo compatible
+para ambientes efímeros seedless, siempre limitado al tenant explícito y fuera
+de Flyway.

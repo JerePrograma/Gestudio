@@ -194,7 +194,7 @@ try {
         if ($parts.Count -ne 3 -or -not [int]::TryParse($parts[0], [ref]$version) -or $version -lt 1) {
             throw "Fila Flyway inválida: $_"
         }
-        [ordered]@{ version = $version; type = $parts[1]; script = $parts[2] }
+        [pscustomobject][ordered]@{ version = $version; type = $parts[1]; script = $parts[2] }
     })
     if ($flywayHistory.Count -eq 0) {
         throw "No se pudo leer el historial Flyway: $flyway"

@@ -16,7 +16,7 @@ Current stack:
 - PostgreSQL.
 - Flyway.
 - Maven.
-- React 18.
+- React 19.
 - TypeScript.
 - Vite.
 - Formik and Yup.
@@ -365,9 +365,11 @@ try {
 finally {
     Pop-Location
 }
+```
 
 After frontend changes:
 
+```powershell
 Push-Location frontend
 try {
     npm run lint
@@ -376,6 +378,7 @@ try {
 finally {
     Pop-Location
 }
+```
 
 After dependency, Docker, or deployment changes, also run the relevant clean
 Docker builds.

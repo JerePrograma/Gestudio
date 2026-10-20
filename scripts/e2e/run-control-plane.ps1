@@ -1,5 +1,11 @@
 ﻿[CmdletBinding()]
-param()
+param(
+    [switch] $PersistentDemo,
+    [string] $StateRoot = '',
+    [ValidateRange(1, 65535)][int] $PersistentDatabasePort = 15432,
+    [ValidateRange(1, 65535)][int] $PersistentBackendPort = 18080,
+    [ValidateRange(1, 65535)][int] $PersistentFrontendPort = 18081
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -39,6 +45,8 @@ $protectedDemoInvariant = 'NOT_VERIFIED'
 $projectBefore = $null
 $projectSnapshotCaptured = $false
 $projectInvariant = 'NOT_VERIFIED'
+$credentialManifest = $null
+$recoveryCodesPath = $null
 
 function New-RandomBytes {
     param([Parameter(Mandatory)][ValidateRange(1, 1024)][int] $Count)
@@ -198,7 +206,8 @@ function Assert-LocalDockerTarget {
 function Get-DockerProjectSnapshot {
     param([Parameter(Mandatory)][string] $ProjectName)
     if ($ProjectName -cne 'gestudio-remote-demo' -and
-        $ProjectName -notmatch '^gestudio-e2e-[a-f0-9]{12}$') {
+        $ProjectName -notmatch '^gestudio-e2e-[a-f0-9]{12}$' -and
+        -not ($PersistentDemo -and $ProjectName -ceq 'gestudio-demo-local')) {
         throw 'Snapshot Docker rechazado para un proyecto fuera del scope permitido.'
     }
     $containerIds = @((Invoke-Native -FilePath 'docker' -Arguments @(
@@ -396,7 +405,12 @@ function Wait-BootstrapCommitted {
             'inspect', '--format', '{{.State.Running}}|{{.State.ExitCode}}', $bootstrapJobId
         ) -Capture
         if ($running -notmatch '^true\|') {
-            throw "El bootstrap one-shot termino antes de confirmar su estado transaccional."
+            $jobLog = Invoke-Native -FilePath 'docker' -Arguments @(
+                'logs', '--tail', '120', $bootstrapJobId
+            ) -Capture -AllowFailure
+            $diagnostic = ConvertTo-SafeText $jobLog
+            if ([string]::IsNullOrWhiteSpace($diagnostic)) { $diagnostic = 'sin log disponible' }
+            throw "El bootstrap one-shot termino antes de confirmar su estado transaccional ($running). Diagnostico sanitizado: $diagnostic"
         }
         Start-Sleep -Milliseconds 750
     }
@@ -425,9 +439,13 @@ function Assert-OwnedResource {
         [Parameter(Mandatory)][string] $Id
     )
     if ($Kind -eq 'image') {
-        if ($Id -notin @($backendImage, $frontendImage) -or
-            $Id -notmatch '^gestudio-(backend|frontend):e2e-[a-f0-9]{12}$' -or
-            $Id -notlike "*:e2e-$suffix") {
+        $expectedTag = if ($PersistentDemo) {
+            '^gestudio-(backend|frontend):demo-local$'
+        } else {
+            '^gestudio-(backend|frontend):e2e-[a-f0-9]{12}$'
+        }
+        if ($Id -notin @($backendImage, $frontendImage) -or $Id -notmatch $expectedTag -or
+            (-not $PersistentDemo -and $Id -notlike "*:e2e-$suffix")) {
             throw "Cleanup fail-closed: tag de imagen fuera del scope E2E exacto."
         }
         $metadata = Invoke-Native -FilePath 'docker' -Arguments @(
@@ -575,9 +593,11 @@ try {
     $protectedDemoBefore = Get-DockerProjectSnapshot -ProjectName 'gestudio-remote-demo'
     $protectedDemoSnapshotCaptured = $true
 
-    $suffix = New-RandomHex -Bytes 6
-    $project = "gestudio-e2e-$suffix"
-    if ($project -ceq 'gestudio-remote-demo' -or $project -notmatch '^gestudio-e2e-[a-f0-9]{12}$') {
+    $suffix = if ($PersistentDemo) { 'd3a010ca1001' } else { New-RandomHex -Bytes 6 }
+    $project = if ($PersistentDemo) { 'gestudio-demo-local' } else { "gestudio-e2e-$suffix" }
+    if ($project -ceq 'gestudio-remote-demo' -or
+        (-not $PersistentDemo -and $project -notmatch '^gestudio-e2e-[a-f0-9]{12}$') -or
+        ($PersistentDemo -and $project -cne 'gestudio-demo-local')) {
         throw 'Nombre de proyecto E2E invalido o protegido.'
     }
     $projectBefore = Get-DockerProjectSnapshot -ProjectName $project
@@ -587,17 +607,24 @@ try {
         $projectBefore.Networks.Count -ne 0) {
         throw 'Preflight E2E rechazo un proyecto Compose con recursos preexistentes.'
     }
-    $backendImage = "gestudio-backend:e2e-$suffix"
-    $frontendImage = "gestudio-frontend:e2e-$suffix"
+    $backendImage = if ($PersistentDemo) { 'gestudio-backend:demo-local' } else { "gestudio-backend:e2e-$suffix" }
+    $frontendImage = if ($PersistentDemo) { 'gestudio-frontend:demo-local' } else { "gestudio-frontend:e2e-$suffix" }
     foreach ($tag in @($backendImage, $frontendImage)) {
         $existing = Invoke-Native -FilePath 'docker' -Arguments @(
             'image', 'ls', '-q', '--no-trunc', $tag
         ) -Capture
-        if (-not [string]::IsNullOrWhiteSpace($existing)) {
+        if (-not $PersistentDemo -and -not [string]::IsNullOrWhiteSpace($existing)) {
             throw 'Preflight E2E rechazo un tag de imagen preexistente.'
         }
     }
-    $runRoot = [IO.Path]::GetFullPath((Join-Path ([IO.Path]::GetTempPath()) $project))
+    if ($PersistentDemo -and [string]::IsNullOrWhiteSpace($StateRoot)) {
+        throw 'StateRoot es obligatorio para la demo persistente.'
+    }
+    $runRoot = if ($PersistentDemo) {
+        [IO.Path]::GetFullPath($StateRoot)
+    } else {
+        [IO.Path]::GetFullPath((Join-Path ([IO.Path]::GetTempPath()) $project))
+    }
     if (Test-Path -LiteralPath $runRoot) { throw 'El directorio temporal E2E ya existe.' }
     [IO.Directory]::CreateDirectory($runRoot) | Out-Null
     Set-PrivatePath -Path $runRoot -Directory $true
@@ -605,9 +632,20 @@ try {
     $portsOverride = Join-Path $runRoot 'ports.compose.yml'
     $bootstrapOverride = Join-Path $runRoot 'bootstrap.compose.yml'
     $playwrightOutput = Join-Path $runRoot 'playwright-output'
+    $credentialManifest = Join-Path $runRoot 'credentials.json'
+    $recoveryCodesPath = Join-Path $runRoot 'platform-recovery-codes.txt'
 
-    $backendPort = Get-FreeLoopbackPort
-    do { $frontendPort = Get-FreeLoopbackPort } while ($frontendPort -eq $backendPort)
+    $backendPort = if ($PersistentDemo) { $PersistentBackendPort } else { Get-FreeLoopbackPort }
+    if ($PersistentDemo) {
+        $frontendPort = $PersistentFrontendPort
+        $databasePort = $PersistentDatabasePort
+        if (@(@($backendPort, $frontendPort, $databasePort) | Select-Object -Unique).Count -ne 3) {
+            throw 'Los puertos persistentes deben ser distintos.'
+        }
+    } else {
+        do { $frontendPort = Get-FreeLoopbackPort } while ($frontendPort -eq $backendPort)
+        $databasePort = $null
+    }
     $platformTotpBytes = New-RandomBytes -Count 20
     $platformTotpSecret = ConvertTo-Base32 -Bytes $platformTotpBytes
     $bootstrapTotpCode = '000000'
@@ -620,15 +658,22 @@ try {
     $jwtSecret = New-RandomHex -Bytes 48
     $mfaKey = [Convert]::ToBase64String((New-RandomBytes -Count 32))
     $metricsToken = New-RandomHex -Bytes 32
-    $platformUsername = "platform.e2e.$suffix"
-    $alphaUsername = "alpha.admin.$suffix"
-    $betaUsername = "beta.admin.$suffix"
-    $alphaCode = "danza-marcos-paz-$suffix"
-    $betaCode = "beta-e2e-$suffix"
+    $platformUsername = if ($PersistentDemo) { 'platform.demo.admin' } else { "platform.e2e.$suffix" }
+    $alphaUsername = if ($PersistentDemo) { 'alpha.demo.admin' } else { "alpha.admin.$suffix" }
+    $betaUsername = if ($PersistentDemo) { 'beta.demo.admin' } else { "beta.admin.$suffix" }
+    $alphaCode = if ($PersistentDemo) { 'escuela-danza-marcos-paz' } else { "danza-marcos-paz-$suffix" }
+    $betaCode = if ($PersistentDemo) { 'escuela-beta-demo' } else { "beta-e2e-$suffix" }
+    $demoActorPasswords = [ordered]@{
+        'demo-superadmin' = "Aa9!$(New-RandomHex -Bytes 16)"
+        'demo-direccion' = "Aa9!$(New-RandomHex -Bytes 16)"
+        'demo-administrador' = "Aa9!$(New-RandomHex -Bytes 16)"
+        'demo-secretaria' = "Aa9!$(New-RandomHex -Bytes 16)"
+        'demo-caja' = "Aa9!$(New-RandomHex -Bytes 16)"
+    }
     foreach ($secret in @(
         $platformTotpSecret, $platformPassword, $alphaPassword,
         $betaPassword, $postgresPassword, $appPassword, $controlPassword,
-        $jwtSecret, $mfaKey, $metricsToken
+        $jwtSecret, $mfaKey, $metricsToken, $demoActorPasswords.Values
     )) { $secretValues.Add($secret) }
 
     $sourceSha = Invoke-Native -FilePath 'git' -Arguments @('-C', $repoRoot, 'rev-parse', 'HEAD') -Capture
@@ -701,10 +746,18 @@ try {
     }
     $envContent = ($envValues.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join "`n"
     Write-PrivateFile -Path $envFile -Content ($envContent + "`n")
+    $databasePorts = if ($PersistentDemo) {
+        @"
+    ports: !override
+      - "127.0.0.1:${databasePort}:5432"
+"@
+    } else {
+        '    ports: !reset []'
+    }
     Write-PrivateFile -Path $portsOverride -Content @"
 services:
   db:
-    ports: !reset []
+$databasePorts
   backend:
     ports: !override
       - "127.0.0.1:${backendPort}:8080"
@@ -728,7 +781,10 @@ services:
     $configJson = Invoke-Compose -Arguments @('config', '--format', 'json') -Capture
     $config = $configJson | ConvertFrom-Json -Depth 30
     if ($config.name -cne $project -or
-        $null -ne $config.services.db.PSObject.Properties['ports'] -or
+        ((-not $PersistentDemo) -and $null -ne $config.services.db.PSObject.Properties['ports']) -or
+        ($PersistentDemo -and ($config.services.db.ports.Count -ne 1 -or
+            $config.services.db.ports[0].host_ip -cne '127.0.0.1' -or
+            [int]$config.services.db.ports[0].published -ne $databasePort)) -or
         $config.services.backend.ports.Count -ne 1 -or
         $config.services.backend.ports[0].host_ip -cne '127.0.0.1' -or
         [int]$config.services.backend.ports[0].published -ne $backendPort -or
@@ -815,7 +871,10 @@ SELECT
         throw "La base fresh no quedo sin seed funcional o Flyway no quedo sano. Estado actual: $freshState"
     }
 
-    $bootstrapCounter = [long][Math]::Floor([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() / 30)
+    # The one-shot starts a fresh JVM. Target the next TOTP window so the code
+    # remains valid while Spring initializes (the verifier accepts +/- 1 step).
+    $currentTotpCounter = [long][Math]::Floor([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() / 30)
+    $bootstrapCounter = $currentTotpCounter + 1
     $bootstrapTotpCode = Get-TotpCode -Secret $platformTotpBytes -Counter $bootstrapCounter
     $secretValues.Add($bootstrapTotpCode)
     $envValues.APP_BOOTSTRAP_PLATFORM_TOTP_CODE = $bootstrapTotpCode
@@ -836,6 +895,12 @@ SELECT
         'exec', $bootstrapJobId, 'sh', '-ec',
         'test -f /tmp/gestudio-platform-recovery-codes.txt && test "$(stat -c %a /tmp/gestudio-platform-recovery-codes.txt)" = 600 && test "$(wc -l < /tmp/gestudio-platform-recovery-codes.txt)" -eq 10 && awk ''BEGIN{ok=1} !/^[A-Z2-7]{8}-[A-Z2-7]{8}-[A-Z2-7]{8}-[A-Z2-7]{2}$/{ok=0} END{exit ok?0:1}'' /tmp/gestudio-platform-recovery-codes.txt'
     ))
+    if ($PersistentDemo) {
+        [void](Invoke-Native -FilePath 'docker' -Arguments @(
+            'cp', "${bootstrapJobId}:/tmp/gestudio-platform-recovery-codes.txt", $recoveryCodesPath
+        ))
+        Set-PrivatePath -Path $recoveryCodesPath -Directory $false
+    }
     Remove-ExactBootstrapJob
 
     $testEnvironment = [ordered]@{
@@ -853,7 +918,7 @@ SELECT
         GESTUDIO_E2E_ALPHA_USERNAME = $alphaUsername
         GESTUDIO_E2E_ALPHA_PASSWORD = $alphaPassword
         GESTUDIO_E2E_BETA_CODE = $betaCode
-        GESTUDIO_E2E_BETA_NAME = 'Escuela Beta E2E'
+        GESTUDIO_E2E_BETA_NAME = if ($PersistentDemo) { 'Escuela Beta Demo' } else { 'Escuela Beta E2E' }
         GESTUDIO_E2E_BETA_USERNAME = $betaUsername
         GESTUDIO_E2E_BETA_PASSWORD = $betaPassword
     }
@@ -875,6 +940,44 @@ SELECT
         throw "Playwright E2E fallo con exit code $testExit. Consulte el log sanitizado."
     }
     $playwrightStatus = 'EXECUTED_PASS'
+
+    if ($PersistentDemo) {
+        $tenantIds = (Invoke-DatabaseSql -Sql @"
+SELECT (SELECT id FROM tenants WHERE code='$alphaCode')::text || '|' ||
+       (SELECT id FROM tenants WHERE code='$betaCode')::text;
+"@).Trim().Split('|')
+        if ($tenantIds.Count -ne 2 -or
+            $tenantIds[0] -notmatch '^[a-f0-9-]{36}$' -or
+            $tenantIds[1] -notmatch '^[a-f0-9-]{36}$') {
+            throw 'No se pudieron resolver los tenants persistentes.'
+        }
+        $manifest = [ordered]@{
+            schemaVersion = 1
+            composeProject = $project
+            platform = [ordered]@{
+                username = $platformUsername
+                password = $platformPassword
+                totpSecret = $platformTotpSecret
+            }
+            alpha = [ordered]@{
+                id = $tenantIds[0]
+                code = $alphaCode
+                name = 'Escuela Danza Marcos Paz'
+                username = $alphaUsername
+                password = $alphaPassword
+            }
+            beta = [ordered]@{
+                id = $tenantIds[1]
+                code = $betaCode
+                name = 'Escuela Beta Demo'
+                username = $betaUsername
+                password = $betaPassword
+            }
+            actors = $demoActorPasswords
+            recoveryCodesFile = [IO.Path]::GetFileName($recoveryCodesPath)
+        }
+        Write-PrivateFile -Path $credentialManifest -Content (($manifest | ConvertTo-Json -Depth 6) + "`n")
+    }
 
     $finalState = (Invoke-DatabaseSql -Sql @"
 SELECT
@@ -910,13 +1013,14 @@ finally {
     }
     try {
         if ($bootstrapJobId) { Remove-ExactBootstrapJob }
-        if ($project -and $envFile -and $portsOverride -and (Test-Path -LiteralPath $envFile)) {
+        if ((!$PersistentDemo -or $primaryFailure) -and $project -and $envFile -and
+            $portsOverride -and (Test-Path -LiteralPath $envFile)) {
             [void](Invoke-Compose -Arguments @('down', '--volumes', '--remove-orphans') -AllowFailure)
             Remove-LabeledResources
         }
     }
     catch { Add-CleanupFailure -Message $_.Exception.Message }
-    if ($projectSnapshotCaptured) {
+    if ($projectSnapshotCaptured -and (!$PersistentDemo -or $primaryFailure)) {
         try {
             $projectAfter = Get-DockerProjectSnapshot -ProjectName $project
             if (Test-DockerProjectSnapshotInvariant -Before $projectBefore -After $projectAfter) {
@@ -932,6 +1036,9 @@ finally {
             $projectInvariant = 'NOT_VERIFIED'
             Add-CleanupFailure -Message $_.Exception.Message
         }
+    }
+    elseif ($PersistentDemo -and -not $primaryFailure) {
+        $projectInvariant = 'PERSISTED'
     }
     if ($protectedDemoSnapshotCaptured) {
         try {
@@ -955,7 +1062,17 @@ finally {
         catch { Add-CleanupFailure -Message 'No se pudo restaurar DOCKER_CONTEXT.' }
         $dockerContextApplied = $false
     }
-    try { Remove-PrivateRunRoot }
+    try {
+        if (-not $PersistentDemo) { Remove-PrivateRunRoot }
+        elseif ($primaryFailure -and $runRoot -and (Test-Path -LiteralPath $runRoot)) {
+            $expectedPersistentRoot = [IO.Path]::GetFullPath($StateRoot)
+            if ([IO.Path]::GetFullPath($runRoot) -cne $expectedPersistentRoot -or
+                (Split-Path $expectedPersistentRoot -Leaf) -cne 'gestudio-demo-local') {
+                throw 'Se rechazo borrar un directorio persistente fuera del scope exacto.'
+            }
+            Remove-Item -LiteralPath $expectedPersistentRoot -Recurse -Force
+        }
+    }
     catch {
         Add-CleanupFailure -Message $_.Exception.Message
     }
@@ -974,4 +1091,8 @@ if ($cleanupFailure) {
     throw "Cleanup E2E fallo: $cleanupFailure"
 }
 if ($primaryFailure) { throw $primaryFailure }
-Write-Host "Control-plane E2E: PASS. Resultado sanitizado en artifacts/e2e/result.json"
+if ($PersistentDemo) {
+    Write-Host 'Control-plane persistente aprovisionado: PASS. Las credenciales permanecen en el directorio privado documentado.'
+} else {
+    Write-Host "Control-plane E2E: PASS. Resultado sanitizado en artifacts/e2e/result.json"
+}

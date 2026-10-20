@@ -1,6 +1,7 @@
 # Puesta en marcha y flujo de uso local
 
-> Estado: desarrollo y evaluación interna `GO`; demo comercial, staging y producción `NO-GO`.
+> Estado: desarrollo y demo local multitenant `GO` cuando `Status` termina en
+> cero; staging y producción requieren evidencia externa y permanecen `NO-GO`.
 
 Este es el procedimiento operativo principal para instalar, levantar, usar, validar y diagnosticar Gestudio.
 
@@ -64,18 +65,51 @@ powershell -NoProfile -ExecutionPolicy Bypass `
 
 El árbol debe estar limpio. No usar `-SkipTests` para declarar un gate aprobado.
 
+### Pruebas PostgreSQL cuando Docker no está disponible
+
+Testcontainers sigue siendo la opción predeterminada. El backend también admite
+un cluster PostgreSQL local **descartable**, creado aparte y escuchando únicamente
+en loopback, en un puerto distinto de 5432. Cada fixture crea una base nueva con
+nombre aleatorio `gestudio_test_*`; nunca selecciona una base existente de la
+aplicación. El usuario de prueba debe poder crear bases y los roles que requieren
+las migraciones. No apuntar este modo a la instalación de uso diario.
+
+Con Java 21 configurado y el cluster descartable ya iniciado:
+
+```powershell
+$env:GESTUDIO_TEST_POSTGRES_PORT = '55432' # Puerto del cluster descartable
+$env:GESTUDIO_TEST_POSTGRES_USER = 'gestudio_verify'
+$env:GESTUDIO_TEST_POSTGRES_DISPOSABLE = 'true'
+# Si el cluster exige contraseña, definir GESTUDIO_TEST_POSTGRES_PASSWORD
+# en la sesión; no escribirla en archivos versionados ni en la línea de comandos.
+Push-Location backend
+try { .\mvnw.cmd clean verify }
+finally { Pop-Location }
+```
+
+Al terminar, detener y retirar únicamente ese cluster de prueba. Esta ejecución
+comprueba SQL, RLS, transacciones, migraciones y servicios sobre PostgreSQL real;
+los builds Docker y recorridos de navegador del stack Compose se validan aparte.
+
 # 4. Opción recomendada: demo persistente
 
 ## Iniciar
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass `
+pwsh -NoProfile -ExecutionPolicy Bypass `
   -File .\scripts\demo-local.ps1 `
   -Action Start
 ```
 
-Solicita claves para:
+La primera ejecución crea secretos sintéticos fuera del checkout con ACL
+owner-only, ejecuta el bootstrap one-shot de `platform.demo.admin`, aprovisiona
+Alpha/Beta por el control plane y carga los datos funcionales. `Status` muestra
+la ruta privada de las credenciales, pero nunca sus valores.
 
+Actores:
+
+- `platform.demo.admin` (`PLATFORM_SUPERADMIN`, MFA, sin membership tenant);
+- `alpha.demo.admin` y `beta.demo.admin`;
 - `demo-superadmin`;
 - `demo-direccion`;
 - `demo-administrador`;
@@ -88,10 +122,11 @@ No reutilizar contraseñas reales.
 
 | Servicio | Dirección |
 |---|---|
-| Frontend | `http://localhost:18081` |
-| Backend | `http://localhost:18080` |
-| API | `http://localhost:18080/api` |
-| PostgreSQL | `localhost:15432` |
+| Frontend | `http://127.0.0.1:18081` |
+| Control plane | `http://127.0.0.1:18081/platform/login` |
+| Backend | `http://127.0.0.1:18080` |
+| API | `http://127.0.0.1:18080/api` |
+| PostgreSQL | `127.0.0.1:15432` |
 | Base | `gestudio_demo_local` |
 | Liveness | `http://localhost:18080/actuator/health/liveness` |
 | Readiness | `http://localhost:18080/actuator/health/readiness` |
@@ -101,11 +136,11 @@ Prometheus permanece cerrado si no se configura un token. Es intencional.
 ## Estado, detención y reset
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass `
+pwsh -NoProfile -ExecutionPolicy Bypass `
   -File .\scripts\demo-local.ps1 `
   -Action Status
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass `
+pwsh -NoProfile -ExecutionPolicy Bypass `
   -File .\scripts\demo-local.ps1 `
   -Action Stop
 ```
@@ -113,33 +148,33 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass `
 `Stop` conserva datos.
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass `
+pwsh -NoProfile -ExecutionPolicy Bypass `
   -File .\scripts\demo-local.ps1 `
-  -Action Reset
+  -Action Reset `
+  -ConfirmReset
 ```
 
-`Reset` elimina los datos de la demo. Invoca Compose con el nombre fijo
-`gestudio-demo-local`, por lo que sólo desciende ese proyecto y sus volúmenes;
-no usar limpiezas Docker globales.
+`Reset` rechaza la operación si falta `-ConfirmReset`, elimina sólo los recursos
+del proyecto fijo `gestudio-demo-local` y vuelve a iniciar fresh. No usar
+limpiezas Docker globales.
 
 ### Contrato de vigencia
 
-`Start` reconstruye imágenes y fuerza la recreación de backend y frontend sin
-borrar el volumen PostgreSQL. `Status` no acepta como disponible un contenedor
-healthy pero viejo: compara image ID, revisión Git, hash de
-`docker-compose.yml`, metadata Flyway, health, respuesta frontend e integridad
-del seed. La cadena esperada se deriva del manifiesto local: `V1..Vlatest` para
-una historia upgradeada o `Blatest` para una instalación fresh; el número
-latest nunca se duplica manualmente en el script.
+`Start` reconstruye imágenes y recrea los contenedores sin borrar PostgreSQL.
+`Status` es read-only y no acepta como disponible un contenedor healthy pero
+viejo: compara image ID, revisión Git, hash de `docker-compose.yml`, fingerprints
+de fuentes, metadata Flyway, health, frontend, RLS, roles DB, plataforma,
+MFA, memberships, Alpha/Beta, datasets, aislamiento y auditoría. La cadena
+esperada se deriva del manifiesto local (`V1..Vlatest` o `Blatest`).
 
 Si alguna condición falla, `Status` imprime `Demo disponible: NO`, detalla el
 motivo y termina con exit code `1`. La disponibilidad afirmativa y exit `0` son
 requisitos del gate.
 
-La demo conserva un `demo_anchor_date` estable para datos históricos y usa un
-`demo_business_date` diario en `America/Argentina/Buenos_Aires` para el alumno
-de cumpleaños. Sólo se notifican personas activas y el día exacto; 29/2 se
-observa el 28/2 en un año no bisiesto.
+Los dos volúmenes, configuración, credenciales y auditoría sobreviven a
+`Stop`/`Start`; una segunda ejecución no duplica tenants, usuarios, memberships
+ni datos. El detalle de MFA, custodia y recorrido humano está en
+[Demo local multitenant persistente](../testing/demo-local.md).
 
 # 5. Docker Compose completo
 

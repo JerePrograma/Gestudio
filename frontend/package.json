@@ -11,7 +11,7 @@
     "test:coverage": "vitest run --coverage",
     "test:diff-coverage": "vitest run --config vite.diff-coverage.config.ts --coverage",
     "e2e": "playwright test",
-    "e2e:list": "playwright test --list",
+    "e2e:list": "node scripts/list-e2e.mjs",
     "e2e:typecheck": "tsc -p e2e/tsconfig.json",
     "quality:duplication": "jscpd src --min-lines 10 --min-tokens 70 --threshold 2 --ignore \"**/*.test.ts,**/*.test.tsx,**/*.spec.ts,**/*.spec.tsx\" --reporters console,json --output quality-reports/jscpd",
     "sbom": "cyclonedx-npm --output-file frontend-sbom.cdx.json --output-format JSON --spec-version 1.6 --validate",

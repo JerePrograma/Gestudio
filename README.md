@@ -2,32 +2,25 @@
 
 Monorepo de gestión para alumnos, inscripciones, disciplinas, asistencias, mensualidades, pagos, inventario, caja, recibos y reportes.
 
-> **Estado vigente (2026-08-13):** la intervención SUPERADMIN/control-plane está
-> en curso y `RELEASE_READINESS=PARTIAL`. La evidencia de julio que sigue en
-> este README es histórica; el estado operativo actual se mantiene en el
-> [contrato vivo](GESTUDIO_FINALIZACION_SUPERADMIN_MEGAPROMPT.md#estado-vivo).
+> **Estado contractual:** código, demo local y producción se evalúan por
+> separado. El SHA publicado y sus resultados locales/remotos pertenecen al
+> informe de cierre; este archivo no congela el SHA del propio commit.
 
 ## Estado
 
-El árbol de release del 22 de julio de 2026 quedó validado localmente para
-desarrollo, demo, CI, backup/restore y rollback de aplicación. La identidad del
-commit publicado y las ejecuciones remotas se consultan en el informe de cierre
-externo asociado al release; no se incrusta el SHA del propio commit dentro del
-commit.
-
-El worktree actual incorpora Flyway V8-V12, una baseline fresh B12 sin seed
-funcional, autenticación ligada a tenant/membership, RLS shared-schema y un
-control plane separado. Ese cierre sólo se considera validado después de
-ejecutar PostgreSQL/Testcontainers y `clean verify` sobre el SHA definitivo.
-El estado runtime actual de la demo protegida no pudo refrescarse con Docker
-inaccesible; no debe iniciarse, reiniciarse, recrearse ni mutarse.
+El worktree incorpora Flyway V1-V12, baseline fresh B12 sin seed funcional,
+autenticación ligada a tenant/membership, RLS shared-schema forzado y un control
+plane separado con `PLATFORM_SUPERADMIN`, MFA TOTP y step-up. El cierre sólo se
+considera válido después de ejecutar los gates sobre el SHA definitivo. La demo
+local canónica usa el proyecto exclusivo `gestudio-demo-local`; el proyecto
+protegido `gestudio-remote-demo` nunca forma parte de ese flujo.
 
 Integrado y probado sobre el árbol de release:
 
 - seguridad y RBAC fail-closed;
 - catálogo de 32 permisos;
 - liquidación financiera por vigencia;
-- Flyway V1-V7;
+- Flyway V1-V12 y baseline B12, con fresh y upgrade separados;
 - demo interna automatizada;
 - emisor firmado mínimo de estudiantes, deshabilitado por defecto;
 - receptor multipágina compatible integrado en Jere Platform;
@@ -36,7 +29,8 @@ Integrado y probado sobre el árbol de release:
 - rollback backend forward-compatible con backup previo y retorno al artefacto actual;
 - observabilidad mínima con readiness, Prometheus protegido, correlación y logs sanitizados;
 - email controlado con `NOOP` predeterminado, `FAKE` sin red y adaptador Gmail SMTP fail-closed no conectado;
-- demo persistente con fecha comercial diaria separada del ancla estable, detección de imágenes obsoletas y Flyway derivado del manifiesto local;
+- demo multitenant persistente con control plane, Alpha/Beta, MFA, lifecycle,
+  RLS, auditoría, puertos loopback y detección de drift;
 - dependencia vulnerable `brace-expansion` actualizada en el lockfile sin cambios mayores;
 - recorrido real de navegador de los cinco roles demo, en escritorio y móvil;
 - imágenes backend y frontend no-root, rutas SPA y headers de seguridad;
@@ -51,7 +45,7 @@ Quedan fuera del alcance de un repositorio y requieren un ambiente autorizado:
 - políticas organizacionales de retención de backups, artefactos y secretos: [#23](https://github.com/JerePrograma/Gestudio/issues/23);
 - despliegue productivo y su aprobación operativa: [#23](https://github.com/JerePrograma/Gestudio/issues/23).
 
-La demo local está habilitada. Staging y producción no se declaran desplegados:
+La demo local está soportada. Staging y producción no se declaran desplegados:
 el código falla de forma segura si faltan secretos productivos, y la promoción
 exige TLS, CORS, correo, almacenamiento, monitoreo y recuperación configurados en
 el ambiente real.
@@ -96,12 +90,18 @@ git clone https://github.com/JerePrograma/Gestudio.git
 Set-Location .\Gestudio
 git switch main
 git pull --ff-only origin main
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\setup.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\demo-local.ps1 -Action Start
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\codex\setup.ps1
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\demo-local.ps1 -Action Start
 ```
 
-`Start` construye imágenes con metadata del commit, del Compose y de Flyway, fuerza la recreación de backend y frontend sin borrar la base, aplica dos veces el seed y exige que `Status` confirme el stack vigente. El script solicita claves para:
+`Start` crea una configuración privada una sola vez, construye imágenes desde el
+checkout, migra B12 fresh cuando corresponde, ejecuta el bootstrap one-shot del
+primer administrador de plataforma, aprovisiona Alpha/Beta por el control plane,
+carga los fixtures externos a Flyway y sólo termina si `Status` queda verde.
+Los actores sintéticos disponibles son:
 
+- `platform.demo.admin` (`PLATFORM_SUPERADMIN`, sin membership tenant);
+- `alpha.demo.admin` y `beta.demo.admin`;
 - `demo-superadmin`;
 - `demo-direccion`;
 - `demo-administrador`;
@@ -110,19 +110,23 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\demo-local.ps1 -Ac
 
 URLs:
 
-- frontend: `http://localhost:18081`;
-- backend: `http://localhost:18080`;
-- API: `http://localhost:18080/api`;
-- PostgreSQL: `localhost:15432`;
-- liveness: `http://localhost:18080/actuator/health/liveness`;
-- readiness: `http://localhost:18080/actuator/health/readiness`.
+- frontend: `http://127.0.0.1:18081`;
+- control plane: `http://127.0.0.1:18081/platform/login`;
+- backend/API: `http://127.0.0.1:18080` / `http://127.0.0.1:18080/api`;
+- PostgreSQL: `127.0.0.1:15432`;
+- liveness/readiness: `http://127.0.0.1:18080/actuator/health/liveness` y
+  `http://127.0.0.1:18080/actuator/health/readiness`.
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\demo-local.ps1 -Action Status
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\demo-local.ps1 -Action Stop
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\demo-local.ps1 -Action Status
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\demo-local.ps1 -Action Stop
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\demo-local.ps1 -Action Reset -ConfirmReset
 ```
 
-`Status` termina con exit code `1` si falta una imagen, el contenedor usa otra image ID, no coinciden revisión/Compose/Flyway, algún servicio no está healthy, el frontend no responde, el historial Flyway está incompleto o el seed no corresponde al día comercial actual. `Reset` elimina únicamente los recursos con proyecto Compose `gestudio-demo-local` y nunca es necesario para un `Start` normal.
+`Stop` conserva configuración, credenciales, datos y auditoría. `Reset` exige
+`-ConfirmReset`, elimina sólo contenedores/red/volúmenes del proyecto exacto y
+reconstruye una demo fresh. `Status` es de sólo lectura y falla ante drift,
+health/Flyway/RLS/RBAC/dataset/aislamiento/auditoría o secretos en logs.
 
 Guía: [Puesta en marcha y flujo de uso](docs/operations/local-runbook.md).
 

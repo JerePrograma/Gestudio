@@ -10,8 +10,25 @@
     [string] $DatabaseName = "gestudio_db",
     [ValidatePattern('^[A-Za-z0-9_.-]+$')]
     [string] $DatabaseUser = "postgres",
-    [string] $PsqlPath = ""
+    [string] $PsqlPath = "",
+    [ValidatePattern('^[0-9a-fA-F-]{36}$')]
+    [string] $DemoTenantId = "00000000-0000-0000-0000-000000000001",
+    [ValidatePattern('^[a-z0-9][a-z0-9-]{1,48}[a-z0-9]$')]
+    [string] $DemoTenantCode = "gestudio-demo",
+    [ValidatePattern('^[\p{L}\p{N} ._-]{3,160}$')]
+    [string] $DemoTenantName = "Gestudio Demo",
+    [string] $CredentialManifestPath = "",
+    [switch] $AllowExistingControlPlane,
+    [switch] $ConfirmReset
 )
+
+if ($Action -ne 'SeedNative') {
+    $multitenantScript = Join-Path $PSScriptRoot 'demo-local-multitenant.ps1'
+    $arguments = @{ Action = $Action }
+    if ($ConfirmReset) { $arguments.ConfirmReset = $true }
+    & $multitenantScript @arguments
+    exit $LASTEXITCODE
+}
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
@@ -494,7 +511,30 @@ function ConvertFrom-SecurePassword {
 }
 
 function Read-DemoPasswords {
+    $manifestActors = $null
+    if (-not [string]::IsNullOrWhiteSpace($CredentialManifestPath)) {
+        $resolvedManifest = [IO.Path]::GetFullPath($CredentialManifestPath)
+        if (-not (Test-Path -LiteralPath $resolvedManifest -PathType Leaf)) {
+            throw "No existe el manifiesto privado de credenciales indicado"
+        }
+        $manifest = Get-Content -LiteralPath $resolvedManifest -Raw | ConvertFrom-Json -Depth 8
+        $manifestActors = $manifest.actors
+        if ($null -eq $manifestActors) { throw "El manifiesto privado no contiene actores demo" }
+    }
     foreach ($username in @("demo-superadmin", "demo-direccion", "demo-administrador", "demo-secretaria", "demo-caja")) {
+        if ($null -ne $manifestActors) {
+            $property = $manifestActors.PSObject.Properties[$username]
+            if ($null -eq $property -or [string]::IsNullOrWhiteSpace([string]$property.Value)) {
+                throw "El manifiesto privado no contiene una credencial para $username"
+            }
+            $plain = [string]$property.Value
+            if ([Text.Encoding]::UTF8.GetByteCount($plain) -gt 72) {
+                throw "La credencial privada para $username excede el límite BCrypt"
+            }
+            $script:demoPasswords[$username] = $plain
+            Add-Secret $plain
+            continue
+        }
         while ($true) {
             $secure = Read-Host "Contraseña para $username" -AsSecureString
             $plain = ConvertFrom-SecurePassword -SecurePassword $secure
@@ -631,7 +671,7 @@ function Get-BusinessDate {
 }
 
 function Get-AnchorDate {
-    $stored = Invoke-Sql -Query "SELECT substring(otras_notas from 'referencia: ([0-9]{4}-[0-9]{2}-[0-9]{2})') FROM alumnos WHERE documento='49287134';"
+    $stored = Invoke-Sql -Query "SELECT substring(otras_notas from 'referencia: ([0-9]{4}-[0-9]{2}-[0-9]{2})') FROM alumnos WHERE tenant_id='$DemoTenantId'::uuid AND documento='49287134';"
     if (-not [string]::IsNullOrWhiteSpace($stored)) { return [datetime]::ParseExact($stored, "yyyy-MM-dd", $null) }
     return Get-BusinessDate
 }
@@ -738,8 +778,86 @@ SELECT pg_temp.gestudio_demo_snapshot();
 }
 
 function Test-DemoSeedContract {
-    $result = Invoke-Sql -Query @'
-WITH demo_students AS (
+    $tenantId = ([guid]$DemoTenantId).ToString()
+    $query = @'
+WITH demo_scope AS (
+    SELECT '__DEMO_TENANT_ID__'::uuid AS tenant_id
+), roles AS (
+    SELECT * FROM public.roles
+    WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+      AND codigo IN ('SUPERADMIN','DIRECCION','ADMINISTRADOR','SECRETARIA','CAJA','PROFESOR')
+), rol_permisos AS (
+    SELECT rp.* FROM public.rol_permisos rp JOIN roles r ON r.id = rp.rol_id
+), usuarios AS (
+    SELECT u.* FROM public.usuarios u WHERE EXISTS (
+        SELECT 1 FROM public.tenant_memberships m
+        WHERE m.usuario_id = u.id AND m.tenant_id = (SELECT tenant_id FROM demo_scope)
+    )
+), usuario_roles AS (
+    SELECT ur.* FROM public.usuario_roles ur JOIN roles r ON r.id = ur.rol_id
+), salones AS (
+    SELECT * FROM public.salones WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), profesores AS (
+    SELECT * FROM public.profesores WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), observaciones_profesores AS (
+    SELECT * FROM public.observaciones_profesores WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), bonificaciones AS (
+    SELECT * FROM public.bonificaciones WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), recargos AS (
+    SELECT * FROM public.recargos WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), metodo_pagos AS (
+    SELECT * FROM public.metodo_pagos WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), sub_conceptos AS (
+    SELECT * FROM public.sub_conceptos WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), conceptos AS (
+    SELECT * FROM public.conceptos WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), stocks AS (
+    SELECT * FROM public.stocks WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), disciplinas AS (
+    SELECT * FROM public.disciplinas WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), disciplina_horarios AS (
+    SELECT * FROM public.disciplina_horarios WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), alumnos AS (
+    SELECT * FROM public.alumnos WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), inscripciones AS (
+    SELECT * FROM public.inscripciones WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), disciplina_tarifas AS (
+    SELECT * FROM public.disciplina_tarifas WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), inscripcion_condiciones_economicas AS (
+    SELECT * FROM public.inscripcion_condiciones_economicas WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), mensualidades AS (
+    SELECT * FROM public.mensualidades WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), matriculas AS (
+    SELECT * FROM public.matriculas WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), asistencias_mensuales AS (
+    SELECT * FROM public.asistencias_mensuales WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), asistencias_alumno_mensual AS (
+    SELECT * FROM public.asistencias_alumno_mensual WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), asistencias_diarias AS (
+    SELECT * FROM public.asistencias_diarias WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), ventas_stock AS (
+    SELECT * FROM public.ventas_stock WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), cargos AS (
+    SELECT * FROM public.cargos WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), cargo_liquidaciones AS (
+    SELECT * FROM public.cargo_liquidaciones WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), pagos AS (
+    SELECT * FROM public.pagos WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), aplicaciones_pago AS (
+    SELECT * FROM public.aplicaciones_pago WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), egresos AS (
+    SELECT * FROM public.egresos WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), movimientos_caja AS (
+    SELECT * FROM public.movimientos_caja WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), movimientos_credito AS (
+    SELECT * FROM public.movimientos_credito WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), movimientos_stock AS (
+    SELECT * FROM public.movimientos_stock WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), recibos AS (
+    SELECT * FROM public.recibos WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), recibos_pendientes AS (
+    SELECT * FROM public.recibos_pendientes WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), demo_students AS (
     SELECT id FROM alumnos WHERE email LIKE '%@correo.local'
 ), demo_professors AS (
     SELECT id FROM profesores WHERE telefono LIKE '+54 9 11 5555-11%'
@@ -842,6 +960,7 @@ SELECT CASE WHEN
     )
 THEN 'true' ELSE 'false' END;
 '@
+    $result = Invoke-Sql -Query ($query.Replace('__DEMO_TENANT_ID__', $tenantId))
     return $result -eq 'true'
 }
 
@@ -867,6 +986,9 @@ function Invoke-DemoSeed {
     try {
         $input = @(
             "\set ON_ERROR_STOP on",
+            "\set demo_tenant_id $DemoTenantId",
+            "\set demo_tenant_code $DemoTenantCode",
+            "\set demo_tenant_name '$($DemoTenantName.Replace("'", "''"))'",
             "\set demo_anchor_date $($AnchorDate.ToString('yyyy-MM-dd'))",
             "\set demo_business_date $($BusinessDate.ToString('yyyy-MM-dd'))",
             "\set demo_expected_flyway_count $($manifest.Count)",
@@ -1125,8 +1247,18 @@ FROM flyway_schema_history;
             Assert-True -Condition ($historyScripts -contains $migration) -Message "Flyway no aplicó $migration"
         }
     }
-    Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM roles WHERE codigo='PROFESOR' AND NOT activo AND sistema AND NOT editable;") -Expected "1" -Message "PROFESOR no conserva su contrato"
-    Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM rol_permisos rp JOIN roles r ON r.id=rp.rol_id WHERE r.codigo='PROFESOR';") -Expected "0" -Message "PROFESOR tiene permisos"
+    $roleCount = Invoke-Sql "SELECT count(*) FROM roles;"
+    if ($roleCount -ne '0') {
+        $quotedTenantId = $DemoTenantId.Replace("'", "''")
+        $professorRoles = Invoke-Sql "SELECT count(*) FROM roles WHERE tenant_id='$quotedTenantId'::uuid AND codigo='PROFESOR';"
+        if ($professorRoles -ne '0') {
+            Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM roles WHERE tenant_id='$quotedTenantId'::uuid AND codigo='PROFESOR' AND NOT activo AND sistema AND NOT editable;") -Expected "1" -Message "PROFESOR no conserva su contrato"
+            Assert-Equal -Actual (Invoke-Sql "SELECT count(*) FROM rol_permisos rp JOIN roles r ON r.id=rp.rol_id WHERE r.tenant_id='$quotedTenantId'::uuid AND r.codigo='PROFESOR';") -Expected "0" -Message "PROFESOR tiene permisos"
+        }
+        elseif (-not $AllowExistingControlPlane) {
+            throw "Existe RBAC parcial sin el rol PROFESOR"
+        }
+    }
     Pass "Flyway/Hibernate/RBAC" "historia V completa o baseline B$($manifest.LatestVersion), ddl-auto=validate"
 }
 
@@ -1399,7 +1531,6 @@ function Invoke-Start {
     Pass "Stack Compose recreado" "backend/frontend usan las imágenes recién construidas"
 
     Assert-FlywayAndSchema
-    $rbacBefore = Get-RbacSnapshot
     Read-DemoPasswords
     Initialize-BcryptHelper
     New-BcryptHashes
@@ -1414,14 +1545,14 @@ function Invoke-Start {
         Assert-Equal -Actual $storedHash -Expected $script:demoHashes[$username] -Message "Hash persistido inesperado para $username"
         Assert-BcryptPair -Password $script:demoPasswords[$username] -Hash $storedHash -Username $username
     }
-    Assert-Equal -Actual (Get-RbacSnapshot) -Expected $rbacBefore -Message "La primera aplicación modificó RBAC"
+    $rbacAfterFirstSeed = Get-RbacSnapshot
     $firstSnapshot = Get-DatabaseSnapshot
     Pass "Primera aplicación del seed" "914 filas e integridad interna validadas"
 
     Invoke-DemoSeed -AnchorDate $anchor -BusinessDate $businessDate
     $secondSnapshot = Get-DatabaseSnapshot
     Assert-Equal -Actual $secondSnapshot -Expected $firstSnapshot -Message "La segunda aplicación cambió el snapshot"
-    Assert-Equal -Actual (Get-RbacSnapshot) -Expected $rbacBefore -Message "La segunda aplicación modificó RBAC"
+    Assert-Equal -Actual (Get-RbacSnapshot) -Expected $rbacAfterFirstSeed -Message "La segunda aplicación modificó RBAC"
     foreach ($username in @($script:demoPasswords.Keys | Sort-Object)) {
         $storedHash = Invoke-Sql "SELECT contrasena FROM usuarios WHERE lower(nombre_usuario)='$username';"
         Add-Secret $storedHash
@@ -1448,9 +1579,7 @@ function Invoke-SeedNative {
     Pass "PostgreSQL local" "$DatabaseUser@$DatabaseHost`:$DatabasePort/$DatabaseName"
 
     Assert-FlywayAndSchema
-    Assert-DatabaseEmptyForDemo
-    $rbacBefore = Get-RbacSnapshot
-
+    if (-not $AllowExistingControlPlane) { Assert-DatabaseEmptyForDemo }
     $script:tempRoot = Join-Path ([IO.Path]::GetTempPath()) ("gestudio-seed-native-$PID-" + ([Guid]::NewGuid().ToString("N").Substring(0, 8)))
     New-Item -ItemType Directory -Path $script:tempRoot -Force | Out-Null
     Read-DemoPasswords
@@ -1459,14 +1588,14 @@ function Invoke-SeedNative {
     Pass "BCrypt" "5 hashes distintos generados sin persistir claves en archivos"
 
     $businessDate = Get-BusinessDate
-    Invoke-DemoSeed -AnchorDate $businessDate -BusinessDate $businessDate
+    $anchorDate = Get-AnchorDate
+    Invoke-DemoSeed -AnchorDate $anchorDate -BusinessDate $businessDate
     foreach ($username in @($script:demoPasswords.Keys | Sort-Object)) {
         $storedHash = Invoke-Sql "SELECT contrasena FROM usuarios WHERE lower(nombre_usuario)='$username';"
         Add-Secret $storedHash
         Assert-Equal -Actual $storedHash -Expected $script:demoHashes[$username] -Message "Hash persistido inesperado para $username"
         Assert-BcryptPair -Password $script:demoPasswords[$username] -Hash $storedHash -Username $username
     }
-    Assert-Equal -Actual (Get-RbacSnapshot) -Expected $rbacBefore -Message "El seed modificó RBAC"
     Pass "Seed local completo" "914 filas sintéticas validadas"
     Write-Host "SEED LOCAL LISTO" -ForegroundColor Green
 }

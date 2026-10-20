@@ -1,17 +1,18 @@
 # Runbook operativo del control plane de plataforma
 
-- Estado del runbook: `IMPLEMENTED_NOT_RUN`
-- Estado de evidencia operativa: `PARTIAL`
-- Fecha de revisión: 2026-08-13
+- Estado del runbook: `IMPLEMENTED_LOCAL`
+- Estado de evidencia repo-local: `EXECUTED`
+- Fecha de revisión: 2026-08-24
 - Alcance: acceso `SUPERADMIN`, activación, tenants, administradores,
   step-up, auditoría, bootstrap, recuperación e incidentes
 
 ## Qué acredita y qué no acredita
 
 Este runbook refleja las rutas, controles y herramientas presentes en el
-checkout. En esta revisión no se ejecutaron Docker, PostgreSQL, browser E2E,
-bootstrap, backup/restore, rollback ni CI sobre el SHA candidato. Por eso su
-existencia no habilita `RELEASE_READINESS=PASS` ni autoriza producción.
+checkout. El gate local ejecuta Docker, PostgreSQL, browser E2E, bootstrap,
+MFA, Alpha/Beta, lifecycle, RLS y auditoría; backup/restore, rollback y CI se
+reportan por separado sobre cada SHA. Ninguna evidencia local autoriza
+producción sin completar #23, #24 y #25 en infraestructura aprobada.
 
 Documentos complementarios:
 
@@ -413,8 +414,9 @@ son decisiones separadas; el rollback de código no revierte Flyway.
 
 ## Limitaciones conocidas y STOP conditions
 
-- Los gates PostgreSQL/Testcontainers, Docker, E2E browser, backup/restore,
-  rollback, bootstrap y CI están `NOT_EXECUTED` en esta revisión.
+- PostgreSQL/Testcontainers, Docker, E2E browser, bootstrap, backup/restore y
+  rollback disponen de gates repo-locales ejecutables; sus resultados y CI
+  deben verificarse de nuevo sobre cada SHA publicado.
 - No hay evidencia actual de staging/producción para TLS, proxy, DNS, CORS,
   cookies, CSP, correo ni storage externo.
 - No están provistos/validados un collector central, alertas administradas,
@@ -430,8 +432,9 @@ son decisiones separadas; el rollback de código no revierte Flyway.
   revocada.
 - `ARCHIVED` es terminal en la UI. El backend valida valores de estado, pero no
   implementa por sí solo todo el grafo canónico de transiciones tenant.
-- Spring CSRF está deshabilitado; bearer tokens, `SameSite` y origin checking
-  reducen exposición, pero el E2E adversarial de navegador no fue ejecutado.
+- Spring CSRF está deshabilitado; bearer tokens, `SameSite`, origin checking y
+  el E2E adversarial local reducen exposición. La frontera TLS/proxy productiva
+  sigue requiriendo #23.
 - La configuración de cookie platform es segura por defecto y rechaza
   `SameSite=None` sin `Secure`; no se evidenció un guard de producción que exija
   explícitamente `Secure=true` para todas las demás combinaciones.

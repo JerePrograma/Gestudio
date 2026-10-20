@@ -1,4 +1,84 @@
-WITH demo_anchor AS (
+WITH demo_scope AS (
+    SELECT COALESCE(NULLIF(current_setting('gestudio.demo_tenant_id', true), ''),
+        '00000000-0000-0000-0000-000000000001')::uuid AS tenant_id,
+        COALESCE(NULLIF(current_setting('gestudio.demo_business_date', true), '')::date,
+            (CURRENT_TIMESTAMP AT TIME ZONE 'America/Argentina/Buenos_Aires')::date) AS business_date
+), roles AS (
+    SELECT * FROM public.roles
+    WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+      AND codigo IN ('SUPERADMIN','DIRECCION','ADMINISTRADOR','SECRETARIA','CAJA','PROFESOR')
+), rol_permisos AS (
+    SELECT rp.* FROM public.rol_permisos rp JOIN roles r ON r.id = rp.rol_id
+), usuarios AS (
+    SELECT u.* FROM public.usuarios u WHERE EXISTS (
+        SELECT 1 FROM public.tenant_memberships m
+        WHERE m.usuario_id = u.id AND m.tenant_id = (SELECT tenant_id FROM demo_scope)
+    )
+), usuario_roles AS (
+    SELECT ur.* FROM public.usuario_roles ur JOIN roles r ON r.id = ur.rol_id
+), salones AS (
+    SELECT * FROM public.salones WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), profesores AS (
+    SELECT * FROM public.profesores WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), observaciones_profesores AS (
+    SELECT * FROM public.observaciones_profesores WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), bonificaciones AS (
+    SELECT * FROM public.bonificaciones WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), recargos AS (
+    SELECT * FROM public.recargos WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), metodo_pagos AS (
+    SELECT * FROM public.metodo_pagos WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), sub_conceptos AS (
+    SELECT * FROM public.sub_conceptos WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), conceptos AS (
+    SELECT * FROM public.conceptos WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), stocks AS (
+    SELECT * FROM public.stocks WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), disciplinas AS (
+    SELECT * FROM public.disciplinas WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), disciplina_horarios AS (
+    SELECT * FROM public.disciplina_horarios WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), alumnos AS (
+    SELECT * FROM public.alumnos WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), inscripciones AS (
+    SELECT * FROM public.inscripciones WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), disciplina_tarifas AS (
+    SELECT * FROM public.disciplina_tarifas WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), inscripcion_condiciones_economicas AS (
+    SELECT * FROM public.inscripcion_condiciones_economicas WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), mensualidades AS (
+    SELECT * FROM public.mensualidades WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), matriculas AS (
+    SELECT * FROM public.matriculas WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), asistencias_mensuales AS (
+    SELECT * FROM public.asistencias_mensuales WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), asistencias_alumno_mensual AS (
+    SELECT * FROM public.asistencias_alumno_mensual WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), asistencias_diarias AS (
+    SELECT * FROM public.asistencias_diarias WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), ventas_stock AS (
+    SELECT * FROM public.ventas_stock WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), cargos AS (
+    SELECT * FROM public.cargos WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), cargo_liquidaciones AS (
+    SELECT * FROM public.cargo_liquidaciones WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), pagos AS (
+    SELECT * FROM public.pagos WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), aplicaciones_pago AS (
+    SELECT * FROM public.aplicaciones_pago WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), egresos AS (
+    SELECT * FROM public.egresos WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), movimientos_caja AS (
+    SELECT * FROM public.movimientos_caja WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), movimientos_credito AS (
+    SELECT * FROM public.movimientos_credito WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), movimientos_stock AS (
+    SELECT * FROM public.movimientos_stock WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), recibos AS (
+    SELECT * FROM public.recibos WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), recibos_pendientes AS (
+    SELECT * FROM public.recibos_pendientes WHERE tenant_id = (SELECT tenant_id FROM demo_scope)
+), demo_anchor AS (
     SELECT
         fecha_nacimiento,
         substring(
@@ -131,7 +211,7 @@ SELECT CASE WHEN
     AND EXISTS (
         SELECT 1
         FROM demo_anchor
-        WHERE extract(month FROM fecha_nacimiento) = extract(month FROM anchor_date)
-          AND extract(day FROM fecha_nacimiento) = extract(day FROM anchor_date)
+        WHERE extract(month FROM fecha_nacimiento) = extract(month FROM (SELECT business_date FROM demo_scope))
+          AND extract(day FROM fecha_nacimiento) = extract(day FROM (SELECT business_date FROM demo_scope))
     )
 THEN 'true' ELSE 'false' END;
