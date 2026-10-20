@@ -17,13 +17,13 @@ No crees ramas nuevas salvo orden expresa.
 
 La misión es cerrar Gestudio como producto de producción mediante evidencia técnica reproducible, incorporando además:
 
-1. un **control plane / backoffice visual de plataforma** para `SUPERADMIN`;
+1. un **control plane / backoffice visual de plataforma** para `PLATFORM_SUPERADMIN`;
 2. provisioning seguro de tenants, administradores, memberships, roles y permisos;
 3. ciclo de vida de tenants;
 4. auditoría íntegra de operaciones privilegiadas;
 5. una estrategia de migraciones Flyway limpia para instalaciones nuevas;
 6. producción **sin seed funcional**;
-7. bootstrap explícito y seguro del primer `SUPERADMIN`;
+7. bootstrap explícito y seguro del primer `PLATFORM_SUPERADMIN`;
 8. reconstrucción clean-room desde una DB vacía;
 9. compatibilidad de upgrade desde instalaciones históricas soportadas;
 10. una **Quality Fortress** que haga depender la confianza de pruebas, restricciones, mutation testing, coverage, análisis automático y gates ejecutados, no de revisión manual del código generado.
@@ -188,18 +188,16 @@ Al inicio completá una sección de estado vivo con evidencia real.
 ```text
 REPOSITORY=C:\laburo\Gestudio
 BRANCH=main
-HEAD=53547baac50063de85fb694124241d9f58e256a1
-ORIGIN_MAIN=53547baac50063de85fb694124241d9f58e256a1
-DIVERGENCE=0 ahead / 0 behind en los refs locales; fetch final pendiente antes de publicación
-WORKTREE=DIRTY_TASK_OWNED: implementación control-plane, V12/B12, frontend, operación, CI y documentación en curso; staging vacío
-FLYWAY_CURRENT=V1-V11 publicados permanecen inmutables; V12 forward-only y B12 fresh están presentes en el worktree, pero B12 cambió después de la última ejecución PostgreSQL focal; fresh, validate, equivalence, upgrade y backup/restore están NOT_EXECUTED sobre los bytes actuales
-DOCKER_CONTEXT=desktop-linux configurado; daemon Linux inaccesible por named pipe el 2026-08-13; BLOCKED_ENVIRONMENT para PostgreSQL/Testcontainers, E2E runtime y drills operativos; no se intentó iniciar ni mutar Docker
-PROTECTED_DEMO=estado actual NOT_EXECUTED por Docker inaccesible; sólo existe un último snapshot histórico healthy de gestudio-remote-demo; no iniciar, detener, recrear, inspeccionar datos ni mutar
-CURRENT_PHASE=Fases 9-14, estabilización y reconciliación. Backend, frontend, Nginx y B12 cambiaron después de BackendStatic, FrontendCoverage, FrontendDiffCoverage, FrontendStatic, frontend build y la ejecución PostgreSQL focal; esos resultados quedan como evidencia histórica invalidada y requieren rerun. SupplyChain terminó exit 1: npm audit total/productivo, SBOM backend/frontend y política inmutable de Actions PASS; Dependency-Check backend no produjo reporte por 503 de RetireJS y errores de ingestión NVD, por lo que SupplyChain=FAIL y no evidencia vulnerabilidades. Los contratos estáticos actuales de E2E, rollback, bootstrap y reset efímero pasaron sin contactar Docker
-BLOCKER=BLOCKED_ENVIRONMENT: Docker daemon no disponible para gates PostgreSQL y operativos; Dependency-Check backend bloqueado por datos externos/RetireJS 503. Quedan además reruns internos obligatorios sobre el árbol estabilizado: backend/frontend build, tests, coverage, static, authorization y diff-check. RELEASE_READINESS no puede pasar hasta ejecutar los gates sobre el SHA definitivo publicado
-LAST_GREEN_GATE=Subgates SupplyChain verdes sobre el árbol actual: npm audit total y productivo 0 vulnerabilidades; SBOM CycloneDX backend y frontend verificados; política GitHub Actions PASS. El scope agregado FAIL por Dependency-Check backend sin análisis
-NEXT_EXACT_COMMAND=Push-Location backend; try { .\mvnw.cmd -B -ntp '-Dtest=*Test,!*PostgreSqlTest,!PostgreSqlIntegrationTest,!QualityFortressBddTest' clean test } finally { Pop-Location }
-RELEASE_READINESS=PARTIAL
+HEAD=CONSULTAR_INFORME_DE_CIERRE
+ORIGIN_MAIN=CONSULTAR_INFORME_DE_CIERRE
+DIVERGENCE=debe ser 0 ahead / 0 behind al publicar
+WORKTREE=debe quedar limpio al cerrar
+FLYWAY_CURRENT=V1-V12 y B12 publicados e inmutables; próxima evolución V13
+DOCKER_CONTEXT=desktop-linux local; daemon Linux obligatorio para gates completos
+PROTECTED_DEMO=gestudio-remote-demo fuera de alcance y protegido contra mutaciones
+CURRENT_PHASE=cierre repo-local, demo multitenant persistente y verificación del SHA publicado
+BLOCKER_EXTERNO=#23 staging/producción; #24 observabilidad externa; #25 smoke desplegado Jere Platform
+READINESS=reportar por separado código, demo local y producción
 ```
 
 Actualizá esta sección:

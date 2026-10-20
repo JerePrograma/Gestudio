@@ -16,23 +16,30 @@
 4. Las decisiones y notas fuera de esas zonas se preservan.
 5. El actualizador no ejecuta tests, no inicia Docker, no modifica la demo, no
    hace staging, no crea commits y no hace push.
-6. `RELEASE_READINESS=PASS` exige árbol limpio, `HEAD == origin/main`, confirmación
-   explícita y evidencia de CI sobre el SHA publicado.
+6. La evaluación separa `REPOSITORY_CODE_READINESS`,
+   `LOCAL_MULTITENANT_DEMO_READINESS` y `PRODUCTION_ENVIRONMENT_READINESS`.
+   El estado repo-local sólo puede ser `PASS` con árbol limpio,
+   `HEAD == origin/main` y CI verde sobre el SHA publicado.
 
-## Estado histórico recibido — pendiente de revalidación
+## Estado histórico recibido y revalidación vigente
 
-- `RELEASE_READINESS` quedó en `PARTIAL`.
+- La demo multitenant persistente quedó ejecutada y operativa en el proyecto
+  `gestudio-demo-local`; esto no eleva por sí solo el readiness del repositorio.
 - El control-plane `PLATFORM`/`TENANT` está ampliamente implementado.
 - MFA/TOTP, refresh rotation, step-up, idempotencia y auditoría fueron desarrollados.
 - `B12` fresh y `V1→V12` tuvieron evidencia verde en etapas anteriores, invalidada
   por cambios posteriores.
-- Docker Desktop quedó detenido o deshabilitado.
-- PostgreSQL, Testcontainers, PIT y E2E real no quedaron cerrados sobre el árbol final.
-- Playwright y Axe quedaron preparados estáticamente.
-- Supply Chain quedó parcial: npm/SBOM tuvieron resultados favorables, pero OWASP
-  Dependency-Check no produjo un análisis válido por fallos externos.
-- La última ejecución registrada había detectado fallos frontend en páginas de plataforma.
-- No hubo commit/push final de release.
+- Docker Desktop local volvió a estar disponible en modo Linux.
+- PostgreSQL, Testcontainers y el E2E real del control plane fueron ejecutados
+  sobre el candidato; PIT y CI deben verificarse nuevamente tras cada cambio.
+- Playwright y Axe ejecutan el escenario Alpha/Beta real.
+- Supply Chain local pasó npm audit, Dependency-Check, SBOM y la política de
+  Actions. Dependency-Check reportó una CVE MEDIUM transitiva de Testcontainers,
+  por debajo del umbral configurado y sin una suppression nueva.
+- Frontend quedó verde con 585 tests, cobertura, lint, duplicación y build.
+- Quality Fortress backend sigue bloqueado: JaCoCo global 73%/59% contra
+  90%/85%, PIT global 61% contra 80% y PIT crítico excede 60 minutos.
+- El commit, push y CI definitivos se registran sólo en el informe de cierre.
 
 ## Orden obligatorio de continuidad
 
@@ -114,7 +121,7 @@
 - [ ] Hacer push directo a `origin/main`.
 - [ ] Verificar GitHub Actions sobre el SHA publicado.
 - [ ] Actualizar este documento con hash, mensaje y resultados.
-- [ ] Cambiar `RELEASE_READINESS` a `PASS` sólo al final.
+- [ ] Informar los tres estados de readiness sólo con evidencia final.
 
 ## Uso del actualizador
 
@@ -969,3 +976,133 @@ warning: in the working copy of 'backend/src/test/java/gestudio/infra/persistenc
 - Registrar por qué un gate no pudo ejecutarse.
 - No borrar resultados anteriores: marcarlos como invalidados.
 - No convertir pruebas focales en evidencia de release integral.
+
+### Unificación local del 20 de octubre de 2026
+
+La copia efectiva está en `C:\laburo\Scalaris projects\Gestudio`. La ruta
+`C:\laburo\Gestudio` que figuraba en el contexto de la sesión no existe.
+El usuario confirmó que todos los avances de la otra computadora están en
+`origin/main` y que se mantiene este modelo: datos separados por academia,
+identidad compartida con varias memberships y administración de plataforma
+separada.
+
+Se compararon el checkout `0bfc4441`, el commit remoto `d530b9b9` y los cambios
+locales sin commit. El multitenant principal ya existía en el historial común;
+el remoto agregaba cuatro archivos y la copia local tenía avances operativos,
+de documentación y del manual. La rama de trabajo
+`codex/integracion-multitenant` parte de `d530b9b9` y reúne ambos conjuntos.
+En la primera fase se conservaron sin commits; después el usuario autorizó
+expresamente guardar y publicar toda la integración en `main`.
+
+Antes de integrar se guardaron historial completo, diff binario y archivos
+modificados/nuevos en
+`C:\laburo\_audit\gestudio-unificacion-20261020-111929`. También se conserva el
+stash `respaldo-pre-unificacion-20261020`. Los archivos ignorados originales
+permanecieron en su lugar. Se resolvieron los dos conflictos del seed y su
+validador conservando las rutas de recibos por tenant, los controles RBAC y la
+corrección Maven para rutas con espacios.
+
+Correcciones adicionales de esta revisión:
+
+- Renovación de sesión vinculada a usuario, academia y sesión vigente;
+  respuestas y errores tardíos no reemplazan ni eliminan un login posterior.
+- Administración de identidades compartidas/plataforma protegida frente a
+  cambios de credenciales desde una academia; alta de usuarios sin escrituras
+  a las relaciones legacy revocadas por V12.
+- Protección del último administrador efectivo y serialización de cambios
+  concurrentes con los permisos reales del usuario de ejecución.
+- Lecturas y escrituras del seed limitadas a la academia seleccionada,
+  incluyendo catálogos con nombres repetidos entre academias; tarifa histórica
+  con cobertura anual y fecha comercial separada del ancla histórica.
+- Validadores de dataset limitados al tenant, incluidos recibos, y manual de
+  40 capítulos conservado con autenticación local privada en memoria.
+
+No se modificó ninguna migración publicada ni se cambió el esquema. Los
+backups, datasets de prueba, resultados y hashes sintéticos de esta revisión
+están fuera del repositorio o en rutas ignoradas. La evidencia de SQL está en
+`C:\laburo\_audit\gestudio-pg-20261020-112204`.
+
+Docker no está disponible en este equipo. Los builds de imágenes, el recorrido
+Compose en navegador y la recaptura del manual requieren una validación
+posterior con ese motor. No se modificaron bases existentes ni despliegues.
+La reconstrucción del manual usa capturas preexistentes y no demuestra el
+estado actual de la demo pública.
+
+Validación de esta intervención:
+
+- Backend: Java 21, `GESTUDIO_TEST_POSTGRES_PORT=52915`,
+  `GESTUDIO_TEST_POSTGRES_USER=gestudio_verify`,
+  `GESTUDIO_TEST_POSTGRES_DISPOSABLE=true` y `backend/mvnw.cmd clean verify`:
+  `BUILD SUCCESS`, 414 pruebas, cero fallos y cero errores. Dos pruebas de
+  enlaces simbólicos se omiten porque Windows no concede ese permiso. Todas
+  las pruebas PostgreSQL se ejecutaron; no se sustituyeron por H2 ni stubs.
+  Log: `artifacts/backend-unification-final-verify.log`. Se probaron alta,
+  edición y suspensión con `gestudio_app`, carreras de último administrador,
+  provisión frente a reset de credenciales y activación frente a reasignación
+  de administrador. Una segunda revisión independiente no dejó defectos
+  materiales pendientes en el diff.
+- Frontend: `npm run lint`, `npm run build` con
+  `VITE_API_BASE_URL=http://127.0.0.1:8080/api`, `npm test`,
+  `npm run e2e:typecheck` y `npm run e2e:list`: aprobados. La suite ejecutó
+  589 pruebas Vitest en 81 archivos y 11 comprobaciones Node del proxy/headers.
+- SQL con PostgreSQL 17.5 efímero, en loopback y puerto aleatorio: Flyway real
+  validó V1-V12 desde cero, B12 fresh y V11→V12; historia 12/1/12 y ninguna
+  migración fallida. Las migraciones publicadas conservan sus checksums.
+- Seed aplicado dos veces en cada una de esas tres bases: 914 filas del
+  contrato, 115 cargos, 48 pagos y 48 recibos; conciliación aprobada. Con
+  catálogos homónimos en Beta se conservaron exactamente 85 filas de 13 tablas.
+  El caso fallaba antes del arreglo por una FK entre tenants.
+- El validador remoto SQL aprobó siete escenarios: clean, baseline, upgrade,
+  Beta con nombres repetidos, enero, noviembre y ancla enero con fecha comercial
+  octubre. Rechazó tenant inexistente, recibo fuera del tenant y fecha comercial
+  incorrecta. Para pruebas de otra fecha acepta
+  `SET gestudio.demo_business_date = '2026-01-20'`; para otro tenant,
+  `SET gestudio.demo_tenant_id = '<uuid>'`. Su valor predeterminado de fecha es
+  el día comercial actual de Argentina.
+- Contratos operativos: `test-run-control-plane-contract.ps1`,
+  `test-bootstrap-platform-admin-contract.ps1`,
+  `test-local-docker-guards-contract.ps1`,
+  `test-reset-ephemeral-database-contract.ps1` y
+  `test-rollback-backend-contract.ps1`: aprobados. Son pruebas estáticas o con
+  dobles de Docker; no constituyen un despliegue real.
+- Manual: `node --test scripts/manual/flows/*.test.cjs` y
+  `Validate-Manual.ps1`: aprobados, 14 pruebas. HTML/PDF reconstruidos offline,
+  PDF de 95 páginas revisadas visualmente. Detalle en
+  `docs/manual-usuarios/LOCAL_VALIDATION.md`.
+- `git diff --check`, sintaxis de PowerShell modificados y ausencia de
+  conflictos sin resolver: aprobados.
+
+El respaldo final agrega `integration-tracked.patch`, `integration-files.zip`,
+`integration-status.txt` y una copia del PDF en el directorio de resguardo
+indicado arriba. El diff conserva los borrados y el ZIP conserva también los
+archivos que todavía no estaban versionados al tomar el respaldo. En esa fase
+el índice original de Git permaneció vacío.
+El PostgreSQL temporal se detuvo al finalizar, conservando su evidencia fuera
+del checkout.
+
+### Cierre en main autorizado el 20 de octubre de 2026
+
+El usuario pidió expresamente dejar todo unificado en `main`. La integración
+se organiza en commits focalizados de backend, sesiones frontend, operación
+multitenant, manual y documentación de continuidad. Incluye también los nuevos
+capítulos, helpers y launcher que antes figuraban como archivos sin seguimiento.
+La incorporación a `main` conserva el historial mediante avance rápido; no
+requiere descartar cambios ni forzar referencias remotas.
+
+Después de publicar, comprobar que `git status --short --branch` indique
+`main` limpio, que `HEAD` y `origin/main` coincidan y que
+`git ls-remote --heads origin main` confirme ese mismo commit. Las fuentes
+funcionales no cambiaron desde las validaciones indicadas arriba; el estado
+de GitHub Actions del commit publicado se consulta por separado.
+
+En la otra computadora, con el árbol local limpio:
+
+```bash
+git switch main
+git pull --ff-only origin main
+```
+
+Si quedan cambios locales, respaldarlos y compararlos antes del pull. No
+volver a copiar sólo algunos archivos ni elegir indiscriminadamente una
+versión completa sobre la otra. La validación Docker pendiente sigue siendo
+necesaria para afirmar disponibilidad del stack desplegado.
