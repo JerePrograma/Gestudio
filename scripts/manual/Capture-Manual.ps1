@@ -4,7 +4,8 @@ param(
     [Parameter(Mandatory)]
     [string]$OutputDirectory,
     [switch]$Headed,
-    [string]$ResumeFrom
+    [string]$ResumeFrom,
+    [string]$CredentialManifestPath
 )
 
 Set-StrictMode -Version Latest
@@ -12,14 +13,25 @@ $ErrorActionPreference = 'Stop'
 
 . (Join-Path $PSScriptRoot 'Manual.Common.ps1')
 
-Assert-ManualDemoCredentials
+if (-not [string]::IsNullOrWhiteSpace($CredentialManifestPath)) {
+    if (-not (Test-ManualLocalUri -Uri ([uri]$BaseUrl))) {
+        throw 'Las credenciales privadas del fixture sólo pueden utilizarse en una URL local.'
+    }
+    $CredentialManifestPath = [IO.Path]::GetFullPath($CredentialManifestPath)
+    if (-not (Test-Path -LiteralPath $CredentialManifestPath -PathType Leaf)) {
+        throw 'No existe el manifiesto privado del fixture multiorganización.'
+    }
+}
 
 $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
 $screenshotDirectory = Join-Path $OutputDirectory 'screenshots'
 $flowPath = Join-Path $PSScriptRoot 'flows\capture-manual.cjs'
+$accountsPath = Join-Path (Get-ManualRepositoryRoot) 'docs\manual-usuarios\data\demo-accounts.json'
 
-if (-not (Test-Path -LiteralPath $flowPath -PathType Leaf)) {
-    throw 'No existe flows/capture-manual.cjs.'
+foreach ($requiredPath in @($flowPath, $accountsPath)) {
+    if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
+        throw "No existe el archivo requerido: $requiredPath"
+    }
 }
 
 New-Item -ItemType Directory -Force -Path $screenshotDirectory | Out-Null
@@ -34,15 +46,7 @@ else {
         throw "Nombre de reanudación inválido: $ResumeFrom"
     }
 
-    $resumeOrder = [int]$Matches.order
-
-    Get-ChildItem -LiteralPath $screenshotDirectory -Filter '*.png' -File -ErrorAction SilentlyContinue |
-        Where-Object {
-            $_.Name -match '^(?<order>[0-9]{2})-' -and [int]$Matches.order -ge $resumeOrder
-        } |
-        Remove-Item -Force
-
-    Write-Host "Reanudando capturas desde $ResumeFrom; se conservan las capturas anteriores."
+    Write-Host "Reanudando capturas desde $ResumeFrom según el orden real del recorrido; se conservan las capturas anteriores."
 }
 
 $previousEnvironment = @{
@@ -50,6 +54,9 @@ $previousEnvironment = @{
     MANUAL_SCREENSHOT_DIRECTORY = [Environment]::GetEnvironmentVariable('MANUAL_SCREENSHOT_DIRECTORY', 'Process')
     MANUAL_HEADED = [Environment]::GetEnvironmentVariable('MANUAL_HEADED', 'Process')
     MANUAL_RESUME_FROM = [Environment]::GetEnvironmentVariable('MANUAL_RESUME_FROM', 'Process')
+    MANUAL_ACCOUNTS_PATH = [Environment]::GetEnvironmentVariable('MANUAL_ACCOUNTS_PATH', 'Process')
+    MANUAL_CREDENTIAL_MANIFEST_PATH = [Environment]::GetEnvironmentVariable('MANUAL_CREDENTIAL_MANIFEST_PATH', 'Process')
+    NODE_PATH = [Environment]::GetEnvironmentVariable('NODE_PATH', 'Process')
 }
 
 try {
@@ -57,16 +64,28 @@ try {
     [Environment]::SetEnvironmentVariable('MANUAL_SCREENSHOT_DIRECTORY', $screenshotDirectory, 'Process')
     [Environment]::SetEnvironmentVariable('MANUAL_HEADED', $(if ($Headed) { '1' } else { '0' }), 'Process')
     [Environment]::SetEnvironmentVariable('MANUAL_RESUME_FROM', $ResumeFrom, 'Process')
+    [Environment]::SetEnvironmentVariable('MANUAL_ACCOUNTS_PATH', $accountsPath, 'Process')
+    [Environment]::SetEnvironmentVariable('MANUAL_CREDENTIAL_MANIFEST_PATH', $CredentialManifestPath, 'Process')
+    $playwrightRuntime = Resolve-ManualPlaywrightRuntime
+    Set-ManualNodePathForRuntime `
+        -NodeModules $playwrightRuntime.NodeModules `
+        -PreviousNodePath $previousEnvironment.NODE_PATH
 
-    Write-Host 'Comprobando Chromium administrado por Playwright 1.54.1...'
+    Write-Host "Comprobando Chromium administrado por Playwright $($playwrightRuntime.Version)..."
     Invoke-ManualNativeCommand `
-        -FilePath 'npx' `
-        -Arguments @('--yes', 'playwright@1.54.1', 'install', 'chromium') | Out-Null
+        -FilePath 'node' `
+        -Arguments @($playwrightRuntime.CliPath, 'install', 'chromium') | Out-Null
 
     Write-Host 'Ejecutando recorridos reales sin traces ni vídeos...'
-    Invoke-ManualNativeCommand `
-        -FilePath 'npx' `
-        -Arguments @('--yes', '-p', 'playwright@1.54.1', 'node', $flowPath) | Out-Null
+    $captureResult = Invoke-ManualNativeCommand `
+        -FilePath 'node' `
+        -Arguments @($flowPath) -CaptureOutput
+    $summaryLines = @($captureResult.Output -split '\r?\n' |
+        Where-Object { $_.StartsWith('MANUAL_CAPTURE_SUMMARY=') })
+    if ($summaryLines.Count -ne 1) {
+        throw 'El recorrido no produjo un resumen verificable de los perfiles capturados.'
+    }
+    $captureSummary = $summaryLines[0].Substring('MANUAL_CAPTURE_SUMMARY='.Length) | ConvertFrom-Json
 }
 finally {
     foreach ($entry in $previousEnvironment.GetEnumerator()) {
@@ -75,8 +94,9 @@ finally {
 }
 
 $screenshots = @(Get-ChildItem -LiteralPath $screenshotDirectory -Filter '*.png' -File)
-if ($screenshots.Count -lt 20) {
-    throw "La captura produjo sólo $($screenshots.Count) archivos; se esperaban al menos 20."
+if ($screenshots.Count -ne 36) {
+    throw "La captura produjo $($screenshots.Count) archivos; se esperaban exactamente 36."
 }
 
 Write-Host "Capturas generadas: $($screenshots.Count)."
+return $captureSummary

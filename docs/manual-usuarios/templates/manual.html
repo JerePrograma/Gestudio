@@ -3,32 +3,46 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Manual Gestudio · Usuarios nuevos</title>
+  <meta name="color-scheme" content="light">
+  <title>Manual de Gestudio · Clientes y demo</title>
   <style>{{STYLE}}</style>
 </head>
 <body>
-  <aside class="document-banner">
-    <strong>GESTUDIO · MANUAL VISUAL DE USO</strong>
-    <span>Generado {{GENERATED_AT}}</span>
-  </aside>
+  <a class="skip-link" href="#contenido">Saltar al contenido</a>
 
-  <section class="title-page">
+  <header class="document-banner" aria-label="Encabezado del manual">
+    <strong>GESTUDIO · MANUAL PARA CLIENTES</strong>
+    <span>Actualizado {{GENERATED_AT}}</span>
+  </header>
+
+  <section class="title-page" aria-labelledby="manual-title">
+    <div class="title-brand" aria-hidden="true">G</div>
     <p class="eyebrow">GESTUDIO</p>
-    <h1>Manual visual de uso</h1>
-    <p class="title-copy">Guía paso a paso para personas que utilizan el sistema por primera vez.</p>
-    <div class="title-badges"><span>PRINCIPIANTES</span><span>CAPTURAS REALES</span></div>
-    <div class="notice info">
-      <strong>Capturas obtenidas de la demo local de Gestudio.</strong>
-      Las opciones visibles dependen del rol y los permisos.
+    <h1 id="manual-title">Empezá a trabajar con Gestudio</h1>
+    <p class="title-copy">Una guía clara y visual para conocer el sistema, elegir un perfil de demostración y recorrer las tareas principales de una academia.</p>
+    <div class="title-badges" aria-label="Características del manual">
+      <span>PASO A PASO</span>
+      <span>DATOS FICTICIOS</span>
+      <span>LECTURA OFFLINE</span>
+    </div>
+    <div class="cover-actions">
+      <a class="demo-link" href="{{PUBLIC_DEMO_URL}}">Abrir la demo de Gestudio</a>
+      <a class="secondary-link" href="#indice">Ver el índice</a>
+    </div>
+    <div class="notice info cover-notice">
+      <strong>Entorno de demostración.</strong>
+      Las cuentas y los datos de este manual fueron creados para pruebas y presentaciones. Las opciones visibles cambian según el perfil elegido.
     </div>
   </section>
 
-  <section class="generated-index">
+  <nav id="indice" class="generated-index" aria-labelledby="index-title">
     <p class="eyebrow">CONTENIDO</p>
-    <h2>Índice</h2>
+    <h2 id="index-title">Índice del manual</h2>
+    <p class="index-copy">Podés leerlo en orden o ir directamente a la tarea que necesitás.</p>
     <ol>{{INDEX}}</ol>
-  </section>
+  </nav>
 
-  <main>{{BODY}}</main>
+  {{CAPTURE_NOTE}}
+  <main id="contenido">{{BODY}}</main>
 </body>
 </html>

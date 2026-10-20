@@ -93,6 +93,7 @@ test-results/
 /artifacts/e2e/
 # Manual visual generado
 artifacts/manual/
+/artifacts/manual-live-audit/
 docs/manual-usuarios/screenshots/
 docs/manual-usuarios/.tmp/
 docs/manual-usuarios/videos/

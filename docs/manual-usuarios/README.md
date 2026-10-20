@@ -1,193 +1,157 @@
-# Generador reproducible del manual de usuarios
+# Manual de usuarios y demo comercial de Gestudio
 
-Este directorio contiene las fuentes versionadas del manual visual de Gestudio. Las pantallas operativas no se dibujan ni se recrean: se capturan desde la demo local real con los cinco roles documentados.
+Este directorio contiene las fuentes reproducibles del manual para clientes,
+dueños de academias y personal no técnico. El resultado combina explicaciones
+breves, cuentas sintéticas autorizadas y capturas de la aplicación real.
 
-## Punto de entrada
+## Cómo abrir el manual final
 
-Desde cualquier ubicación:
+Después de generarlo, abrir:
 
-```powershell
-& 'C:\laburo\Gestudio\scripts\manual\Build-Manual.ps1'
-```
+    artifacts/manual/manual.html
 
-Desde la raíz del repositorio:
+El HTML es autocontenido: incluye estilos e imágenes y puede consultarse sin
+Internet. Los enlaces a la demo pública sí necesitan conexión.
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass `
-  -File .\scripts\manual\Build-Manual.ps1
-```
+También se genera:
 
-El proceso ejecuta, en orden:
+    artifacts/manual/Manual_Gestudio_Usuarios_Nuevos.pdf
 
-1. preflight de herramientas, Git, URLs y credenciales;
-2. reutilización o inicio seguro de `scripts/demo-local.ps1`;
-3. validación read-only del dataset demo;
-4. recorridos reales con Playwright y capturas;
-5. composición de HTML autocontenido;
-6. impresión A4 a PDF mediante Chromium;
-7. validación estructural, de metadata, rutas, capturas y secretos.
+## Fuentes
 
-## Arquitectura
-
-| Fuente | Responsabilidad |
+| Ruta | Uso |
 |---|---|
-| `scripts/manual/Build-Manual.ps1` | Orquestador único. |
-| `scripts/manual/Preflight-Manual.ps1` | Herramientas, rama `main`, árbol limpio, URLs locales, credenciales y política de artefactos. |
-| `scripts/manual/Start-Gestudio.ps1` | Consulta `Status`, inicia sólo cuando hace falta y espera frontend/readiness. |
-| `scripts/manual/Seed-ManualDemo.ps1` | Valida el seed persistente existente sin `Reset` ni escrituras nuevas. |
-| `scripts/manual/Capture-Manual.ps1` | Ejecuta Chromium con Playwright 1.54.1 fijado. |
-| `scripts/manual/Render-Manual.ps1` | Lee manifest, incrusta capturas y genera HTML, PDF y metadata. |
-| `scripts/manual/Validate-Manual.ps1` | Verifica manifest, PNG, PDF, metadata, secretos e ignores. |
-| `docs/manual-usuarios/manifest.json` | Fuente de verdad de orden, roles, rutas, contenido y capturas. |
-| `docs/manual-usuarios/content/` | Fragmentos editoriales versionados. |
-| `docs/manual-usuarios/templates/` | Plantilla HTML y CSS de pantalla/impresión. |
-| `scripts/manual/flows/` | Automatización Node ejecutada por el wrapper PowerShell. |
+| manifest.json | Orden de los 40 capítulos y capturas asociadas. |
+| content/*.html | Contenido editorial en español para clientes. |
+| data/demo-accounts.json | Única fuente de las cuentas demo autorizadas y su matriz comprobada. |
+| templates/manual.html | Estructura del documento. |
+| templates/manual.css | Diseño de pantalla e impresión. |
+| scripts/manual/flows/capture-manual.cjs | Recorrido de sólo consulta y capturas reales. |
+| scripts/manual/Render-Manual.ps1 | Composición de HTML, PDF y metadata. |
+| scripts/manual/Validate-Manual.ps1 | Controles de estructura, enlaces, imágenes y contenido sensible. |
 
-Playwright se conserva como herramienta externa de desarrollo, siguiendo la estrategia documentada por el repositorio. La versión está fijada en `1.54.1`; no se agrega una dependencia de producción ni se modifica `frontend/package.json`.
+No se usa un framework adicional, una fuente remota ni una CDN.
 
-## Requisitos
+## Cuentas demo autorizadas
 
-- Windows PowerShell 5.1 o PowerShell 7.
-- Git.
-- Docker Desktop y Docker Compose v2.
-- Node 22 o superior, npm y npx.
-- JDK 21 completo.
-- Acceso a npm para la primera resolución de Playwright y Chromium.
-- Checkout limpio en la rama local `main`.
+Por indicación expresa del propietario, las nueve contraseñas sintéticas y la
+clave TOTP de demostración se publican en data/demo-accounts.json y en el
+manual generado. No son credenciales productivas y no deben reutilizarse.
 
-## Credenciales demo
+Ese archivo no puede contener:
 
-El generador utiliza únicamente variables del proceso actual:
+- token del proxy público;
+- códigos de recuperación;
+- tokens de sesión;
+- cookies;
+- credenciales de PostgreSQL;
+- direcciones internas;
+- secretos de infraestructura.
 
-```text
-GESTUDIO_DEMO_SUPERADMIN_PASSWORD
-GESTUDIO_DEMO_DIRECCION_PASSWORD
-GESTUDIO_DEMO_ADMINISTRADOR_PASSWORD
-GESTUDIO_DEMO_SECRETARIA_PASSWORD
-GESTUDIO_DEMO_CAJA_PASSWORD
-```
+El renderer crea desde esa única fuente la sección de credenciales, las tarjetas
+por perfil y la matriz. Así se evita mantener contraseñas duplicadas en varios
+fragmentos.
 
-Cuando falta alguna variable, `Build-Manual.ps1` la solicita mediante `Read-Host -AsSecureString` y la asigna sólo al proceso actual. Las claves se transmiten al mecanismo interactivo existente de `scripts/demo-local.ps1` por entrada estándar, sin incluirlas en argumentos, archivos, capturas, traces ni logs.
+## Generación pública completa en un checkout limpio
 
-`Preflight-Manual.ps1`, cuando se ejecuta solo, falla si falta una variable y nunca muestra su valor.
+Desde la raíz:
 
-## Ejecuciones útiles
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\manual\Build-Manual.ps1 -PublicDemo
 
-### Demo administrada por el generador
+El orquestador conserva su precondición de Git limpio. Comprueba la demo pública,
+recorre el fixture multiorganización existente sin modificarlo, captura las
+pantallas, genera HTML/PDF y valida el resultado. En este modo no necesita
+Docker ni Java y no inicia servicios locales.
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass `
-  -File .\scripts\manual\Build-Manual.ps1
-```
+## Generación durante una edición documental
 
-Si la demo no estaba activa, el generador la detiene al terminar. Una demo preexistente no se detiene.
+Cuando el worktree contiene cambios revisados y no corresponde hacer commit,
+stash ni usar otro worktree, ejecutar las etapas por separado:
 
-### Demo ya iniciada
+    $output = Join-Path (Get-Location) 'artifacts\manual'
+    $public = 'https://gestudio-demo-jere-287b8c90.pages.dev/'
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\manual\Capture-Manual.ps1 -BaseUrl $public -OutputDirectory $output
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\manual\Render-Manual.ps1 -BaseUrl $public -BackendUrl ($public.TrimEnd('/') + '/api') -OutputDirectory $output
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\manual\Validate-Manual.ps1 -OutputDirectory $output
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass `
-  -File .\scripts\manual\Build-Manual.ps1 `
-  -SkipApplicationStart
-```
+Este recorrido no modifica datos funcionales: inicia sesión, consulta pantallas,
+aplica filtros y cierra las sesiones. No confirma pagos, egresos, bajas,
+anulaciones, cambios de permisos ni acciones de plataforma.
 
-### Navegador visible
+## Generación con el fixture local multiorganización
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass `
-  -File .\scripts\manual\Build-Manual.ps1 `
-  -Headed `
-  -KeepApplicationRunning
-```
+Sin `-PublicDemo`, `Build-Manual.ps1` usa
+`scripts/demo-local-multitenant.ps1` para iniciar, comprobar y detener únicamente
+la demo persistente de este proyecto. Requiere PowerShell 7 (`pwsh`), Docker y
+JDK 21, además de Node. Conserva los datos existentes y no ejecuta Reset.
 
-## Resultados
+Las capturas leen las credenciales privadas del fixture en memoria. No las
+copian a las fuentes, al HTML, al PDF ni a la metadata. Las cuentas y claves
+publicadas en el manual siguen siendo exclusivamente las de la demo pública.
 
-```text
-artifacts/manual/Manual_Gestudio_Usuarios_Nuevos.pdf
-artifacts/manual/manual.html
-artifacts/manual/metadata.json
-artifacts/manual/screenshots/*.png
-```
+Si el fixture local no tiene una cuenta de presentación, el recorrido general
+usa Secretaría. El manual muestra una nota de origen y una leyenda acorde;
+la metadata registra `LocalMultitenant`, `SECRETARIA` y ocho cuentas distintas
+verificadas en nueve recorridos. Con una cuenta de presentación configurada,
+usa `DEMO_COMERCIAL` y verifica nueve cuentas distintas.
 
-`metadata.json` incluye commit, rama, URLs, viewport, locale, zona horaria, roles, versiones de herramientas, cantidad de capturas, hashes SHA-256 y cantidad estructural de páginas. Nunca incluye cookies, tokens ni contraseñas.
+Para ejecutar las etapas locales por separado sobre una demo ya iniciada:
 
-## Datos y seguridad
+    $output = Join-Path (Get-Location) 'artifacts\manual'
+    $credentials = Join-Path $env:LOCALAPPDATA 'Gestudio\gestudio-demo-local\credentials.json'
+    $capture = & .\scripts\manual\Capture-Manual.ps1 -BaseUrl 'http://localhost:18081' -OutputDirectory $output -CredentialManifestPath $credentials
+    & .\scripts\manual\Render-Manual.ps1 -OutputDirectory $output -CaptureSource $capture.CaptureSource -GeneralCaptureProfile $capture.GeneralCaptureProfile -CapturedAccountCount $capture.CapturedAccountCount
+    & .\scripts\manual\Validate-Manual.ps1 -OutputDirectory $output
 
-- La demo utiliza datos sintéticos de Academia Movimiento Sur.
-- Los recorridos del manual son read-only: no registran alumnos, inscripciones, asistencias, pagos ni egresos.
-- La captura del login se realiza con campos vacíos.
-- Traces, vídeos y reportes de Playwright permanecen desactivados.
-- No se autoriza una URL externa salvo `GESTUDIO_MANUAL_ALLOW_NON_LOCAL_URL=1`.
-- Esa autorización es explícita; no convierte el flujo en apto para producción.
-- Las capturas muestran sólo el dataset ficticio documentado.
+El manifiesto privado se rechaza para cualquier URL que no sea local.
 
-## Actualizar un flujo
+## Qué verifican las capturas
 
-1. Confirmar la ruta y el permiso en `frontend/src/rutas/routes.ts`.
-2. Confirmar labels, headings y controles accesibles en el componente real.
-3. Actualizar `scripts/manual/flows/capture-manual.cjs`.
-4. Mantener nombres deterministas `NN-descripcion.png`.
-5. Declarar cada captura exactamente una vez en `manifest.json`.
-6. No añadir coordenadas ni sleeps arbitrarios.
-7. Ejecutar el proceso completo y la revisión humana.
+- ingreso habitual con campos vacíos;
+- cuenta de presentación de Escuela Danza Marcos Paz;
+- módulos académicos, financieros, catálogos y reportes;
+- menús de Secretaría, Caja, Administración, Dirección y SUPERADMIN;
+- denegación esperada por permisos;
+- datos propios de Escuela Beta Demo;
+- ingreso de plataforma con campos vacíos;
+- organizaciones, detalle, administradores y auditoría de plataforma;
+- inicio y cierre de sesión de las nueve cuentas documentadas.
 
-## Actualizar el manifest
+Las capturas usan una ventana de 1440×1000, ocultan identificadores internos y
+no incluyen contraseñas, códigos temporales ni información del navegador.
 
-Cada entrada exige:
+## Artefactos
 
-- `id` único;
-- `order` contiguo;
-- `title`;
-- `role`;
-- `route` o `flow`;
-- `content`;
-- `required`;
-- `screenshot` y, cuando corresponde, capturas adicionales en `screenshots`.
+    artifacts/manual/
+    ├── manual.html
+    ├── Manual_Gestudio_Usuarios_Nuevos.pdf
+    ├── metadata.json
+    └── screenshots/*.png
 
-El renderer ordena por `order`, embebe cada imagen como data URI y no descarga recursos externos.
+Los artefactos y capturas están ignorados por Git. Las fuentes del manual sí se
+versionan.
 
-## Archivos versionados e ignorados
+## Actualizar un capítulo
 
-Se versionan scripts, flows, manifest, contenido, plantillas y documentación.
+1. Confirmar el comportamiento en la interfaz actual.
+2. Contrastar rutas, permisos y reglas con código o pruebas.
+3. Editar el fragmento correspondiente sin agregar lenguaje técnico.
+4. Si cambia una pantalla, actualizar el recorrido y el nombre declarado en el
+   manifest.
+5. Regenerar HTML/PDF.
+6. Ejecutar Validate-Manual.ps1.
+7. Abrir el HTML y recorrer todos los enlaces.
+8. Renderizar el PDF a imágenes y revisar cada página.
 
-Se ignoran:
+## Principios editoriales
 
-```text
-artifacts/manual/
-docs/manual-usuarios/screenshots/
-docs/manual-usuarios/.tmp/
-playwright-report/
-test-results/
-```
+- Explicar tareas y beneficios reales, no componentes técnicos.
+- Usar “organización” o “academia”; reservar “tenant” para el glosario.
+- Distinguir cargo, pago, aplicación, crédito, caja y egreso.
+- No presentar funciones que sólo existen en servicios internos.
+- Señalar límites visibles de la demo sin convertir el manual en un informe de
+  pruebas.
+- Proponer recorridos de consulta que no alteren datos compartidos.
 
-También quedan fuera traces, vídeos y temporales.
-
-## Errores frecuentes
-
-- **Falta Docker Desktop:** iniciar Docker Desktop y repetir Preflight.
-- **Falta una variable de contraseña:** ejecutar el bloque seguro de `LOCAL_VALIDATION.md` o usar `Build-Manual.ps1`, que solicita la clave.
-- **URL no local:** revisar `BaseUrl` y `BackendUrl`; no autorizar hosts externos por comodidad.
-- **Demo desactualizada:** sincronizar `main`; `demo-local.ps1` valida metadata de imágenes.
-- **No aparece una captura:** revisar que el rol tenga permiso y que el heading/label siga coincidiendo con el frontend.
-- **PDF estructuralmente válido pero visualmente incorrecto:** abrirlo y realizar la revisión humana obligatoria.
-
-## Limpieza segura
-
-Para eliminar sólo resultados generados:
-
-```powershell
-Remove-Item -LiteralPath '.\artifacts\manual' -Recurse -Force
-```
-
-Para detener la demo sin borrar volúmenes:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass `
-  -File .\scripts\demo-local.ps1 `
-  -Action Stop
-```
-
-No usar `Reset`, `docker volume prune`, `git clean -fd` ni borrados globales como sustituto.
-
-## Validación local obligatoria
-
-Seguir [LOCAL_VALIDATION.md](LOCAL_VALIDATION.md). La comprobación estructural automatizada no reemplaza la revisión visual humana del PDF.
+La lista completa de comprobaciones está en
+[LOCAL_VALIDATION.md](LOCAL_VALIDATION.md).

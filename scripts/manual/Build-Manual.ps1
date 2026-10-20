@@ -5,7 +5,8 @@ param(
     [string]$OutputDirectory,
     [switch]$SkipApplicationStart,
     [switch]$KeepApplicationRunning,
-    [switch]$Headed
+    [switch]$Headed,
+    [switch]$PublicDemo
 )
 
 Set-StrictMode -Version Latest
@@ -14,6 +15,11 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'Manual.Common.ps1')
 
 $repoRoot = Get-ManualRepositoryRoot
+
+if ($PublicDemo) {
+    $BaseUrl = 'https://gestudio-demo-jere-287b8c90.pages.dev/'
+    $BackendUrl = 'https://gestudio-demo-jere-287b8c90.pages.dev/api'
+}
 
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
     $OutputDirectory = Join-Path $repoRoot 'artifacts\manual'
@@ -31,6 +37,7 @@ $requiredSources = @(
     'Render-Manual.ps1'
     'Validate-Manual.ps1'
     'flows\capture-manual.cjs'
+    'flows\manual-accounts.cjs'
     'flows\render-manual.cjs'
 )
 
@@ -48,6 +55,7 @@ $requiredDocumentation = @(
     'docs\manual-usuarios\manifest.json'
     'docs\manual-usuarios\templates\manual.html'
     'docs\manual-usuarios\templates\manual.css'
+    'docs\manual-usuarios\data\demo-accounts.json'
 )
 
 $missingDocumentation = @(
@@ -73,6 +81,8 @@ $playwrightNodeModules = Join-Path $playwrightRuntimeDirectory 'node_modules'
 $incompleteMarkerPath = Join-Path $OutputDirectory '.last-build-incomplete'
 $completed = $false
 $locationPushed = $false
+$demoStageName = if ($PublicDemo) { '3/7 Demo pública' } else { '3/7 Demo local' }
+$datasetStageName = if ($PublicDemo) { '4/7 Fixture multiorganización' } else { '4/7 Dataset demo' }
 
 function Invoke-ManualStage {
     [CmdletBinding()]
@@ -132,15 +142,16 @@ try {
     Push-Location -LiteralPath $repoRoot
     $locationPushed = $true
 
-    Set-MissingManualDemoCredentials
-    Assert-ManualDemoCredentials
     New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
     Write-IncompleteManualMarker
 
     Invoke-ManualStage -Name '1/7 Preflight' -Action {
         & (Join-Path $PSScriptRoot 'Preflight-Manual.ps1') `
             -BaseUrl $BaseUrl `
-            -BackendUrl $BackendUrl
+            -BackendUrl $BackendUrl `
+            -AllowNonLocalUrl:$PublicDemo `
+            -SkipCredentialCheck:$PublicDemo `
+            -BrowserOnly:$PublicDemo
     }
 
     Invoke-ManualStage -Name '2/7 Runtime Playwright' -Action {
@@ -177,8 +188,16 @@ try {
         $script:playwrightRuntimePrepared = $true
     }
 
-    Invoke-ManualStage -Name '3/7 Demo local' -Action {
-        if ($SkipApplicationStart) {
+    Invoke-ManualStage -Name $demoStageName -Action {
+        if ($PublicDemo) {
+            $frontend = Invoke-WebRequest -Uri $BaseUrl -UseBasicParsing -TimeoutSec 20
+            $platform = Invoke-WebRequest -Uri ([uri]::new([uri]$BaseUrl, '/platform/login')) -UseBasicParsing -TimeoutSec 20
+            if ($frontend.StatusCode -ne 200 -or $platform.StatusCode -ne 200) {
+                throw 'La demo pública no respondió correctamente.'
+            }
+            Write-Host 'Demo pública disponible; no se inició ningún servicio local.'
+        }
+        elseif ($SkipApplicationStart) {
             & (Join-Path $PSScriptRoot 'Start-Gestudio.ps1') `
                 -BaseUrl $BaseUrl `
                 -BackendUrl $BackendUrl `
@@ -193,16 +212,25 @@ try {
         }
     }
 
-    Invoke-ManualStage -Name '4/7 Dataset demo' -Action {
-        & (Join-Path $PSScriptRoot 'Seed-ManualDemo.ps1') `
-            -BackendUrl $BackendUrl
+    Invoke-ManualStage -Name $datasetStageName -Action {
+        if ($PublicDemo) {
+            Write-Host 'Se usará el fixture multiorganización público existente sin crear ni modificar registros.'
+        }
+        else {
+            & (Join-Path $PSScriptRoot 'Seed-ManualDemo.ps1') `
+                -BackendUrl $BackendUrl
+        }
     }
 
     Invoke-ManualStage -Name '5/7 Capturas reales' -Action {
-        & (Join-Path $PSScriptRoot 'Capture-Manual.ps1') `
+        $captureParameters = @{}
+        if (-not $PublicDemo) {
+            $captureParameters.CredentialManifestPath = Get-ManualLocalCredentialManifestPath
+        }
+        $script:captureSummary = & (Join-Path $PSScriptRoot 'Capture-Manual.ps1') `
             -BaseUrl $BaseUrl `
             -OutputDirectory $OutputDirectory `
-            -Headed:$Headed
+            -Headed:$Headed @captureParameters
     }
 
     Invoke-ManualStage -Name '6/7 HTML y PDF' -Action {
@@ -210,6 +238,9 @@ try {
             -BaseUrl $BaseUrl `
             -BackendUrl $BackendUrl `
             -OutputDirectory $OutputDirectory `
+            -CaptureSource $script:captureSummary.CaptureSource `
+            -GeneralCaptureProfile $script:captureSummary.GeneralCaptureProfile `
+            -CapturedAccountCount $script:captureSummary.CapturedAccountCount `
             -ApplicationStartedByGenerator:$script:applicationStartedByGenerator
     }
 
@@ -233,21 +264,21 @@ try {
     Write-Host "Meta: $(Join-Path $OutputDirectory 'metadata.json')"
 }
 finally {
-    if ($script:applicationStartedByGenerator -and -not $KeepApplicationRunning) {
+    if (-not $PublicDemo -and $script:applicationStartedByGenerator -and -not $KeepApplicationRunning) {
         Write-Host ''
         Write-Host 'Deteniendo únicamente la demo iniciada por este generador...'
 
         $stopResult = @(
-            Invoke-ManualPowerShellFile `
-                -Path (Join-Path $repoRoot 'scripts\demo-local.ps1') `
-                -Arguments @('-Action', 'Stop') `
+            Invoke-ManualDemoScript `
+                -Path (Join-Path $repoRoot 'scripts\demo-local-multitenant.ps1') `
+                -Action Stop `
                 -AllowFailure
         ) | Select-Object -Last 1
 
         if ($null -eq $stopResult -or
             -not ($stopResult.PSObject.Properties.Name -contains 'ExitCode') -or
             $stopResult.ExitCode -ne 0) {
-            Write-Warning 'No se pudo detener la demo iniciada por el generador. Revise scripts/demo-local.ps1 -Action Status.'
+            Write-Warning 'No se pudo detener la demo iniciada por el generador. Revise scripts/demo-local-multitenant.ps1 -Action Status.'
         }
     }
 

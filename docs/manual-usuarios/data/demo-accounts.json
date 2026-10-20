@@ -1,0 +1,272 @@
+{
+  "version": 1,
+  "publicUrl": "https://gestudio-demo-jere-287b8c90.pages.dev/",
+  "platformUrl": "https://gestudio-demo-jere-287b8c90.pages.dev/platform/login",
+  "accounts": [
+    {
+      "id": "alpha-presentacion",
+      "category": "PUBLIC_PRESENTATION",
+      "recommended": true,
+      "organization": "Escuela Danza Marcos Paz",
+      "profile": "DEMO_COMERCIAL",
+      "profileLabel": "Demo pública / presentación",
+      "username": "alpha.demo.presentacion",
+      "password": "Aa9!53287285dafc7e934e893e22f329ed4d7717b2de442c46c0",
+      "purpose": "Es la cuenta recomendada para una primera visita. Permite recorrer información ficticia de Escuela Danza Marcos Paz con permisos acotados y sin riesgo de administrar la seguridad de la academia.",
+      "can": [
+        "Consultar alumnos, inscripciones, disciplinas, profesores y asistencias.",
+        "Revisar pagos, caja, stock, reportes y catálogos en modo de presentación.",
+        "Ver únicamente la información de Escuela Danza Marcos Paz."
+      ],
+      "try": [
+        "Abrir el Panel y reconocer los accesos principales.",
+        "Buscar un alumno ficticio y revisar sus inscripciones.",
+        "Consultar pagos, caja y un reporte sin registrar movimientos."
+      ],
+      "cannot": [
+        "Administrar usuarios, roles o seguridad.",
+        "Configurar MFA o administrar organizaciones.",
+        "Ingresar a la administración de la plataforma."
+      ]
+    },
+    {
+      "id": "alpha-administrador",
+      "category": "TENANT_ADMIN",
+      "recommended": false,
+      "organization": "Escuela Danza Marcos Paz",
+      "profile": "ADMINISTRADOR",
+      "profileLabel": "Administrador de Escuela Danza Marcos Paz",
+      "username": "alpha.demo.admin",
+      "password": "Aa9!02cb864f709db13ba0021579ef4bf6cb",
+      "purpose": "Sirve para demostrar la administración amplia de una academia concreta y el alcance de un administrador que trabaja dentro de su propia organización.",
+      "can": [
+        "Gestionar la operación académica, financiera y de configuración de Escuela Danza Marcos Paz.",
+        "Administrar usuarios de la academia.",
+        "Consultar reportes y revisar los usuarios de la academia."
+      ],
+      "try": [
+        "Revisar disciplinas, tarifas y usuarios.",
+        "Consultar caja, egresos y reportes.",
+        "Comparar sus datos con los de Escuela Beta Demo."
+      ],
+      "cannot": [
+        "Administrar el catálogo protegido de roles.",
+        "Ver datos de Escuela Beta Demo.",
+        "Ingresar a la administración de la plataforma."
+      ]
+    },
+    {
+      "id": "beta-administrador",
+      "category": "TENANT_ADMIN",
+      "recommended": false,
+      "organization": "Escuela Beta Demo",
+      "profile": "ADMINISTRADOR",
+      "profileLabel": "Administrador de Escuela Beta Demo",
+      "username": "beta.demo.admin",
+      "password": "Aa9!02352460b079ef8e52940d1afbc8d6cc",
+      "purpose": "Está pensada para mostrar que cada academia trabaja en un espacio independiente y sólo ve sus propios datos.",
+      "can": [
+        "Gestionar la operación de Escuela Beta Demo según el perfil Administrador.",
+        "Administrar usuarios pertenecientes a Escuela Beta Demo.",
+        "Consultar exclusivamente los datos cargados para Beta."
+      ],
+      "try": [
+        "Buscar alumnos de Escuela Beta Demo.",
+        "Comprobar que los alumnos de Escuela Danza Marcos Paz no aparecen.",
+        "Revisar disciplinas y reportes propios de Beta."
+      ],
+      "cannot": [
+        "Administrar el catálogo protegido de roles.",
+        "Ver datos de Escuela Danza Marcos Paz.",
+        "Ingresar a la administración de la plataforma."
+      ]
+    },
+    {
+      "id": "alpha-superadmin",
+      "category": "FUNCTIONAL",
+      "recommended": false,
+      "organization": "Escuela Danza Marcos Paz",
+      "profile": "SUPERADMIN",
+      "profileLabel": "Superadministración de la academia",
+      "username": "demo-superadmin",
+      "password": "Aa9!b1a0fc6088586e731ed9fa9e8152cac3",
+      "purpose": "Representa a quien administra de forma completa una academia, incluidos usuarios, roles y configuraciones sensibles de esa organización.",
+      "can": [
+        "Acceder a todos los módulos de Escuela Danza Marcos Paz.",
+        "Administrar usuarios, roles, configuración y seguridad de la academia.",
+        "Realizar tareas académicas, financieras y de reportes."
+      ],
+      "try": [
+        "Revisar el catálogo de roles y permisos.",
+        "Comparar el menú con Secretaría y Caja.",
+        "Consultar usuarios y reportes sin cambiar datos de la demo."
+      ],
+      "cannot": [
+        "Ver datos de Escuela Beta Demo.",
+        "Crear o administrar organizaciones desde la plataforma.",
+        "Sustituir a PLATFORM_SUPERADMIN."
+      ]
+    },
+    {
+      "id": "alpha-direccion",
+      "category": "FUNCTIONAL",
+      "recommended": false,
+      "organization": "Escuela Danza Marcos Paz",
+      "profile": "DIRECCION",
+      "profileLabel": "Dirección",
+      "username": "demo-direccion",
+      "password": "Aa9!590e53533af4e8b76fa6b74f3607684b",
+      "purpose": "Es útil para directores que necesitan una visión amplia de la academia, sus reportes, finanzas y configuración, sin administrar el catálogo protegido de roles.",
+      "can": [
+        "Consultar y gestionar la operación académica y financiera.",
+        "Administrar usuarios y revisar sus roles asignados.",
+        "Acceder a reportes y configuraciones de la academia."
+      ],
+      "try": [
+        "Abrir reportes y Caja.",
+        "Revisar disciplinas, tarifas y egresos.",
+        "Comprobar que la opción Roles no aparece en su menú."
+      ],
+      "cannot": [
+        "Administrar el catálogo protegido de roles.",
+        "Ver datos de otra academia.",
+        "Administrar la plataforma completa."
+      ]
+    },
+    {
+      "id": "alpha-administrador-funcional",
+      "category": "FUNCTIONAL",
+      "recommended": false,
+      "organization": "Escuela Danza Marcos Paz",
+      "profile": "ADMINISTRADOR",
+      "profileLabel": "Administración",
+      "username": "demo-administrador",
+      "password": "Aa9!6b0dfb6609fa5f2540f484cab298a61b",
+      "purpose": "Representa al personal administrativo con acceso amplio a la gestión cotidiana, los usuarios y la configuración de la academia.",
+      "can": [
+        "Gestionar módulos académicos, pagos, egresos y stock, y consultar Caja.",
+        "Administrar usuarios y configuración de Escuela Danza Marcos Paz.",
+        "Consultar y exportar reportes cuando la opción esté disponible."
+      ],
+      "try": [
+        "Revisar disciplinas y tarifas.",
+        "Consultar usuarios, caja y reportes.",
+        "Comprobar que Roles permanece protegido."
+      ],
+      "cannot": [
+        "Administrar el catálogo protegido de roles.",
+        "Ver datos de Escuela Beta Demo.",
+        "Administrar organizaciones de la plataforma."
+      ]
+    },
+    {
+      "id": "alpha-secretaria",
+      "category": "FUNCTIONAL",
+      "recommended": false,
+      "organization": "Escuela Danza Marcos Paz",
+      "profile": "SECRETARIA",
+      "profileLabel": "Secretaría",
+      "username": "demo-secretaria",
+      "password": "Aa9!09eebfe001a7e4779866de2ee8019866",
+      "purpose": "Es ideal para quien atiende alumnos y resuelve inscripciones, asistencias y cobros de la operación diaria.",
+      "can": [
+        "Gestionar alumnos e inscripciones.",
+        "Registrar asistencias y cobros.",
+        "Consultar disciplinas, profesores, caja, stock, reportes y catálogos."
+      ],
+      "try": [
+        "Buscar un alumno y revisar su ficha.",
+        "Consultar inscripciones y asistencias.",
+        "Revisar pagos y Caja sin registrar operaciones de prueba."
+      ],
+      "cannot": [
+        "Administrar usuarios o roles.",
+        "Registrar egresos o cambiar configuraciones protegidas.",
+        "Administrar otras organizaciones."
+      ]
+    },
+    {
+      "id": "alpha-caja",
+      "category": "FUNCTIONAL",
+      "recommended": false,
+      "organization": "Escuela Danza Marcos Paz",
+      "profile": "CAJA",
+      "profileLabel": "Caja",
+      "username": "demo-caja",
+      "password": "Aa9!b5b2a0eac2e21911864696f22ee953f9",
+      "purpose": "Está orientada a quien recibe pagos y necesita consultar alumnos, caja, stock y las formas de cobro disponibles.",
+      "can": [
+        "Consultar alumnos y pagos.",
+        "Registrar cobros y, si corresponde, generar crédito a partir de un excedente.",
+        "Consultar Caja, stock y catálogos de configuración."
+      ],
+      "try": [
+        "Buscar un alumno desde Pagos.",
+        "Revisar la pantalla de cobranza sin confirmar movimientos.",
+        "Consultar Caja, stock y métodos de pago."
+      ],
+      "cannot": [
+        "Gestionar inscripciones o asistencias.",
+        "Administrar usuarios o roles.",
+        "Registrar egresos o administrar organizaciones."
+      ]
+    },
+    {
+      "id": "plataforma-superadmin",
+      "category": "PLATFORM",
+      "recommended": false,
+      "organization": "No pertenece a una academia",
+      "profile": "PLATFORM_SUPERADMIN",
+      "profileLabel": "Administrador de plataforma",
+      "username": "platform.demo.admin",
+      "password": "Aa9!e8133c0ad30079324e8e261617ca184e8d88",
+      "totpSecret": "45YU5EGPN66QWOS5UNV4A33DF2SQC3SN",
+      "purpose": "Administra la plataforma completa y las organizaciones. Usa un ingreso separado y una comprobación adicional mediante una aplicación autenticadora.",
+      "can": [
+        "Observar y administrar organizaciones.",
+        "Gestionar administradores de plataforma y vinculaciones de usuarios con academias.",
+        "Consultar auditoría y confirmar nuevamente su identidad para acciones sensibles."
+      ],
+      "try": [
+        "Configurar el código temporal en una aplicación autenticadora compatible.",
+        "Ingresar por la pantalla separada de plataforma.",
+        "Revisar el listado de organizaciones y la auditoría sin realizar cambios."
+      ],
+      "cannot": [
+        "Usarse como cuenta diaria de Secretaría, Caja o Administración.",
+        "Representar a SUPERADMIN de Escuela Danza Marcos Paz.",
+        "Mezclar datos de distintas academias."
+      ]
+    }
+  ],
+  "roleMatrix": {
+    "columns": [
+      { "code": "DEMO_COMERCIAL", "label": "Demo" },
+      { "code": "SECRETARIA", "label": "Secretaría" },
+      { "code": "CAJA", "label": "Caja" },
+      { "code": "ADMINISTRADOR", "label": "Administración" },
+      { "code": "DIRECCION", "label": "Dirección" },
+      { "code": "SUPERADMIN", "label": "Superadmin academia" },
+      { "code": "PLATFORM_SUPERADMIN", "label": "Admin. plataforma" }
+    ],
+    "rows": [
+      { "label": "Alumnos", "values": { "DEMO_COMERCIAL": "read", "SECRETARIA": "manage", "CAJA": "read", "ADMINISTRADOR": "manage", "DIRECCION": "manage", "SUPERADMIN": "manage", "PLATFORM_SUPERADMIN": "na" } },
+      { "label": "Profesores", "values": { "DEMO_COMERCIAL": "read", "SECRETARIA": "read", "CAJA": "locked", "ADMINISTRADOR": "manage", "DIRECCION": "manage", "SUPERADMIN": "manage", "PLATFORM_SUPERADMIN": "na" } },
+      { "label": "Disciplinas y horarios", "values": { "DEMO_COMERCIAL": "read", "SECRETARIA": "read", "CAJA": "locked", "ADMINISTRADOR": "manage", "DIRECCION": "manage", "SUPERADMIN": "manage", "PLATFORM_SUPERADMIN": "na" } },
+      { "label": "Inscripciones", "values": { "DEMO_COMERCIAL": "read", "SECRETARIA": "manage", "CAJA": "locked", "ADMINISTRADOR": "manage", "DIRECCION": "manage", "SUPERADMIN": "manage", "PLATFORM_SUPERADMIN": "na" } },
+      { "label": "Asistencias", "values": { "DEMO_COMERCIAL": "read", "SECRETARIA": "manage", "CAJA": "locked", "ADMINISTRADOR": "manage", "DIRECCION": "manage", "SUPERADMIN": "manage", "PLATFORM_SUPERADMIN": "na" } },
+      { "label": "Consulta de pagos", "values": { "DEMO_COMERCIAL": "read", "SECRETARIA": "read", "CAJA": "read", "ADMINISTRADOR": "read", "DIRECCION": "read", "SUPERADMIN": "read", "PLATFORM_SUPERADMIN": "na" } },
+      { "label": "Cobranza y registro de pagos", "values": { "DEMO_COMERCIAL": "locked", "SECRETARIA": "manage", "CAJA": "manage", "ADMINISTRADOR": "manage", "DIRECCION": "manage", "SUPERADMIN": "manage", "PLATFORM_SUPERADMIN": "na" } },
+      { "label": "Anulación de pagos", "values": { "DEMO_COMERCIAL": "locked", "SECRETARIA": "locked", "CAJA": "locked", "ADMINISTRADOR": "manage", "DIRECCION": "manage", "SUPERADMIN": "manage", "PLATFORM_SUPERADMIN": "na" } },
+      { "label": "Caja", "values": { "DEMO_COMERCIAL": "read", "SECRETARIA": "read", "CAJA": "read", "ADMINISTRADOR": "read", "DIRECCION": "read", "SUPERADMIN": "read", "PLATFORM_SUPERADMIN": "na" } },
+      { "label": "Egresos", "values": { "DEMO_COMERCIAL": "locked", "SECRETARIA": "locked", "CAJA": "locked", "ADMINISTRADOR": "manage", "DIRECCION": "manage", "SUPERADMIN": "manage", "PLATFORM_SUPERADMIN": "na" } },
+      { "label": "Stock", "values": { "DEMO_COMERCIAL": "read", "SECRETARIA": "read", "CAJA": "read", "ADMINISTRADOR": "manage", "DIRECCION": "manage", "SUPERADMIN": "manage", "PLATFORM_SUPERADMIN": "na" } },
+      { "label": "Reportes", "values": { "DEMO_COMERCIAL": "read", "SECRETARIA": "read", "CAJA": "locked", "ADMINISTRADOR": "manage", "DIRECCION": "manage", "SUPERADMIN": "manage", "PLATFORM_SUPERADMIN": "na" } },
+      { "label": "Usuarios de academia", "values": { "DEMO_COMERCIAL": "locked", "SECRETARIA": "locked", "CAJA": "locked", "ADMINISTRADOR": "manage", "DIRECCION": "manage", "SUPERADMIN": "manage", "PLATFORM_SUPERADMIN": "na" } },
+      { "label": "Roles de academia", "values": { "DEMO_COMERCIAL": "locked", "SECRETARIA": "locked", "CAJA": "locked", "ADMINISTRADOR": "locked", "DIRECCION": "locked", "SUPERADMIN": "manage", "PLATFORM_SUPERADMIN": "na" } },
+      { "label": "Organizaciones", "values": { "DEMO_COMERCIAL": "na", "SECRETARIA": "na", "CAJA": "na", "ADMINISTRADOR": "na", "DIRECCION": "na", "SUPERADMIN": "na", "PLATFORM_SUPERADMIN": "manage" } },
+      { "label": "Administración de plataforma", "values": { "DEMO_COMERCIAL": "na", "SECRETARIA": "na", "CAJA": "na", "ADMINISTRADOR": "na", "DIRECCION": "na", "SUPERADMIN": "na", "PLATFORM_SUPERADMIN": "manage" } },
+      { "label": "MFA de plataforma", "values": { "DEMO_COMERCIAL": "na", "SECRETARIA": "na", "CAJA": "na", "ADMINISTRADOR": "na", "DIRECCION": "na", "SUPERADMIN": "na", "PLATFORM_SUPERADMIN": "manage" } }
+    ]
+  }
+}

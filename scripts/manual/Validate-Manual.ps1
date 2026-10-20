@@ -10,6 +10,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'Manual.Common.ps1')
 
 $repoRoot = Get-ManualRepositoryRoot
+$manualSourceRoot = Join-Path $repoRoot 'docs\manual-usuarios'
 
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
     if (-not [string]::IsNullOrWhiteSpace($PdfPath)) {
@@ -33,9 +34,10 @@ else {
 $htmlPath = Join-Path $OutputDirectory 'manual.html'
 $metadataPath = Join-Path $OutputDirectory 'metadata.json'
 $screenshotDirectory = Join-Path $OutputDirectory 'screenshots'
-$manifestPath = Join-Path $repoRoot 'docs\manual-usuarios\manifest.json'
+$manifestPath = Join-Path $manualSourceRoot 'manifest.json'
+$accountsPath = Join-Path $manualSourceRoot 'data\demo-accounts.json'
 
-foreach ($requiredPath in @($PdfPath, $htmlPath, $metadataPath, $manifestPath)) {
+foreach ($requiredPath in @($PdfPath, $htmlPath, $metadataPath, $manifestPath, $accountsPath)) {
     if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
         throw "No existe el archivo requerido: $requiredPath"
     }
@@ -55,18 +57,23 @@ if ([Text.Encoding]::ASCII.GetString($pdfBytes, 0, 4) -ne '%PDF') {
 }
 
 $htmlInfo = Get-Item -LiteralPath $htmlPath
-if ($htmlInfo.Length -lt 20000) {
+if ($htmlInfo.Length -lt 30000) {
     throw "El HTML es demasiado pequeño: $($htmlInfo.Length) bytes."
 }
 
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+$demoData = Get-Content -LiteralPath $accountsPath -Raw | ConvertFrom-Json
 $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
 
-if ($null -eq $manifest.items -or @($manifest.items).Count -lt 20) {
-    throw 'El manifest debe contener al menos 20 secciones.'
+if ([int]$manifest.version -lt 3) {
+    throw 'El manifest debe usar la versión 3 o posterior.'
 }
 
 $items = @($manifest.items)
+if ($items.Count -ne 40) {
+    throw "El manifest debe contener exactamente 40 capítulos y contiene $($items.Count)."
+}
+
 $ids = @($items | ForEach-Object { [string]$_.id })
 $orders = @($items | ForEach-Object { [int]$_.order })
 
@@ -78,21 +85,133 @@ if (@($orders | Sort-Object -Unique).Count -ne $orders.Count) {
     throw 'El manifest contiene órdenes duplicados.'
 }
 
-if (($orders | Measure-Object -Minimum).Minimum -ne 1) {
-    throw 'El orden del manifest debe comenzar en 1.'
+if (@(Compare-Object (1..40) ($orders | Sort-Object)).Count -ne 0) {
+    throw 'El orden del manifest debe ser contiguo de 1 a 40.'
 }
 
-$expectedOrders = 1..$items.Count
-if (@(Compare-Object $expectedOrders ($orders | Sort-Object)).Count -ne 0) {
-    throw 'El orden del manifest debe ser contiguo.'
+$expectedRoles = @(
+    'DEMO_COMERCIAL'
+    'SECRETARIA'
+    'CAJA'
+    'ADMINISTRADOR'
+    'DIRECCION'
+    'SUPERADMIN'
+    'PLATFORM_SUPERADMIN'
+)
+
+if (@(Compare-Object $expectedRoles @($manifest.roles)).Count -ne 0) {
+    throw 'manifest.roles no contiene exactamente los siete perfiles documentados.'
+}
+
+$allowedAudiences = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+foreach ($audienceCode in @($expectedRoles) + @('TODOS', 'DEMOSTRACION_AVANZADA')) {
+    [void]$allowedAudiences.Add([string]$audienceCode)
+}
+
+$accounts = @($demoData.accounts)
+if ($accounts.Count -ne 9) {
+    throw "demo-accounts.json debe contener exactamente nueve cuentas y contiene $($accounts.Count)."
+}
+
+$accountIds = @($accounts | ForEach-Object { [string]$_.id })
+$usernames = @($accounts | ForEach-Object { [string]$_.username })
+$passwords = @($accounts | ForEach-Object { [string]$_.password })
+
+foreach ($collection in @($accountIds, $usernames, $passwords)) {
+    if (@($collection | Where-Object { [string]::IsNullOrWhiteSpace([string]$_) }).Count -gt 0) {
+        throw 'Las cuentas demo contienen identificadores, usuarios o contraseñas vacíos.'
+    }
+    if (@($collection | Sort-Object -Unique).Count -ne $collection.Count) {
+        throw 'Las cuentas demo contienen identificadores, usuarios o contraseñas duplicados.'
+    }
+}
+
+foreach ($account in $accounts) {
+    foreach ($property in @('id', 'category', 'organization', 'profile', 'profileLabel', 'username', 'password', 'purpose', 'can', 'try', 'cannot')) {
+        if (-not ($account.PSObject.Properties.Name -contains $property)) {
+            throw "La cuenta '$($account.id)' no define '$property'."
+        }
+    }
+
+    foreach ($listProperty in @('can', 'try', 'cannot')) {
+        if (@($account.$listProperty).Count -lt 1) {
+            throw "La cuenta '$($account.id)' debe incluir al menos una entrada en '$listProperty'."
+        }
+    }
+}
+
+$platformAccounts = @($accounts | Where-Object { [string]$_.profile -eq 'PLATFORM_SUPERADMIN' })
+if ($platformAccounts.Count -ne 1) {
+    throw 'Debe existir exactamente una cuenta PLATFORM_SUPERADMIN.'
+}
+
+$totpValues = @($accounts | ForEach-Object {
+    if ($_.PSObject.Properties.Name -contains 'totpSecret' -and
+        -not [string]::IsNullOrWhiteSpace([string]$_.totpSecret)) {
+        [string]$_.totpSecret
+    }
+})
+
+if ($totpValues.Count -ne 1 -or [string]$platformAccounts[0].totpSecret -ne [string]$totpValues[0]) {
+    throw 'La única clave TOTP demo debe pertenecer a PLATFORM_SUPERADMIN.'
+}
+
+$unknownAccountProfiles = @($accounts | Where-Object { [string]$_.profile -notin $expectedRoles })
+if ($unknownAccountProfiles.Count -gt 0) {
+    throw "demo-accounts.json contiene perfiles desconocidos: $(@($unknownAccountProfiles.profile) -join ', ')."
+}
+
+$matrixColumns = @($demoData.roleMatrix.columns)
+$matrixColumnCodes = @($matrixColumns | ForEach-Object { [string]$_.code })
+if (@(Compare-Object $expectedRoles $matrixColumnCodes).Count -ne 0) {
+    throw 'La matriz demo no contiene exactamente los siete perfiles documentados.'
+}
+
+foreach ($column in $matrixColumns) {
+    if ([string]::IsNullOrWhiteSpace([string]$column.label)) {
+        throw "La columna '$($column.code)' de la matriz no tiene una etiqueta legible."
+    }
+}
+
+$matrixStates = @('manage', 'read', 'locked', 'na')
+$matrixRows = @($demoData.roleMatrix.rows)
+if ($matrixRows.Count -lt 1) {
+    throw 'La matriz demo no contiene funciones para comparar.'
+}
+
+foreach ($row in $matrixRows) {
+    if ([string]::IsNullOrWhiteSpace([string]$row.label)) {
+        throw 'La matriz demo contiene una fila sin etiqueta.'
+    }
+
+    $rowCodes = @($row.values.PSObject.Properties.Name)
+    if (@(Compare-Object $expectedRoles $rowCodes).Count -ne 0) {
+        throw "La fila '$($row.label)' no contiene exactamente los siete perfiles."
+    }
+
+    foreach ($roleCode in $expectedRoles) {
+        if ([string]$row.values.$roleCode -notin $matrixStates) {
+            throw "La fila '$($row.label)' contiene un estado inválido para '$roleCode'."
+        }
+    }
+}
+
+$allowedExternalLinks = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+[void]$allowedExternalLinks.Add([string]$demoData.publicUrl)
+[void]$allowedExternalLinks.Add([string]$demoData.platformUrl)
+
+foreach ($allowedUrl in $allowedExternalLinks) {
+    $uri = $null
+    if (-not [uri]::TryCreate($allowedUrl, [UriKind]::Absolute, [ref]$uri) -or
+        $uri.Scheme -ne 'https' -or
+        $uri.Host -ne 'gestudio-demo-jere-287b8c90.pages.dev') {
+        throw "URL demo no autorizada en demo-accounts.json: $allowedUrl"
+    }
 }
 
 function Get-ItemScreenshots {
     [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)]
-        [object]$Item
-    )
+    param([Parameter(Mandatory)][object]$Item)
 
     $names = [Collections.Generic.List[string]]::new()
 
@@ -117,10 +236,7 @@ function Get-ItemScreenshots {
 
 function Get-PngDimensions {
     [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)]
-        [string]$Path
-    )
+    param([Parameter(Mandatory)][string]$Path)
 
     $bytes = [IO.File]::ReadAllBytes($Path)
     $signature = @(137, 80, 78, 71, 13, 10, 26, 10)
@@ -144,21 +260,22 @@ function Get-PngDimensions {
     }
 }
 
-$manifestScreenshotNames = [Collections.Generic.HashSet[string]]::new(
-    [StringComparer]::OrdinalIgnoreCase
-)
-$manualSourceRoot = Join-Path $repoRoot 'docs\manual-usuarios'
+$manifestScreenshotNames = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+$accountIdSet = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+foreach ($accountId in $accountIds) {
+    [void]$accountIdSet.Add($accountId)
+}
 
 foreach ($item in $items) {
-    foreach ($property in @('id', 'order', 'title', 'role', 'content', 'required')) {
+    foreach ($property in @('id', 'order', 'title', 'audience', 'captureAs', 'content', 'required')) {
         if (-not ($item.PSObject.Properties.Name -contains $property)) {
-            throw "La sección de orden $($item.order) no define '$property'."
+            throw "El capítulo de orden $($item.order) no define '$property'."
         }
     }
 
-    foreach ($property in @('id', 'title', 'role', 'content')) {
+    foreach ($property in @('id', 'title', 'content')) {
         if ([string]::IsNullOrWhiteSpace([string]$item.$property)) {
-            throw "La sección de orden $($item.order) tiene '$property' vacío."
+            throw "El capítulo de orden $($item.order) tiene '$property' vacío."
         }
     }
 
@@ -166,10 +283,26 @@ foreach ($item in $items) {
         throw "ID inválido en manifest: $($item.id)"
     }
 
+    $itemAudiences = @($item.audience | ForEach-Object { [string]$_ })
+    if ($itemAudiences.Count -lt 1) {
+        throw "El capítulo '$($item.id)' debe declarar al menos una audiencia."
+    }
+
+    foreach ($audienceCode in $itemAudiences) {
+        if ([string]::IsNullOrWhiteSpace($audienceCode) -or -not $allowedAudiences.Contains($audienceCode)) {
+            throw "El capítulo '$($item.id)' declara una audiencia desconocida: $audienceCode"
+        }
+    }
+
+    $captureAs = [string]$item.captureAs
+    if (-not [string]::IsNullOrWhiteSpace($captureAs) -and -not $accountIdSet.Contains($captureAs)) {
+        throw "El capítulo '$($item.id)' declara una cuenta captureAs desconocida: $captureAs"
+    }
+
     $route = if ($item.PSObject.Properties.Name -contains 'route') { [string]$item.route } else { '' }
     $flow = if ($item.PSObject.Properties.Name -contains 'flow') { [string]$item.flow } else { '' }
     if ([string]::IsNullOrWhiteSpace($route) -and [string]::IsNullOrWhiteSpace($flow)) {
-        throw "La sección '$($item.id)' debe declarar route o flow."
+        throw "El capítulo '$($item.id)' debe declarar route o flow."
     }
 
     $contentPath = [IO.Path]::GetFullPath((Join-Path $manualSourceRoot ([string]$item.content)))
@@ -181,8 +314,7 @@ foreach ($item in $items) {
         throw "No existe el contenido: $($item.content)"
     }
 
-    $itemScreenshots = @(Get-ItemScreenshots -Item $item)
-    foreach ($screenshotName in $itemScreenshots) {
+    foreach ($screenshotName in @(Get-ItemScreenshots -Item $item)) {
         if ([IO.Path]::GetFileName($screenshotName) -ne $screenshotName -or
             $screenshotName -notmatch '^[0-9]{2}-[a-z0-9-]+\.png$') {
             throw "Nombre de captura inválido: $screenshotName"
@@ -197,7 +329,6 @@ foreach ($item in $items) {
             if ([bool]$item.required) {
                 throw "Falta la captura requerida: $screenshotName"
             }
-
             continue
         }
 
@@ -211,6 +342,10 @@ foreach ($item in $items) {
             throw "Dimensiones inesperadas para ${screenshotName}: $($dimensions.Width)x$($dimensions.Height)."
         }
     }
+}
+
+if ($manifestScreenshotNames.Count -ne 36) {
+    throw "El manifest debe declarar exactamente 36 capturas y declara $($manifestScreenshotNames.Count)."
 }
 
 $actualScreenshots = @(Get-ChildItem -LiteralPath $screenshotDirectory -Filter '*.png' -File)
@@ -230,11 +365,9 @@ if ($actualScreenshots.Count -ne $manifestScreenshotNames.Count) {
             Where-Object { -not $manifestScreenshotNames.Contains($_.Name) } |
             Select-Object -ExpandProperty Name
     )
-
     if ($unreferenced.Count -gt 0) {
         throw "Existen capturas no declaradas en manifest: $($unreferenced -join ', ')."
     }
-
     throw 'La cantidad de capturas no coincide con el manifest.'
 }
 
@@ -242,12 +375,15 @@ $requiredMetadata = @(
     'generatedAtUtc'
     'sourceCommit'
     'sourceBranch'
-    'baseUrl'
-    'backendUrl'
+    'applicationUrl'
     'viewport'
     'locale'
     'timezone'
     'roles'
+    'demoAccountCount'
+    'captureSource'
+    'generalCaptureProfile'
+    'capturedAccountCount'
     'screenshotCount'
     'screenshotSha256'
     'pageCount'
@@ -263,6 +399,24 @@ foreach ($property in $requiredMetadata) {
     if (-not ($metadata.PSObject.Properties.Name -contains $property)) {
         throw "Falta metadata.$property."
     }
+}
+
+if ([string]$metadata.applicationUrl -ne [string]$demoData.publicUrl) {
+    throw 'metadata.applicationUrl no coincide con la URL pública autorizada.'
+}
+
+if ([int]$metadata.demoAccountCount -ne 9) {
+    throw 'metadata.demoAccountCount debe ser 9.'
+}
+
+if ([string]$metadata.captureSource -notin @('PublicDemo', 'LocalMultitenant') -or
+    [string]$metadata.generalCaptureProfile -notin @('DEMO_COMERCIAL', 'SECRETARIA')) {
+    throw 'La metadata no identifica una fuente y un perfil de captura reconocidos.'
+}
+$expectedCapturedAccounts = if ([string]$metadata.generalCaptureProfile -eq 'SECRETARIA') { 8 } else { 9 }
+if ([int]$metadata.capturedAccountCount -ne $expectedCapturedAccounts -or
+    ([string]$metadata.captureSource -eq 'PublicDemo' -and $expectedCapturedAccounts -ne 9)) {
+    throw 'La cantidad de cuentas capturadas no corresponde al perfil general y la fuente declarados.'
 }
 
 if ([int]$metadata.screenshotCount -ne $actualScreenshots.Count) {
@@ -289,13 +443,12 @@ foreach ($file in $actualScreenshots) {
     }
 }
 
-$expectedRoles = @('SUPERADMIN', 'DIRECCION', 'ADMINISTRADOR', 'SECRETARIA', 'CAJA')
 if (@(Compare-Object $expectedRoles @($metadata.roles)).Count -ne 0) {
-    throw 'metadata.roles no contiene exactamente los cinco roles demo.'
+    throw 'metadata.roles no contiene exactamente los siete perfiles documentados.'
 }
 
-if ([int]$metadata.pageCount -lt 20) {
-    throw "Cantidad de páginas insuficiente: $($metadata.pageCount)."
+if ([int]$metadata.pageCount -lt 40) {
+    throw "Cantidad de páginas insuficiente para 40 capítulos: $($metadata.pageCount)."
 }
 
 if ([string]$metadata.pdfFileName -ne [IO.Path]::GetFileName($PdfPath)) {
@@ -329,45 +482,188 @@ if ($unexpectedDirectories.Count -gt 0) {
 }
 
 $htmlText = Get-Content -LiteralPath $htmlPath -Raw
-if ($htmlText -match '(?i)(?:src|href)\s*=\s*["'']https?://') {
-    throw 'El HTML contiene recursos web externos.'
+$metadataText = Get-Content -LiteralPath $metadataPath -Raw
+
+if ($htmlText -notmatch '(?is)^\s*<!doctype\s+html>') {
+    throw 'El HTML no comienza con un doctype válido.'
 }
 
-if ($htmlText -match '(?i)<script(?:\s|>)') {
+if ($htmlText -notmatch '(?is)<html\s+lang=["'']es-AR["'']') {
+    throw 'El HTML no declara lang="es-AR".'
+}
+
+if ($htmlText -match '(?is)<script(?:\s|>)') {
     throw 'El HTML generado no debe contener scripts.'
 }
 
-$metadataText = Get-Content -LiteralPath $metadataPath -Raw
-$pdfText = [Text.Encoding]::ASCII.GetString($pdfBytes)
-$scanText = $htmlText + "`n" + $metadataText + "`n" + $pdfText
+if ($htmlText -match '(?is)<(?:link|iframe|object|embed)(?:\s|>)') {
+    throw 'El HTML contiene un recurso o documento externo no permitido.'
+}
 
-foreach ($marker in @(
-    'Authorization'
-    'Bearer '
-    'JWT_SECRET'
-    'PASSWORD='
-    'access_token'
-    'refresh_token'
-    'gestudio_demo_refresh'
-)) {
-    if ($scanText.IndexOf($marker, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
-        throw "Se encontró un marcador sensible prohibido: $marker"
+if ($htmlText -match '(?is)@import\s+|url\s*\(\s*["'']?https?://') {
+    throw 'El CSS contiene una dependencia web externa.'
+}
+
+$sourceMatches = [regex]::Matches($htmlText, '(?is)\b(?:src|srcset)\s*=\s*["''](?<value>[^"'']+)["'']')
+foreach ($match in $sourceMatches) {
+    $value = [Net.WebUtility]::HtmlDecode($match.Groups['value'].Value)
+    if (-not $value.StartsWith('data:image/png;base64,', [StringComparison]::OrdinalIgnoreCase)) {
+        throw "El HTML contiene un recurso no embebido: $value"
     }
 }
 
-foreach ($entry in $script:ManualDemoCredentialVariables.GetEnumerator()) {
-    $secret = [Environment]::GetEnvironmentVariable($entry.Value, 'Process')
-    if (-not [string]::IsNullOrEmpty($secret) -and $scanText.Contains($secret)) {
-        throw "Se encontró el valor sensible de $($entry.Value) en un artefacto textual."
+$hrefMatches = [regex]::Matches($htmlText, '(?is)<a\b[^>]*\bhref\s*=\s*["''](?<href>[^"'']+)["'']')
+$externalLinksFound = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+$fragmentLinks = [Collections.Generic.List[string]]::new()
+
+foreach ($match in $hrefMatches) {
+    $href = [Net.WebUtility]::HtmlDecode($match.Groups['href'].Value)
+    if ($href.StartsWith('#')) {
+        $fragmentLinks.Add($href.Substring(1))
+        continue
     }
+
+    if ($href -match '^https://') {
+        if (-not $allowedExternalLinks.Contains($href)) {
+            throw "Enlace web no autorizado en el manual: $href"
+        }
+        [void]$externalLinksFound.Add($href)
+        continue
+    }
+
+    throw "Enlace no permitido en el manual offline: $href"
+}
+
+foreach ($allowedUrl in $allowedExternalLinks) {
+    if (-not $externalLinksFound.Contains($allowedUrl)) {
+        throw "Falta el enlace autorizado en el manual: $allowedUrl"
+    }
+}
+
+$idMatches = [regex]::Matches($htmlText, '(?is)\bid\s*=\s*["''](?<id>[a-zA-Z0-9_-]+)["'']')
+$htmlIds = @($idMatches | ForEach-Object { $_.Groups['id'].Value })
+if (@($htmlIds | Sort-Object -Unique).Count -ne $htmlIds.Count) {
+    $duplicates = @($htmlIds | Group-Object | Where-Object Count -gt 1 | Select-Object -ExpandProperty Name)
+    throw "El HTML contiene IDs duplicados: $($duplicates -join ', ')."
+}
+
+$htmlIdSet = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+foreach ($htmlId in $htmlIds) {
+    [void]$htmlIdSet.Add($htmlId)
+}
+
+foreach ($fragment in $fragmentLinks) {
+    if ([string]::IsNullOrWhiteSpace($fragment) -or -not $htmlIdSet.Contains($fragment)) {
+        throw "Enlace interno roto: #$fragment"
+    }
+}
+
+foreach ($expectedId in @('contenido', 'indice') + $ids) {
+    if (-not $htmlIdSet.Contains([string]$expectedId)) {
+        throw "Falta el destino interno esperado: #$expectedId"
+    }
+}
+
+$sectionMatches = [regex]::Matches($htmlText, '(?is)<section\s+id=["''](?<id>[a-z0-9-]+)["'']\s+class=["'']manual-section["'']')
+if ($sectionMatches.Count -ne 40) {
+    throw "El HTML debe contener exactamente 40 capítulos y contiene $($sectionMatches.Count)."
+}
+
+if ($htmlText -match '\{\{[A-Z0-9_]+\}\}') {
+    throw 'El HTML contiene placeholders sin resolver.'
+}
+
+foreach ($requiredGeneratedId in @('demo-credentials', 'demo-profile-cards', 'demo-role-matrix')) {
+    if (-not $htmlIdSet.Contains($requiredGeneratedId)) {
+        throw "Falta el bloque generado #$requiredGeneratedId."
+    }
+}
+
+if ($htmlText -match '(?i)>\s*Ruta\s*:') {
+    throw 'El manual muestra una ruta técnica interna.'
+}
+
+$sanitizedHtml = [regex]::Replace(
+    $htmlText,
+    'data:image/png;base64,[A-Za-z0-9+/=]+',
+    '[IMAGEN]',
+    [Text.RegularExpressions.RegexOptions]::IgnoreCase
+)
+$scanText = $sanitizedHtml + [Environment]::NewLine + $metadataText
+
+$forbiddenPatterns = [ordered]@{
+    'proxy token' = '(?i)proxy\s*token|publicDemo\.proxyToken'
+    'JWT' = '(?i)\bJWT\b|JWT_SECRET'
+    'códigos de recuperación' = '(?i)recovery[\s_-]*codes?|c[oó]digos?\s+de\s+recuperaci[oó]n'
+    'credenciales de base de datos' = '(?i)jdbc:postgresql|postgres(?:ql)?://|POSTGRES_PASSWORD|DB_PASSWORD|PGPASSWORD|DATABASE_URL|connection\s+string|cadena\s+de\s+conexi[oó]n'
+    'UUID interno' = '(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b'
+    'localhost' = '(?i)\blocalhost\b|127\.0\.0\.1|\[?::1\]?'
+    'AppData' = '(?i)\bAppData\b'
+    'ruta local de Windows' = '(?i)\b[A-Z]:[\\/]'
+    'archivo local' = '(?i)\bfile://'
+    'cabecera de autorización' = '(?i)\bAuthorization\b|\bBearer\s+'
+    'token de sesión' = '(?i)\baccess_token\b|\brefresh_token\b|\btoken(?:s)?\b'
+    'cookie' = '(?i)\bcookies?\b|gestudio_demo_refresh'
+    'ruta de servicio' = '(?i)/api/|\bendpoint\b|\bbackend\b'
+}
+
+foreach ($entry in $forbiddenPatterns.GetEnumerator()) {
+    if ([regex]::IsMatch($scanText, [string]$entry.Value)) {
+        throw "Se encontró contenido prohibido: $($entry.Key)."
+    }
+}
+
+$authorizedPasswordSet = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+for ($accountIndex = 0; $accountIndex -lt $accounts.Count; $accountIndex++) {
+    $password = [string]$passwords[$accountIndex]
+    [void]$authorizedPasswordSet.Add($password)
+    if ($sanitizedHtml.IndexOf($password, [StringComparison]::Ordinal) -lt 0) {
+        throw "Falta en el manual la contraseña autorizada de una cuenta demo: $($accounts[$accountIndex].username)"
+    }
+}
+
+$passwordMatches = [regex]::Matches($sanitizedHtml, 'Aa9![A-Za-z0-9]{20,}')
+$visiblePasswordSet = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+foreach ($match in $passwordMatches) {
+    [void]$visiblePasswordSet.Add($match.Value)
+}
+
+if ($visiblePasswordSet.Count -ne $authorizedPasswordSet.Count) {
+    throw 'La cantidad de contraseñas demo visibles no coincide con la fuente autorizada.'
+}
+
+foreach ($visiblePassword in $visiblePasswordSet) {
+    if (-not $authorizedPasswordSet.Contains($visiblePassword)) {
+        throw 'El manual contiene una contraseña que no está autorizada por demo-accounts.json.'
+    }
+}
+
+$authorizedTotp = [string]$totpValues[0]
+if ($sanitizedHtml.IndexOf($authorizedTotp, [StringComparison]::Ordinal) -lt 0) {
+    throw 'Falta la clave TOTP demo autorizada en el manual.'
+}
+
+$totpCandidateMatches = [regex]::Matches($sanitizedHtml, '(?<![A-Z2-7])[A-Z2-7]{32,}(?![A-Z2-7])')
+$visibleTotpSet = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+foreach ($match in $totpCandidateMatches) {
+    [void]$visibleTotpSet.Add($match.Value)
+}
+
+if ($visibleTotpSet.Count -ne 1 -or -not $visibleTotpSet.Contains($authorizedTotp)) {
+    throw 'El manual contiene una clave TOTP no autorizada o no contiene exactamente la clave demo prevista.'
+}
+
+if ($metadataText.IndexOf($authorizedTotp, [StringComparison]::Ordinal) -ge 0 -or
+    @($passwords | Where-Object { $metadataText.Contains($_) }).Count -gt 0) {
+    throw 'La metadata no debe incluir contraseñas ni la clave TOTP demo.'
 }
 
 $ignoredSamples = @(
     'artifacts/manual/Manual_Gestudio_Usuarios_Nuevos.pdf'
     'artifacts/manual/manual.html'
     'artifacts/manual/metadata.json'
-    'artifacts/manual/screenshots/01-login.png'
-    'docs/manual-usuarios/screenshots/01-login.png'
+    'artifacts/manual/screenshots/01-login-academia.png'
+    'docs/manual-usuarios/screenshots/01-login-academia.png'
     'docs/manual-usuarios/.tmp/probe.txt'
     'playwright-report/index.html'
     'test-results/probe.txt'
@@ -400,5 +696,6 @@ if (-not [string]::IsNullOrWhiteSpace($trackedArtifacts.Output)) {
     throw 'Hay artefactos generados versionados accidentalmente.'
 }
 
-Write-Host 'Validación estructural aprobada.'
-Write-Host 'No se realizó una revisión visual humana del PDF; esa revisión sigue siendo obligatoria.'
+Write-Host 'Validación estructural aprobada para 40 capítulos y 36 capturas.'
+Write-Host 'Los enlaces, recursos offline y secretos autorizados coinciden con el contrato del manual.'
+Write-Host 'La revisión visual humana del HTML y del PDF sigue siendo obligatoria.'

@@ -3,7 +3,8 @@ param(
     [string]$BaseUrl = 'http://localhost:18081',
     [string]$BackendUrl = 'http://localhost:18080',
     [switch]$AllowNonLocalUrl,
-    [switch]$SkipCredentialCheck
+    [switch]$SkipCredentialCheck,
+    [switch]$BrowserOnly
 )
 
 Set-StrictMode -Version Latest
@@ -23,7 +24,7 @@ $requiredFiles = @(
     'frontend\package.json'
     'frontend\package-lock.json'
     'backend\pom.xml'
-    'scripts\demo-local.ps1'
+    'scripts\demo-local-multitenant.ps1'
     'scripts\codex\validate.ps1'
     'scripts\smoke-local.ps1'
     'scripts\validate-demo-seed.ps1'
@@ -40,7 +41,7 @@ foreach ($relativePath in $requiredFiles) {
     }
 }
 
-$requiredCommands = @('git', 'docker', 'node', 'npm', 'npx')
+$requiredCommands = if ($BrowserOnly) { @('git', 'node', 'npm', 'npx') } else { @('git', 'docker', 'node', 'npm', 'npx') }
 foreach ($commandName in $requiredCommands) {
     if ($null -eq (Get-Command $commandName -ErrorAction SilentlyContinue)) {
         if ($commandName -eq 'docker') {
@@ -73,20 +74,25 @@ if (-not [string]::IsNullOrWhiteSpace($statusResult.Output)) {
     throw 'El árbol de trabajo contiene cambios locales. Revise git status antes de generar el manual.'
 }
 
-Invoke-ManualNativeCommand -FilePath 'docker' -Arguments @('info') | Out-Null
+$composeVersionText = 'no requerido'
+if (-not $BrowserOnly) {
+    Invoke-ManualNativeCommand -FilePath 'pwsh' -Arguments @('-NoProfile', '-Command',
+        'if ($PSVersionTable.PSVersion.Major -lt 7) { exit 1 }') | Out-Null
+    Invoke-ManualNativeCommand -FilePath 'docker' -Arguments @('info') | Out-Null
 
-$composeVersion = Invoke-ManualNativeCommand `
-    -FilePath 'docker' `
-    -Arguments @('compose', 'version', '--short') `
-    -CaptureOutput
-$composeVersionText = $composeVersion.Output.Trim()
+    $composeVersion = Invoke-ManualNativeCommand `
+        -FilePath 'docker' `
+        -Arguments @('compose', 'version', '--short') `
+        -CaptureOutput
+    $composeVersionText = $composeVersion.Output.Trim()
 
-if ($composeVersionText -notmatch '^v?(?<major>[0-9]+)(?:\.|$)') {
-    throw "No se pudo interpretar la versión de Docker Compose: '$composeVersionText'."
-}
+    if ($composeVersionText -notmatch '^v?(?<major>[0-9]+)(?:\.|$)') {
+        throw "No se pudo interpretar la versión de Docker Compose: '$composeVersionText'."
+    }
 
-if ([int]$Matches.major -lt 2) {
-    throw "Docker Compose 2 o superior es obligatorio. Versión detectada: '$composeVersionText'."
+    if ([int]$Matches.major -lt 2) {
+        throw "Docker Compose 2 o superior es obligatorio. Versión detectada: '$composeVersionText'."
+    }
 }
 
 $nodeVersion = Invoke-ManualNativeCommand -FilePath 'node' -Arguments @('--version') -CaptureOutput
@@ -196,17 +202,19 @@ function Resolve-ManualJdk21 {
     throw 'No se encontró un JDK 21 completo. Configure JAVA_HOME o agregue el binario de JDK 21 al PATH.'
 }
 
-$jdk = Resolve-ManualJdk21
-$jdkBin = Split-Path -Parent $jdk.Java
-[Environment]::SetEnvironmentVariable('JAVA_HOME', $jdk.Home, 'Process')
+if (-not $BrowserOnly) {
+    $jdk = Resolve-ManualJdk21
+    $jdkBin = Split-Path -Parent $jdk.Java
+    [Environment]::SetEnvironmentVariable('JAVA_HOME', $jdk.Home, 'Process')
 
-$pathEntries = @($env:PATH -split [IO.Path]::PathSeparator)
-if ($pathEntries -notcontains $jdkBin) {
-    [Environment]::SetEnvironmentVariable(
-        'PATH',
-        ($jdkBin + [IO.Path]::PathSeparator + $env:PATH),
-        'Process'
-    )
+    $pathEntries = @($env:PATH -split [IO.Path]::PathSeparator)
+    if ($pathEntries -notcontains $jdkBin) {
+        [Environment]::SetEnvironmentVariable(
+            'PATH',
+            ($jdkBin + [IO.Path]::PathSeparator + $env:PATH),
+            'Process'
+        )
+    }
 }
 
 $allowExternal = $AllowNonLocalUrl -or
@@ -228,9 +236,7 @@ foreach ($urlText in @($BaseUrl, $BackendUrl)) {
     }
 }
 
-if (-not $SkipCredentialCheck) {
-    Assert-ManualDemoCredentials
-}
+if (-not $SkipCredentialCheck) { Get-ManualDemoAccountData | Out-Null }
 
 $playwrightVersion = Invoke-ManualNativeCommand `
     -FilePath 'npx' `
@@ -257,4 +263,9 @@ if (-not [string]::IsNullOrWhiteSpace($trackedArtifacts.Output)) {
     throw 'Existen artefactos generados versionados accidentalmente.'
 }
 
-Write-Host "Preflight correcto. Docker Compose $composeVersionText y JDK 21 detectados. No se mostraron secretos."
+if ($BrowserOnly) {
+    Write-Host 'Preflight correcto para captura pública. Node y Playwright detectados; Docker y Java no son necesarios. No se mostraron secretos.'
+}
+else {
+    Write-Host "Preflight correcto. Docker Compose $composeVersionText y JDK 21 detectados. No se mostraron secretos."
+}

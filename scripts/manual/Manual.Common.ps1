@@ -9,6 +9,33 @@ $script:ManualDemoCredentialVariables = [ordered]@{
     'demo-caja'         = 'GESTUDIO_DEMO_CAJA_PASSWORD'
 }
 
+$script:ManualDemoAccountIds = [ordered]@{
+    'demo-superadmin'    = 'alpha-superadmin'
+    'demo-direccion'     = 'alpha-direccion'
+    'demo-administrador' = 'alpha-administrador-funcional'
+    'demo-secretaria'    = 'alpha-secretaria'
+    'demo-caja'          = 'alpha-caja'
+}
+
+function Get-ManualDemoAccountData {
+    [CmdletBinding()]
+    param()
+
+    $repoRoot = Get-ManualRepositoryRoot
+    $path = Join-Path $repoRoot 'docs\manual-usuarios\data\demo-accounts.json'
+
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        throw "Falta la fuente autorizada de cuentas demo: $path"
+    }
+
+    $data = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+    if ($null -eq $data.accounts -or @($data.accounts).Count -ne 9) {
+        throw 'La fuente de cuentas demo debe declarar exactamente nueve cuentas.'
+    }
+
+    return $data
+}
+
 function Get-ManualRepositoryRoot {
     [CmdletBinding()]
     param()
@@ -115,56 +142,28 @@ function Invoke-ManualDemoScript {
         [string]$Path,
 
         [Parameter(Mandatory)]
-        [ValidateSet('Start', 'Status')]
+        [ValidateSet('Start', 'Status', 'Stop')]
         [string]$Action,
 
         [switch]$AllowFailure
     )
 
-    Assert-ManualDemoCredentials
+    # The persistent multitenant fixture owns its private credentials and needs
+    # PowerShell 7. Never pipe the public manual's credentials into that fixture.
+    return Invoke-ManualNativeCommand -FilePath 'pwsh' -Arguments @(
+        '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $Path, '-Action', $Action
+    ) -AllowFailure:$AllowFailure
+}
 
-    $powershell = Get-CurrentPowerShellExecutable
-    $processInfo = [Diagnostics.ProcessStartInfo]::new()
-    $processInfo.FileName = $powershell
-    $escapedPath = $Path.Replace('"', '\"')
-    $processInfo.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$escapedPath`" -Action $Action"
-    $processInfo.UseShellExecute = $false
-    $processInfo.RedirectStandardInput = $true
-    $processInfo.RedirectStandardOutput = $false
-    $processInfo.RedirectStandardError = $false
-    $processInfo.CreateNoWindow = $false
+function Get-ManualLocalCredentialManifestPath {
+    [CmdletBinding()]
+    param()
 
-    if ($processInfo.PSObject.Properties.Name -contains 'StandardInputEncoding') {
-        $processInfo.StandardInputEncoding = New-Object Text.UTF8Encoding($false)
+    $localData = [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)
+    if ([string]::IsNullOrWhiteSpace($localData)) {
+        throw 'No se pudo resolver el estado privado del fixture local.'
     }
-
-    $process = [Diagnostics.Process]::new()
-    $process.StartInfo = $processInfo
-    [void]$process.Start()
-
-    try {
-        foreach ($variableName in $script:ManualDemoCredentialVariables.Values) {
-            $secret = [Environment]::GetEnvironmentVariable($variableName, 'Process')
-            $process.StandardInput.WriteLine($secret)
-        }
-
-        $process.StandardInput.Close()
-        $process.WaitForExit()
-        $exitCode = $process.ExitCode
-    }
-    finally {
-        $secret = $null
-        $process.Dispose()
-    }
-
-    if (-not $AllowFailure -and $exitCode -ne 0) {
-        throw "scripts/demo-local.ps1 -Action $Action falló con código $exitCode."
-    }
-
-    return [pscustomobject]@{
-        ExitCode = $exitCode
-        Output = ''
-    }
+    return Join-Path $localData 'Gestudio\gestudio-demo-local\credentials.json'
 }
 
 function Test-ManualLocalUri {
@@ -202,32 +201,30 @@ function Set-MissingManualDemoCredentials {
     [CmdletBinding()]
     param()
 
+    $data = Get-ManualDemoAccountData
+
     foreach ($entry in $script:ManualDemoCredentialVariables.GetEnumerator()) {
         $current = [Environment]::GetEnvironmentVariable($entry.Value, 'Process')
         if (-not [string]::IsNullOrWhiteSpace($current)) {
             continue
         }
 
-        $secure = Read-Host "Contraseña para $($entry.Key)" -AsSecureString
+        $accountId = [string]$script:ManualDemoAccountIds[$entry.Key]
+        $account = @($data.accounts | Where-Object { [string]$_.id -ceq $accountId }) |
+            Select-Object -First 1
 
-        try {
-            $plain = ConvertFrom-ManualSecureString -SecureValue $secure
-            $byteCount = [Text.Encoding]::UTF8.GetByteCount($plain)
-
-            if ([string]::IsNullOrWhiteSpace($plain)) {
-                throw "La contraseña para $($entry.Key) no puede estar vacía."
-            }
-
-            if ($byteCount -gt 72) {
-                throw "La contraseña para $($entry.Key) supera los 72 bytes admitidos por BCrypt."
-            }
-
-            [Environment]::SetEnvironmentVariable($entry.Value, $plain, 'Process')
+        if ($null -eq $account -or [string]::IsNullOrWhiteSpace([string]$account.password)) {
+            throw "La cuenta demo autorizada '$accountId' no define contraseña."
         }
-        finally {
-            $plain = $null
-            $secure.Dispose()
+
+        $plain = [string]$account.password
+        $byteCount = [Text.Encoding]::UTF8.GetByteCount($plain)
+        if ($byteCount -gt 72) {
+            throw "La contraseña documentada para $($entry.Key) supera los 72 bytes admitidos por BCrypt."
         }
+
+        [Environment]::SetEnvironmentVariable($entry.Value, $plain, 'Process')
+        $plain = $null
     }
 }
 
@@ -261,6 +258,64 @@ function Get-ManualRelativePath {
     $baseUri = [uri](([IO.Path]::GetFullPath($BasePath).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar))
     $pathUri = [uri]([IO.Path]::GetFullPath($Path))
     return [uri]::UnescapeDataString($baseUri.MakeRelativeUri($pathUri).ToString()).Replace('/', [IO.Path]::DirectorySeparatorChar)
+}
+
+function Resolve-ManualPlaywrightRuntime {
+    [CmdletBinding()]
+    param()
+
+    $repoRoot = Get-ManualRepositoryRoot
+    $candidates = [Collections.Generic.List[string]]::new()
+    $configuredNodePath = [Environment]::GetEnvironmentVariable('NODE_PATH', 'Process')
+
+    if (-not [string]::IsNullOrWhiteSpace($configuredNodePath)) {
+        foreach ($entry in $configuredNodePath -split [IO.Path]::PathSeparator) {
+            if (-not [string]::IsNullOrWhiteSpace($entry)) {
+                $candidates.Add([IO.Path]::GetFullPath($entry))
+            }
+        }
+    }
+
+    $candidates.Add((Join-Path $repoRoot 'frontend\node_modules'))
+
+    foreach ($nodeModules in @($candidates | Select-Object -Unique)) {
+        $packagePath = Join-Path $nodeModules 'playwright\package.json'
+        $cliPath = Join-Path $nodeModules 'playwright\cli.js'
+        if (-not (Test-Path -LiteralPath $packagePath -PathType Leaf) -or
+            -not (Test-Path -LiteralPath $cliPath -PathType Leaf)) {
+            continue
+        }
+
+        $package = Get-Content -LiteralPath $packagePath -Raw | ConvertFrom-Json
+        return [pscustomobject]@{
+            NodeModules = [IO.Path]::GetFullPath($nodeModules)
+            CliPath = [IO.Path]::GetFullPath($cliPath)
+            Version = [string]$package.version
+        }
+    }
+
+    throw 'No se encontró Playwright. Ejecute npm ci dentro de frontend o use Build-Manual.ps1 para preparar el runtime aislado.'
+}
+
+function Set-ManualNodePathForRuntime {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$NodeModules,
+        [AllowNull()][string]$PreviousNodePath
+    )
+
+    $value = [IO.Path]::GetFullPath($NodeModules)
+    if (-not [string]::IsNullOrWhiteSpace($PreviousNodePath)) {
+        $entries = @($PreviousNodePath -split [IO.Path]::PathSeparator)
+        if ($entries -notcontains $value) {
+            $value += [IO.Path]::PathSeparator + $PreviousNodePath
+        }
+        else {
+            $value = $PreviousNodePath
+        }
+    }
+
+    [Environment]::SetEnvironmentVariable('NODE_PATH', $value, 'Process')
 }
 
 function Test-ManualPathInside {

@@ -1,0 +1,62 @@
+<p class="lead">Para orientarte, pensá en tres ideas: la organización es el espacio de trabajo, el usuario identifica a la persona y el rol define qué puede hacer.</p>
+
+<div class="card-grid">
+  <div>
+    <h3>Organización o academia</h3>
+    <p>Es un espacio independiente dentro de Gestudio. Alumnos, profesores, inscripciones, pagos, caja y stock permanecen separados de los de otras academias.</p>
+  </div>
+  <div>
+    <h3>Usuario</h3>
+    <p>Es la cuenta con la que una persona inicia sesión. Ejemplos de la demo: <strong>demo-secretaria</strong>, <strong>demo-caja</strong> y <strong>demo-administrador</strong>.</p>
+  </div>
+  <div>
+    <h3>Rol</h3>
+    <p>Es un conjunto de responsabilidades asignado a un usuario. Una cuenta puede tener uno o más roles, y sus permisos se combinan para determinar qué opciones aparecen y qué acciones están permitidas.</p>
+  </div>
+  <div>
+    <h3>Administrador de plataforma</h3>
+    <p>Es una cuenta separada que administra organizaciones y accesos globales. No trabaja con alumnos, pagos o caja desde el menú cotidiano.</p>
+  </div>
+</div>
+
+<h3>Así se organiza la demo</h3>
+<div class="org-tree" aria-label="Organización de la demo de Gestudio">
+  <ul>
+    <li><strong>Plataforma Gestudio</strong>
+      <ul>
+        <li><strong>Escuela Danza Marcos Paz</strong>
+          <ul>
+            <li>Dirección</li>
+            <li>Administración</li>
+            <li>Secretaría</li>
+            <li>Caja</li>
+          </ul>
+        </li>
+        <li><strong>Escuela Beta Demo</strong>
+          <ul>
+            <li>Administración</li>
+          </ul>
+        </li>
+      </ul>
+    </li>
+  </ul>
+</div>
+
+<table>
+  <thead><tr><th>Si cambia...</th><th>Qué sucede</th></tr></thead>
+  <tbody>
+    <tr><td>El usuario</td><td>Otra persona inicia sesión, con su propia cuenta.</td></tr>
+    <tr><td>Los roles</td><td>Cambian las opciones y acciones permitidas dentro de la misma academia.</td></tr>
+    <tr><td>La organización</td><td>Cambia el espacio de trabajo y, por lo tanto, los datos disponibles.</td></tr>
+  </tbody>
+</table>
+
+<div class="notice success">
+  <strong>Beneficio para la academia</strong>
+  Esta separación ayuda a ordenar responsabilidades, reducir accesos innecesarios y mantener la información de cada organización en su propio espacio.
+</div>
+
+<div class="notice warning">
+  <strong>SUPERADMIN de una academia no es PLATFORM_SUPERADMIN.</strong>
+  El primero administra funciones dentro de su organización. El segundo administra la plataforma completa desde un ingreso separado.
+</div>

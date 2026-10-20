@@ -9,9 +9,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'Manual.Common.ps1')
 
 $repoRoot = Get-ManualRepositoryRoot
-$demoScript = Join-Path $repoRoot 'scripts\demo-local.ps1'
-
-Assert-ManualDemoCredentials
+$demoScript = Join-Path $repoRoot 'scripts\demo-local-multitenant.ps1'
 
 $status = Invoke-ManualDemoScript `
     -Path $demoScript `
@@ -19,7 +17,7 @@ $status = Invoke-ManualDemoScript `
     -AllowFailure
 
 if ($status.ExitCode -ne 0) {
-    throw 'El dataset demo persistente no superó scripts/demo-local.ps1 -Action Status. No se ejecutó Reset ni se borraron datos.'
+    throw 'El fixture multiorganización no superó scripts/demo-local-multitenant.ps1 -Action Status. No se ejecutó Reset ni se borraron datos.'
 }
 
 try {

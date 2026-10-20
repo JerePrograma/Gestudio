@@ -13,13 +13,11 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'Manual.Common.ps1')
 
 $repoRoot = Get-ManualRepositoryRoot
-$demoScript = Join-Path $repoRoot 'scripts\demo-local.ps1'
+$demoScript = Join-Path $repoRoot 'scripts\demo-local-multitenant.ps1'
 
 if (-not (Test-Path -LiteralPath $demoScript -PathType Leaf)) {
-    throw 'No existe scripts/demo-local.ps1.'
+    throw 'No existe scripts/demo-local-multitenant.ps1.'
 }
-
-Assert-ManualDemoCredentials
 
 $status = Invoke-ManualDemoScript `
     -Path $demoScript `
@@ -41,7 +39,7 @@ else {
         -AllowFailure
 
     if ($startResult.ExitCode -ne 0) {
-        throw 'No se pudo iniciar la demo local mediante scripts/demo-local.ps1 -Action Start.'
+        throw 'No se pudo iniciar la demo local mediante scripts/demo-local-multitenant.ps1 -Action Start.'
     }
 
     $startedByGenerator = $true
@@ -81,9 +79,9 @@ while ((Get-Date) -lt $deadline) {
 if ($startedByGenerator) {
     Write-Warning 'La demo fue iniciada por este proceso pero no quedó disponible; se intentará detenerla sin borrar volúmenes.'
 
-    Invoke-ManualPowerShellFile `
+    Invoke-ManualDemoScript `
         -Path $demoScript `
-        -Arguments @('-Action', 'Stop') `
+        -Action Stop `
         -AllowFailure | Out-Null
 }
 

@@ -1,437 +1,160 @@
-# Validación local del generador del manual
+# Validación local del manual de usuarios
 
-Estas comprobaciones deben ejecutarse en el equipo que dispone de Docker Desktop, navegador, demo persistente y acceso a `C:\laburo\Gestudio`.
+Esta guía comprueba el manual sin modificar datos de negocio. Las capturas se obtienen con consultas de solo lectura sobre las cuentas sintéticas de la demo.
 
-No comparta la salida de variables sensibles. El informe final puede incluir versiones, estados, tamaños, hashes y metadata no secreta.
+## 1. Revisar el estado del repositorio
 
-## Bloque 1: sincronizar `main` de forma segura
+Trabajá sobre `main` y revisá los cambios antes de continuar. No descartes, mezcles ni ocultes trabajo local para generar el manual.
 
 ```powershell
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
-
-Set-Location 'C:\laburo\Gestudio'
-
-git status
-if ($LASTEXITCODE -ne 0) {
-    throw 'No se pudo consultar el estado de Git.'
-}
-
-$pending = git status --porcelain
-if ($LASTEXITCODE -ne 0) {
-    throw 'No se pudo comprobar el árbol de trabajo.'
-}
-
-if ($pending) {
-    throw 'El árbol de trabajo contiene cambios locales. No continúe hasta revisarlos.'
-}
-
-git fetch origin
-if ($LASTEXITCODE -ne 0) {
-    throw 'Falló git fetch origin.'
-}
-
-git checkout main
-if ($LASTEXITCODE -ne 0) {
-    throw 'No se pudo cambiar a main.'
-}
-
-git pull --ff-only origin main
-if ($LASTEXITCODE -ne 0) {
-    throw 'No se pudo actualizar main mediante fast-forward.'
-}
-
 git branch --show-current
 git rev-parse HEAD
-git status
+git rev-parse origin/main
+git status --short --branch
 ```
 
-## Bloque 2: comprobar archivos implementados
+Si existen cambios locales, no ejecutes una actualización automática. Inventarialos y continuá únicamente cuando sean compatibles con la generación documental.
+
+## 2. Comprobar las fuentes
 
 ```powershell
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
+$manifest = Get-Content .\docs\manual-usuarios\manifest.json -Raw | ConvertFrom-Json
+if ($manifest.version -ne 3) { throw 'Versión de manifiesto inesperada.' }
+if ($manifest.items.Count -ne 40) { throw 'El manual debe contener 40 capítulos.' }
 
-Set-Location 'C:\laburo\Gestudio'
-
-$required = @(
-    '.\scripts\manual\Manual.Common.ps1'
-    '.\scripts\manual\Build-Manual.ps1'
-    '.\scripts\manual\Preflight-Manual.ps1'
-    '.\scripts\manual\Start-Gestudio.ps1'
-    '.\scripts\manual\Seed-ManualDemo.ps1'
-    '.\scripts\manual\Capture-Manual.ps1'
-    '.\scripts\manual\Render-Manual.ps1'
-    '.\scripts\manual\Validate-Manual.ps1'
-    '.\scripts\manual\flows\capture-manual.cjs'
-    '.\scripts\manual\flows\render-manual.cjs'
-    '.\docs\manual-usuarios\README.md'
-    '.\docs\manual-usuarios\LOCAL_VALIDATION.md'
-    '.\docs\manual-usuarios\manifest.json'
-    '.\docs\manual-usuarios\templates\manual.html'
-    '.\docs\manual-usuarios\templates\manual.css'
-)
-
-$missing = $required | Where-Object {
-    -not (Test-Path -LiteralPath $_)
+$missing = foreach ($item in $manifest.items) {
+    $path = Join-Path .\docs\manual-usuarios $item.content
+    if (-not (Test-Path -LiteralPath $path)) { $path }
 }
+if ($missing) { throw "Faltan capítulos: $($missing -join ', ')" }
 
-if ($missing) {
-    $missing | ForEach-Object {
-        Write-Host "FALTA: $_"
-    }
-
-    throw 'Faltan archivos requeridos.'
-}
-
-Write-Host 'Todos los archivos requeridos existen.'
+$accounts = Get-Content .\docs\manual-usuarios\data\demo-accounts.json -Raw | ConvertFrom-Json
+if ($accounts.accounts.Count -ne 9) { throw 'Deben existir nueve cuentas demo autorizadas.' }
 ```
 
-## Bloque 3: verificar herramientas
-
-Primero, el preflight real:
+## 3. Comprobar la sintaxis del generador
 
 ```powershell
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
+node --check .\scripts\manual\flows\capture-manual.cjs
+node --check .\scripts\manual\flows\render-manual.cjs
+node --test .\scripts\manual\flows\manual-diagnostics.test.cjs .\scripts\manual\flows\manual-accounts.test.cjs
 
-Set-Location 'C:\laburo\Gestudio'
+@(
+  '.\scripts\manual\Manual.Common.ps1',
+  '.\scripts\manual\Capture-Manual.ps1',
+  '.\scripts\manual\Render-Manual.ps1',
+  '.\scripts\manual\Validate-Manual.ps1'
+) | ForEach-Object {
+  [void][scriptblock]::Create((Get-Content -LiteralPath $_ -Raw))
+}
+```
 
+## 4. Obtener capturas actuales
+
+La demo pública debe estar disponible. Esta etapa inicia y cierra sesión con las nueve cuentas autorizadas, no crea alumnos, pagos, egresos ni otros registros y no imprime contraseñas, cookies ni códigos de autenticación.
+
+```powershell
+$output = Join-Path (Get-Location) 'artifacts\manual'
 powershell -NoProfile -ExecutionPolicy Bypass `
-    -File .\scripts\manual\Preflight-Manual.ps1 `
-    -SkipCredentialCheck
-
-if ($LASTEXITCODE -ne 0) {
-    throw 'Falló el preflight del manual.'
-}
+  -File .\scripts\manual\Capture-Manual.ps1 `
+  -BaseUrl 'https://gestudio-demo-jere-287b8c90.pages.dev/' `
+  -OutputDirectory $output
 ```
 
-Diagnóstico directo:
+Resultado esperado: 36 imágenes PNG legibles en `artifacts/manual/screenshots` y ningún error de navegación o permiso.
+
+## 5. Generar HTML y PDF
 
 ```powershell
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
-
-$PSVersionTable.PSVersion
-
-git --version
-if ($LASTEXITCODE -ne 0) { throw 'Git no está disponible.' }
-
-docker --version
-if ($LASTEXITCODE -ne 0) { throw 'Docker no está disponible.' }
-
-docker compose version
-if ($LASTEXITCODE -ne 0) { throw 'Docker Compose v2 no está disponible.' }
-
-node --version
-if ($LASTEXITCODE -ne 0) { throw 'Node no está disponible.' }
-
-npm --version
-if ($LASTEXITCODE -ne 0) { throw 'npm no está disponible.' }
-
-java -version
-if ($LASTEXITCODE -ne 0) { throw 'Java no está disponible.' }
-
-javac -version
-if ($LASTEXITCODE -ne 0) { throw 'javac no está disponible.' }
-
-npx --yes playwright@1.54.1 --version
-if ($LASTEXITCODE -ne 0) { throw 'Playwright 1.54.1 no pudo resolverse.' }
-```
-
-## Bloque 4: suministrar credenciales de forma segura
-
-Los nombres corresponden al contrato del generador. No escriba valores en scripts, historial, `.env` ni comandos persistidos.
-
-```powershell
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
-
-function Read-SecretValue {
-    param(
-        [Parameter(Mandatory)]
-        [string]$Prompt
-    )
-
-    $secureValue = Read-Host $Prompt -AsSecureString
-
-    try {
-        return [System.Net.NetworkCredential]::new(
-            '',
-            $secureValue
-        ).Password
-    }
-    finally {
-        $secureValue.Dispose()
-    }
-}
-
-$env:GESTUDIO_DEMO_SUPERADMIN_PASSWORD = Read-SecretValue `
-    'Contraseña para demo-superadmin'
-$env:GESTUDIO_DEMO_DIRECCION_PASSWORD = Read-SecretValue `
-    'Contraseña para demo-direccion'
-$env:GESTUDIO_DEMO_ADMINISTRADOR_PASSWORD = Read-SecretValue `
-    'Contraseña para demo-administrador'
-$env:GESTUDIO_DEMO_SECRETARIA_PASSWORD = Read-SecretValue `
-    'Contraseña para demo-secretaria'
-$env:GESTUDIO_DEMO_CAJA_PASSWORD = Read-SecretValue `
-    'Contraseña para demo-caja'
-
-Write-Host 'Credenciales cargadas sólo en el proceso actual.'
-```
-
-Al finalizar, eliminarlas del proceso:
-
-```powershell
-Remove-Item Env:GESTUDIO_DEMO_SUPERADMIN_PASSWORD -ErrorAction SilentlyContinue
-Remove-Item Env:GESTUDIO_DEMO_DIRECCION_PASSWORD -ErrorAction SilentlyContinue
-Remove-Item Env:GESTUDIO_DEMO_ADMINISTRADOR_PASSWORD -ErrorAction SilentlyContinue
-Remove-Item Env:GESTUDIO_DEMO_SECRETARIA_PASSWORD -ErrorAction SilentlyContinue
-Remove-Item Env:GESTUDIO_DEMO_CAJA_PASSWORD -ErrorAction SilentlyContinue
-```
-
-## Bloque 5: validación canónica del proyecto
-
-```powershell
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
-
-Set-Location 'C:\laburo\Gestudio'
-
+$output = Join-Path (Get-Location) 'artifacts\manual'
 powershell -NoProfile -ExecutionPolicy Bypass `
-    -File .\scripts\codex\validate.ps1 `
-    -Scope Frontend
-
-if ($LASTEXITCODE -ne 0) {
-    throw 'Falló la validación Frontend.'
-}
-
-powershell -NoProfile -ExecutionPolicy Bypass `
-    -File .\scripts\smoke-local.ps1
-
-if ($LASTEXITCODE -ne 0) {
-    throw 'Falló el smoke local.'
-}
-
-powershell -NoProfile -ExecutionPolicy Bypass `
-    -File .\scripts\validate-demo-seed.ps1
-
-if ($LASTEXITCODE -ne 0) {
-    throw 'Falló la validación del seed demo.'
-}
+  -File .\scripts\manual\Render-Manual.ps1 `
+  -BaseUrl 'https://gestudio-demo-jere-287b8c90.pages.dev/' `
+  -BackendUrl 'https://gestudio-demo-jere-287b8c90.pages.dev/api' `
+  -OutputDirectory $output
 ```
 
-## Bloque 6: generar el manual
+El resultado queda en:
 
-Ejecución completa:
+- `artifacts/manual/manual.html`
+- `artifacts/manual/Manual_Gestudio_Usuarios_Nuevos.pdf`
+- `artifacts/manual/metadata.json`
+
+## 6. Ejecutar la validación automática
 
 ```powershell
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
-
-Set-Location 'C:\laburo\Gestudio'
-
+$output = Join-Path (Get-Location) 'artifacts\manual'
 powershell -NoProfile -ExecutionPolicy Bypass `
-    -File .\scripts\manual\Build-Manual.ps1
-
-if ($LASTEXITCODE -ne 0) {
-    throw 'La generación del manual falló.'
-}
+  -File .\scripts\manual\Validate-Manual.ps1 `
+  -OutputDirectory $output
 ```
 
-Con una demo ya iniciada y validada:
+La validación debe comprobar:
+
+- 40 capítulos en el orden esperado;
+- HTML, CSS e imágenes presentes y ausencia de scripts en el manual offline;
+- enlaces internos y destinos de navegación válidos;
+- 36 capturas actuales;
+- ausencia de rutas locales, `localhost` y referencias técnicas ajenas al cliente;
+- presencia exclusiva de las contraseñas demo autorizadas;
+- ausencia de proxy tokens, JWT, cookies, recovery codes, credenciales de base de datos y secretos de infraestructura;
+- ausencia de UUID internos en el contenido visible.
+
+Para capturas locales, usá el recorrido con `-CredentialManifestPath` de
+README.md. El resultado debe declarar el origen local y el perfil real usado,
+sin publicar contraseñas privadas ni la clave privada de segundo factor.
+
+## 7. Revisión visual
+
+Abrí `artifacts/manual/manual.html` en Chrome y recorré el índice completo. Abrí también el PDF y comprobá portada, índice, capturas, tablas, saltos de página y legibilidad.
+
+La revisión es satisfactoria cuando no existen capítulos vacíos, imágenes cortadas, texto desbordado, enlaces rotos ni páginas en blanco.
+
+## 8. Control final de Git
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass `
-    -File .\scripts\manual\Build-Manual.ps1 `
-    -SkipApplicationStart
-
-if ($LASTEXITCODE -ne 0) {
-    throw 'La generación con demo preexistente falló.'
-}
+git diff --check
+git diff -- docs/manual-usuarios scripts/manual
+git status --short --branch
 ```
 
-Con navegador visible:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass `
-    -File .\scripts\manual\Build-Manual.ps1 `
-    -SkipApplicationStart `
-    -Headed `
-    -KeepApplicationRunning
-
-if ($LASTEXITCODE -ne 0) {
-    throw 'La ejecución headed falló.'
-}
-```
-
-## Bloque 7: verificar artefactos
-
-```powershell
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
-
-Set-Location 'C:\laburo\Gestudio'
-
-$artifactRoot = '.\artifacts\manual'
-$pdfPath = Join-Path $artifactRoot 'Manual_Gestudio_Usuarios_Nuevos.pdf'
-$htmlPath = Join-Path $artifactRoot 'manual.html'
-$metadataPath = Join-Path $artifactRoot 'metadata.json'
-
-$files = @(
-    $pdfPath
-    $htmlPath
-    $metadataPath
-)
-
-foreach ($file in $files) {
-    if (-not (Test-Path -LiteralPath $file)) {
-        throw "No existe el artefacto requerido: $file"
-    }
-
-    Get-Item -LiteralPath $file |
-        Select-Object FullName, Length, LastWriteTime
-}
-
-powershell -NoProfile -ExecutionPolicy Bypass `
-    -File .\scripts\manual\Validate-Manual.ps1 `
-    -PdfPath $pdfPath
-
-if ($LASTEXITCODE -ne 0) {
-    throw 'La validación del manual falló.'
-}
-
-Get-ChildItem '.\artifacts\manual\screenshots' -Filter '*.png' -File |
-    Sort-Object Name |
-    Select-Object Name, Length
-```
-
-## Bloque 8: abrir el PDF para revisión humana
-
-```powershell
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
-
-Set-Location 'C:\laburo\Gestudio'
-
-$pdfPath = Resolve-Path `
-    '.\artifacts\manual\Manual_Gestudio_Usuarios_Nuevos.pdf'
-
-Start-Process $pdfPath
-```
-
-La revisión humana debe comprobar:
-
-- portada e índice;
-- capturas reales y textos legibles;
-- ausencia de páginas completamente blancas;
-- ausencia de contenido o tablas cortados;
-- ausencia de contraseñas, tokens y datos reales;
-- numeración de páginas;
-- consistencia entre roles, menús y denegaciones;
-- que los formularios de pagos y egresos no muestren operaciones nuevas generadas por el manual.
-
-## Bloque 9: comprobar que no se versionen artefactos
-
-```powershell
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
-
-Set-Location 'C:\laburo\Gestudio'
-
-git status --short
-if ($LASTEXITCODE -ne 0) {
-    throw 'No se pudo consultar git status.'
-}
-
-$trackedArtifacts = git ls-files -- `
-    'artifacts/manual/**' `
-    'docs/manual-usuarios/screenshots/**' `
-    'docs/manual-usuarios/.tmp/**' `
-    'playwright-report/**' `
-    'test-results/**'
-
-if ($LASTEXITCODE -ne 0) {
-    throw 'No se pudo comprobar los artefactos versionados.'
-}
-
-if ($trackedArtifacts) {
-    $trackedArtifacts
-    throw 'Existen artefactos generados versionados accidentalmente.'
-}
-
-git check-ignore -v `
-    '.\artifacts\manual\Manual_Gestudio_Usuarios_Nuevos.pdf'
-
-if ($LASTEXITCODE -ne 0) {
-    throw 'El PDF generado no está ignorado por Git.'
-}
-
-git check-ignore -v `
-    '.\artifacts\manual\screenshots\01-login.png'
-
-if ($LASTEXITCODE -ne 0) {
-    throw 'Las capturas generadas no están ignoradas por Git.'
-}
-```
-
-## Bloque 10: informe local para devolver
-
-```powershell
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
-
-Set-Location 'C:\laburo\Gestudio'
-
-Write-Host '=== Git ==='
-git branch --show-current
-if ($LASTEXITCODE -ne 0) { throw 'No se pudo consultar la rama.' }
-
-git rev-parse HEAD
-if ($LASTEXITCODE -ne 0) { throw 'No se pudo consultar HEAD.' }
-
-git status --short
-if ($LASTEXITCODE -ne 0) { throw 'No se pudo consultar el estado.' }
-
-Write-Host '=== Demo ==='
-powershell -NoProfile -ExecutionPolicy Bypass `
-    -File .\scripts\demo-local.ps1 `
-    -Action Status
-
-if ($LASTEXITCODE -ne 0) {
-    throw 'La demo no superó Status.'
-}
-
-Write-Host '=== Artefactos ==='
-Get-ChildItem '.\artifacts\manual' -File |
-    Select-Object Name, Length, LastWriteTime
-
-Write-Host '=== Capturas ==='
-Get-ChildItem '.\artifacts\manual\screenshots' -Filter '*.png' -File |
-    Measure-Object |
-    Select-Object Count
-
-Write-Host '=== Metadata ==='
-Get-Content '.\artifacts\manual\metadata.json' -Raw |
-    ConvertFrom-Json |
-    Select-Object `
-        generatedAtUtc,
-        sourceCommit,
-        sourceBranch,
-        screenshotCount,
-        pageCount,
-        pdfFileName,
-        applicationStartedByGenerator
-```
+Los artefactos generados deben permanecer fuera de Git. No hagas commit ni push mientras el repositorio contenga cambios ajenos o no resulte seguro cerrar la intervención.
 
 ## Resultado esperado
 
-La validación funcional total se completa únicamente cuando:
+```text
+MANUAL_HTML=PASS
+MANUAL_PDF=PASS
+INTERNAL_LINKS=PASS
+IMAGES=PASS
+PROXY_TOKEN_IN_MANUAL=NO
+RECOVERY_CODES_IN_MANUAL=NO
+INFRASTRUCTURE_SECRETS_IN_MANUAL=NO
+AUTHORIZED_DEMO_PASSWORDS_IN_MANUAL=YES
+```
 
-1. los bloques anteriores finalizan sin errores;
-2. `Validate-Manual.ps1` aprueba;
-3. el PDF fue revisado visualmente;
-4. `git status --short` no muestra artefactos;
-5. la salida no contiene secretos.
+## Evidencia de la integración del 20/10/2026
 
-Devuelva el informe del Bloque 10 y los fallos exactos, sin contraseñas, tokens, cookies ni contenido de variables sensibles.
+En esta revisión se reconstruyeron el HTML, el PDF y la metadata **sin conexión
+a la aplicación**, a partir de las 36 capturas que ya existían en el equipo.
+No se tomaron capturas nuevas ni se verificó el estado actual de la demo pública.
+La fecha de generación del documento corresponde a esta reconstrucción y no
+debe interpretarse como fecha de las capturas.
+
+Resultados comprobados:
+
+- 40 capítulos, 36 imágenes y enlaces internos válidos;
+- PDF de 95 páginas, renderizadas a PNG y revisadas visualmente;
+- `Validate-Manual.ps1`: aprobado, incluido el control de contenido sensible;
+- `node --test scripts/manual/flows/*.test.cjs`: 14 pruebas aprobadas;
+- sintaxis de los ocho scripts PowerShell y los flujos JavaScript: aprobada;
+- `git diff --check -- docs/manual-usuarios scripts/manual`: aprobado.
+
+El uso de credenciales locales se probó con manifiestos sintéticos: las pruebas
+comprueban el reemplazo en memoria, el perfil real utilizado, la conservación
+de la fuente pública y el rechazo de destinos externos. No se leyeron
+credenciales privadas reales para esta validación.
+
+Queda pendiente ejecutar el recorrido local completo con Docker y la aplicación
+en funcionamiento. La validación offline no demuestra el funcionamiento actual
+de ese recorrido ni de los inicios de sesión.

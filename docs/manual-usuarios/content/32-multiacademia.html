@@ -1,0 +1,42 @@
+<p class="lead">Gestudio puede administrar distintas academias manteniendo separada la información de cada una.</p>
+
+<div class="card-grid">
+  <div><h3>Escuela Danza Marcos Paz</h3><p>Es la organización Alpha de la demo. Contiene sus propios alumnos, actividades, pagos, caja y stock.</p></div>
+  <div><h3>Escuela Beta Demo</h3><p>Es una segunda organización preparada para demostrar que sus datos no se mezclan con los de Alpha.</p></div>
+</div>
+
+<div class="org-tree" aria-label="Dos organizaciones separadas dentro de Gestudio">
+  <ul>
+    <li><strong>Gestudio</strong>
+      <ul>
+        <li>Escuela Danza Marcos Paz <span>· espacio independiente</span></li>
+        <li>Escuela Beta Demo <span>· espacio independiente</span></li>
+      </ul>
+    </li>
+  </ul>
+</div>
+
+<h3>Demostración recomendada</h3>
+<ol class="steps">
+  <li>Ingresá con <strong>alpha.demo.admin</strong> y comprobá que el encabezado indique <strong>Escuela Danza Marcos Paz</strong>.</li>
+  <li>Abrí <strong>Alumnos</strong> y observá el listado de esa academia sin modificar datos.</li>
+  <li>Cerrá sesión desde el botón del menú.</li>
+  <li>Ingresá con <strong>beta.demo.admin</strong> y comprobá que el encabezado indique <strong>Escuela Beta Demo</strong>.</li>
+  <li>Abrí <strong>Alumnos</strong> nuevamente. Los registros vistos en Alpha no deben aparecer como parte de Beta.</li>
+  <li>Cerrá sesión y explicá que el mismo principio se aplica a pagos, caja, stock y demás información de trabajo.</li>
+</ol>
+
+<div class="notice success">
+  <strong>Resultado esperado</strong>
+  Cada cuenta entra a su propia organización y trabaja solamente con la información que le corresponde.
+</div>
+
+<div class="notice info">
+  <strong>Para saber más</strong>
+  Gestudio aplica controles adicionales para impedir que una organización consulte información de otra. La administración global se realiza desde un acceso separado y no desde el menú cotidiano de las academias.
+</div>
+
+<div class="notice warning">
+  <strong>No hace falta crear registros para probarlo.</strong>
+  Compará los listados existentes. Así la demostración es segura y no altera los datos ficticios compartidos.
+</div>

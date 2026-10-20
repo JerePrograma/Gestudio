@@ -1,0 +1,45 @@
+<p class="lead">PLATFORM_SUPERADMIN es la cuenta que administra la plataforma completa. No es “un SUPERADMIN más poderoso” dentro de una academia.</p>
+
+<table>
+  <thead><tr><th>Perfil</th><th>Dónde trabaja</th><th>Qué administra</th></tr></thead>
+  <tbody>
+    <tr><td>SUPERADMIN</td><td>Dentro de una organización</td><td>Módulos de la academia, usuarios, roles y permisos de esa organización.</td></tr>
+    <tr><td>PLATFORM_SUPERADMIN</td><td>En el ingreso separado de plataforma</td><td>Organizaciones, accesos globales, administradores de plataforma y auditoría.</td></tr>
+  </tbody>
+</table>
+
+<div class="notice info">
+  <strong>La cuenta demo ya está configurada.</strong>
+  Para obtener sus códigos en tu teléfono, agregá manualmente la clave TOTP que figura en <strong>Credenciales de la demo</strong>. Esto no cambia la cuenta ni inicia un alta nueva.
+</div>
+
+<h3>Agregar la clave demo a una aplicación autenticadora</h3>
+<ol class="steps">
+  <li>En tu teléfono, abrí Google Authenticator, Microsoft Authenticator u otra aplicación compatible con códigos TOTP.</li>
+  <li>Presioná el signo <strong>+</strong> o la opción para agregar una cuenta.</li>
+  <li>Elegí <strong>Ingresar clave de configuración</strong>, <strong>Entrada manual</strong> o el nombre equivalente.</li>
+  <li>Como nombre de cuenta, podés escribir <strong>Gestudio Demo - Plataforma</strong>.</li>
+  <li>Copiá la <strong>clave TOTP DEMO</strong> mostrada en el capítulo de credenciales y pegala en el campo de clave.</li>
+  <li>Si la aplicación pregunta el tipo, elegí <strong>Basada en tiempo</strong>.</li>
+  <li>Guardá la cuenta. La aplicación empezará a mostrar un código de <strong>6 dígitos</strong> que cambia periódicamente.</li>
+</ol>
+
+<h3>Ingresar a la plataforma</h3>
+<ol class="steps">
+  <li>Abrí el enlace de administración de plataforma.</li>
+  <li>Completá <strong>Nombre de usuario</strong> y <strong>Contraseña</strong>.</li>
+  <li>En <strong>Segundo factor</strong>, dejá seleccionada la opción <strong>Aplicación</strong>.</li>
+  <li>Escribí el código de 6 dígitos que muestra tu teléfono.</li>
+  <li>Presioná <strong>Acceder al control plane</strong>.</li>
+  <li>Si el código cambió justo antes de confirmar, esperá el siguiente e intentá nuevamente.</li>
+</ol>
+
+<div class="notice warning">
+  <strong>Usá solamente la opción Aplicación en esta demo.</strong>
+  Dejala seleccionada como segundo factor. Para acciones especialmente sensibles, Gestudio puede pedir otro código nuevo durante la sesión.
+</div>
+
+<div class="notice danger">
+  <strong>No uses esta cuenta para el trabajo diario.</strong>
+  PLATFORM_SUPERADMIN no debe utilizarse para alumnos, inscripciones, pagos, caja o stock de Escuela Danza Marcos Paz ni de Escuela Beta Demo.
+</div>
