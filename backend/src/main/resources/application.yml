@@ -102,6 +102,10 @@ app:
   time-zone: ${APP_TIME_ZONE:America/Argentina/Buenos_Aires}
   cors-allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:8080}
   scheduling-enabled: ${APP_SCHEDULING_ENABLED:false}
+  receipts:
+    # Preserve the global scheduling policy unless the receipt worker is selected explicitly.
+    worker-enabled: ${APP_RECEIPTS_WORKER_ENABLED:${app.scheduling-enabled:false}}
+    worker-delay-ms: ${APP_RECEIPTS_WORKER_DELAY_MS:30000}
   email:
     enabled: ${APP_EMAIL_ENABLED:false}
     provider: ${APP_EMAIL_PROVIDER:NOOP}

@@ -1,8 +1,8 @@
 # Tareas programadas
 
 > Estado: CONFIRMADO  
-> Última revisión: 2026-07-24  
-> Fuentes principales: `../../backend/src/main/java/gestudio/servicios/ScheduledTasks.java`
+> Última revisión: 2026-10-23
+> Fuentes principales: `../../backend/src/main/java/gestudio/servicios/ScheduledTasks.java`, `../../backend/src/main/java/gestudio/servicios/pdfs/ReciboStorageService.java`, `../../backend/src/main/resources/application.yml`
 
 ## Habilitación
 
@@ -13,6 +13,15 @@ app.scheduling-enabled=true
 ```
 
 Variable externa: `APP_SCHEDULING_ENABLED`. Dev/test la mantienen apagada; producción puede habilitarla. Todos los cron usan `${app.time-zone}`.
+
+El worker de recibos usa `app.receipts.worker-enabled`, controlable mediante
+`APP_RECEIPTS_WORKER_ENABLED`. Sin override hereda el valor **efectivo** de
+`app.scheduling-enabled`, conservando la configuración existente, incluida
+producción. Se puede activar sólo recibos con global `false` y worker `true`,
+o desactivar recibos con global `true` y worker `false`. Su intervalo es
+`APP_RECEIPTS_WORKER_DELAY_MS` (30000 por defecto). Esta selección no habilita
+correo: la política de proveedor, dry-run, kill-switch y red sigue separada.
+`RuntimeProfilesTest` prueba las combinaciones y el arranque sin envíos.
 
 ## Inventario
 

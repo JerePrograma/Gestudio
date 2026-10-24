@@ -1,5 +1,6 @@
 import { Component, type ReactNode } from "react";
 import { toast } from "react-toastify";
+import { appPath } from "../config/basePath";
 
 interface ErrorBoundaryProps {
     children: ReactNode;
@@ -24,7 +25,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
         // 🔥 Redireccion manual al Dashboard despues de un pequeño retraso
         setTimeout(() => {
-            window.location.href = "/";
+            window.location.href = appPath("/");
         }, 100); // Redirige en 100ms (para evitar bloqueos de React)
     }
 

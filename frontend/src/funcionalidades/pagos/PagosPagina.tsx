@@ -19,6 +19,7 @@ import RowActions from "../../componentes/comunes/RowActions";
 import StatusBadge from "../../componentes/comunes/StatusBadge";
 import { Ban, Download } from "lucide-react";
 import { PERMISSIONS } from "../../config/permissions";
+import { publicDemoCredentials } from "../../config/publicDemo";
 
 const PAGE_SIZE = 50;
 const ALUMNOS_SEARCH_SIZE = 8;
@@ -46,6 +47,7 @@ const referenciaPago = (pago: PagoResumenResponse): string =>
   `pago del ${pago.fecha} por $ ${formatMoney(pago.montoRecibido)}`;
 
 export default function PagosPagina() {
+  const publicDemo = publicDemoCredentials() !== null;
   const [searchParams] = useSearchParams();
   const initialAlumnoId = positiveId(searchParams.get("alumnoId"));
 
@@ -131,6 +133,7 @@ export default function PagosPagina() {
   };
 
   const descargar = async (pagoId: number) => {
+    if (publicDemo) return;
     try {
       await pagosApi.descargarRecibo(pagoId);
     } catch (error) {
@@ -146,6 +149,12 @@ export default function PagosPagina() {
         description="Consultá recibos, estado y trazabilidad por alumno."
         count={pagos.data?.totalElements}
       />
+
+      {publicDemo && (
+        <p className="mb-4 rounded-lg border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
+          Los pagos son datos de ejemplo. Esta demo no incluye comprobantes PDF descargables.
+        </p>
+      )}
 
       <FilterBar label="Consultar pagos">
         <form onSubmit={buscar} className="flex w-full flex-col gap-3 sm:flex-row sm:items-end">
@@ -265,7 +274,7 @@ export default function PagosPagina() {
                         <RowActions
                           label={`Acciones del ${referenciaPago(pago)}`}
                           actions={[
-                            { label: "Descargar recibo", icon: Download, onSelect: () => void descargar(pago.id) },
+                            { label: "Descargar recibo", icon: Download, disabled: publicDemo, onSelect: () => void descargar(pago.id) },
                             ...(pago.estado === "REGISTRADO"
                               ? [{ label: "Anular pago", icon: Ban, requiredPermission: PERMISSIONS.PAGOS_ANULAR, destructive: true, disabled: anulacion.isPending, onSelect: () => anular(pago) }]
                               : []),

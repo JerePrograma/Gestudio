@@ -33,7 +33,7 @@ import java.util.List;
 import java.util.UUID;
 
 @Service
-@ConditionalOnProperty(name = "app.scheduling-enabled", havingValue = "true")
+@ConditionalOnProperty(name = "app.receipts.worker-enabled", havingValue = "true")
 public class ReciboStorageService {
     private static final Logger log = LoggerFactory.getLogger(ReciboStorageService.class);
     private static final int MAX_INTENTOS = 5;

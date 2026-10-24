@@ -5,6 +5,7 @@ interface E2eState {
   apiUrl: string;
   composeProject: string;
   runId: string;
+  financialFlow: boolean;
   bootstrapCounter: number;
   platform: Credentials & { totpSecret: string };
   alpha: TenantIdentity;
@@ -54,6 +55,10 @@ const composeProject = identifier(
 if (composeProject === "gestudio-remote-demo" || composeProject.includes("remote-demo")) {
   throw new Error("El proyecto protegido gestudio-remote-demo esta fuera del alcance E2E");
 }
+const financialFlow = process.env.GESTUDIO_E2E_FINANCIAL_FLOW === "true";
+if (financialFlow && !/^gestudio-e2e-[a-f0-9]{12}$/.test(composeProject)) {
+  throw new Error("El recorrido financiero no admite demos persistentes");
+}
 
 const bootstrapCounter = Number(required("GESTUDIO_E2E_BOOTSTRAP_COUNTER"));
 if (!Number.isSafeInteger(bootstrapCounter) || bootstrapCounter < 1) {
@@ -65,6 +70,7 @@ export const e2eState: E2eState = Object.freeze({
   apiUrl: localHttpUrl("GESTUDIO_E2E_API_URL"),
   composeProject,
   runId: identifier("GESTUDIO_E2E_RUN_ID", /^[a-f0-9]{12}$/),
+  financialFlow,
   bootstrapCounter,
   platform: {
     username: identifier("GESTUDIO_E2E_PLATFORM_USERNAME", /^[A-Za-z0-9._@+-]{3,100}$/),

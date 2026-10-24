@@ -1,5 +1,6 @@
 ﻿[CmdletBinding()]
 param(
+    [switch] $FinancialFlow,
     [switch] $PersistentDemo,
     [string] $StateRoot = '',
     [ValidateRange(1, 65535)][int] $PersistentDatabasePort = 15432,
@@ -10,8 +11,14 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+if ($FinancialFlow -and $PersistentDemo) {
+    throw 'FinancialFlow requiere un proyecto efimero; PersistentDemo esta excluido.'
+}
+
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $frontendRoot = Join-Path $repoRoot 'frontend'
+$playwrightCli = Join-Path $frontendRoot 'node_modules\playwright\cli.js'
+$playwrightConfig = Join-Path $frontendRoot 'playwright.config.ts'
 $composeFile = Join-Path $repoRoot 'docker-compose.yml'
 $artifactRoot = Join-Path $repoRoot 'artifacts\e2e'
 $startedAt = [DateTimeOffset]::UtcNow
@@ -32,6 +39,11 @@ $frontendImage = $null
 $composeStarted = $false
 $bootstrapJobId = $null
 $playwrightLog = [Collections.Generic.List[string]]::new()
+$receiptPathLinuxLog = [Collections.Generic.List[string]]::new()
+$receiptPathLinuxStatus = 'NOT_EXECUTED'
+$imageBuildLog = [Collections.Generic.List[string]]::new()
+$backendBuiltId = $null
+$frontendBuiltId = $null
 $playwrightOutput = $null
 $backendSourceSha = $null
 $frontendSourceSha = $null
@@ -549,10 +561,22 @@ function Write-SanitizedArtifacts {
     $logPath = Join-Path $artifactRoot 'playwright.log'
     $safeLines = @($playwrightLog | ForEach-Object { ConvertTo-SafeText $_ })
     [IO.File]::WriteAllLines($logPath, $safeLines, [Text.UTF8Encoding]::new($false))
+    if ($FinancialFlow) {
+        $safeReceiptLines = @($receiptPathLinuxLog | ForEach-Object { ConvertTo-SafeText $_ })
+        [IO.File]::WriteAllLines((Join-Path $artifactRoot 'receipt-path-linux.log'), $safeReceiptLines,
+            [Text.UTF8Encoding]::new($false))
+        $safeBuildLines = @($imageBuildLog | ForEach-Object { ConvertTo-SafeText $_ })
+        [IO.File]::WriteAllLines((Join-Path $artifactRoot 'image-builds.log'), $safeBuildLines,
+            [Text.UTF8Encoding]::new($false))
+    }
     $result = [ordered]@{
         schemaVersion = 1
         status = $Status
-        phase = 'control-plane-e2e'
+        phase = if ($FinancialFlow) { 'control-plane-financial-e2e' } else { 'control-plane-e2e' }
+        financialFlowRequested = [bool]$FinancialFlow
+        receiptPathLinux = $receiptPathLinuxStatus
+        backendImageId = $backendBuiltId
+        frontendImageId = $frontendBuiltId
         runId = $suffix
         composeProject = $project
         dockerContext = if ($dockerContext) { ConvertTo-SafeText $dockerContext } else { $null }
@@ -584,6 +608,9 @@ try {
     if (-not (Test-Path -LiteralPath $composeFile -PathType Leaf)) { throw 'Falta docker-compose.yml.' }
     if (-not (Test-Path -LiteralPath (Join-Path $frontendRoot 'package-lock.json') -PathType Leaf)) {
         throw 'Falta frontend/package-lock.json.'
+    }
+    if (-not (Test-Path -LiteralPath $playwrightCli -PathType Leaf)) {
+        throw 'Falta Playwright local fijado por lockfile; ejecute npm ci en frontend.'
     }
     $dockerContext = Assert-LocalDockerTarget
     [Environment]::SetEnvironmentVariable('DOCKER_CONTEXT', $dockerContext, 'Process')
@@ -714,6 +741,8 @@ try {
         APP_SECURITY_REFRESH_COOKIE_PATH = '/api/login'
         APP_CORS_ALLOWED_ORIGINS = "http://127.0.0.1:$frontendPort"
         APP_SCHEDULING_ENABLED = 'false'
+        APP_RECEIPTS_WORKER_ENABLED = if ($FinancialFlow) { 'true' } else { 'false' }
+        APP_RECEIPTS_WORKER_DELAY_MS = '1000'
         APP_EMAIL_ENABLED = 'false'
         APP_EMAIL_PROVIDER = 'NOOP'
         APP_EMAIL_DRY_RUN = 'true'
@@ -759,6 +788,9 @@ services:
   db:
 $databasePorts
   backend:
+    environment:
+      APP_RECEIPTS_WORKER_ENABLED: `${APP_RECEIPTS_WORKER_ENABLED:?required}
+      APP_RECEIPTS_WORKER_DELAY_MS: `${APP_RECEIPTS_WORKER_DELAY_MS:?required}
     ports: !override
       - "127.0.0.1:${backendPort}:8080"
   frontend:
@@ -792,6 +824,13 @@ services:
         $config.services.frontend.ports[0].host_ip -cne '127.0.0.1' -or
         [int]$config.services.frontend.ports[0].published -ne $frontendPort -or
         $config.services.backend.environment.APP_BOOTSTRAP_SUPERADMIN_ENABLED -cne 'false' -or
+        $config.services.backend.environment.APP_SCHEDULING_ENABLED -cne 'false' -or
+        $config.services.backend.environment.APP_RECEIPTS_WORKER_ENABLED -cne $envValues.APP_RECEIPTS_WORKER_ENABLED -or
+        $config.services.backend.environment.APP_RECEIPTS_WORKER_DELAY_MS -cne '1000' -or
+        $config.services.backend.environment.APP_EMAIL_PROVIDER -cne 'NOOP' -or
+        $config.services.backend.environment.APP_EMAIL_ENABLED -cne 'false' -or
+        $config.services.backend.environment.APP_EMAIL_REAL_NETWORK_ALLOWED -cne 'false' -or
+        $config.services.backend.environment.APP_EMAIL_KILL_SWITCH -cne 'true' -or
         $config.services.backend.image -cne $backendImage -or
         $config.services.frontend.image -cne $frontendImage) {
         throw 'Compose E2E efectivo no cumple aislamiento, loopback o bootstrap-off ordinario.'
@@ -799,6 +838,30 @@ services:
     $configJson = $null
     $config = $null
 
+    if ($FinancialFlow) {
+        # Build each service sequentially on the shared host, without reusing image layers.
+        $imageBuildLog.Add('Backend: docker compose build --no-cache backend')
+        $imageBuildLog.Add((ConvertTo-SafeText (Invoke-Compose -Arguments @('build', '--no-cache', 'backend') -Capture)))
+        $backendBuiltId = Invoke-Native -FilePath 'docker' -Arguments @(
+            'image', 'inspect', '--format', '{{.Id}}', $backendImage) -Capture
+        $receiptPathLinuxStatus = 'EXECUTED_FAIL'
+        try {
+            # Cache-only exporter creates no image/tag to remove from the shared daemon.
+            $receiptPathOutput = Invoke-Native -FilePath 'docker' -Arguments @(
+                'build', '--target', 'receipt-path-validation', '--output=type=cacheonly', '--progress', 'plain',
+                '--build-arg', "VCS_REF=$sourceSha", '--build-arg', "RECEIPT_PATH_VALIDATION_RUN=$suffix",
+                (Join-Path $repoRoot 'backend')) -Capture
+            $receiptPathLinuxLog.Add((ConvertTo-SafeText $receiptPathOutput))
+            $receiptPathLinuxStatus = 'PASS_TWO_NAMED_TESTS_ZERO_SKIPS'
+        } catch {
+            $receiptPathLinuxLog.Add((ConvertTo-SafeText $_.Exception.Message))
+            throw
+        }
+        $imageBuildLog.Add('Frontend: docker compose build --no-cache frontend')
+        $imageBuildLog.Add((ConvertTo-SafeText (Invoke-Compose -Arguments @('build', '--no-cache', 'frontend') -Capture)))
+        $frontendBuiltId = Invoke-Native -FilePath 'docker' -Arguments @(
+            'image', 'inspect', '--format', '{{.Id}}', $frontendImage) -Capture
+    }
     [void](Invoke-Compose -Arguments @('up', '-d', '--build', '--wait', '--wait-timeout', '420'))
     $composeStarted = $true
 
@@ -908,6 +971,7 @@ SELECT
         GESTUDIO_E2E_API_URL = "http://127.0.0.1:$backendPort/api"
         GESTUDIO_E2E_OUTPUT_DIR = $playwrightOutput
         GESTUDIO_E2E_COMPOSE_PROJECT = $project
+        GESTUDIO_E2E_FINANCIAL_FLOW = if ($FinancialFlow) { 'true' } else { 'false' }
         GESTUDIO_E2E_RUN_ID = $suffix
         GESTUDIO_E2E_BOOTSTRAP_COUNTER = [string]$consumedCounter
         GESTUDIO_E2E_PLATFORM_USERNAME = $platformUsername
@@ -929,7 +993,9 @@ SELECT
     $environmentApplied = $true
     Push-Location $frontendRoot
     try {
-        $rawTestOutput = @(& npm exec -- playwright test --config playwright.config.ts 2>&1 |
+        # Calling npm.ps1 consumes PowerShell's -- terminator and lets npm strip
+        # --config; invoke the locked CLI directly so configuration is never a test filter.
+        $rawTestOutput = @(& node $playwrightCli test --config $playwrightConfig 2>&1 |
             ForEach-Object { [string]$_ })
         $testExit = $LASTEXITCODE
     }
@@ -1000,6 +1066,25 @@ SELECT
 "@).Trim()
     if ($finalState -cne '2|2|3|2|1|1|2|1|2|2|2|2|2|11') {
         throw 'La reconciliacion SQL final no coincide con el flujo E2E completo.'
+    }
+    if ($FinancialFlow) {
+        $financialState = (Invoke-DatabaseSql -Sql @"
+SELECT
+  (SELECT count(*) FROM inscripciones)::text || '|' ||
+  (SELECT count(*) FROM mensualidades)::text || '|' ||
+  (SELECT count(*) FROM matriculas)::text || '|' ||
+  (SELECT count(*) FROM cargos WHERE estado='PAGADO')::text || '|' ||
+  (SELECT count(*) FROM pagos WHERE estado='REGISTRADO')::text || '|' ||
+  (SELECT sum(monto_recibido) FROM pagos)::text || '|' ||
+  (SELECT sum(importe) FROM movimientos_caja WHERE tipo='INGRESO_PAGO')::text || '|' ||
+  (SELECT count(*) FROM recibos WHERE storage_key IS NOT NULL AND generado_at IS NOT NULL)::text || '|' ||
+  (SELECT count(*) FROM recibos_pendientes WHERE estado='COMPLETADO')::text || '|' ||
+  (SELECT count(*) FROM recibos WHERE enviado_at IS NOT NULL)::text || '|' ||
+  (SELECT count(*) FROM pagos p JOIN tenants t ON t.id=p.tenant_id WHERE t.code='$betaCode')::text;
+"@).Trim()
+        if ($financialState -cne '1|1|1|2|1|120.50|120.50|1|1|0|0') {
+            throw "La reconciliacion financiera no coincide con inscripcion/cargos/pago/PDF/caja sin envios. Estado: $financialState"
+        }
     }
 }
 catch {

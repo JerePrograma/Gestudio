@@ -1,5 +1,6 @@
 import axios from "axios";
 import { API_BASE_URL } from "../config/environment";
+import { stripAppBase } from "../config/basePath";
 import {
   sanitizePlatformProfile,
   sanitizeUserProfile,
@@ -85,7 +86,7 @@ export function subscribeAuthSession(
 }
 
 const inferredRefreshScope = (): SessionScope =>
-  session.scope ?? (window.location.pathname.startsWith("/platform") ? "PLATFORM" : "TENANT");
+  session.scope ?? (stripAppBase(window.location.pathname).startsWith("/platform") ? "PLATFORM" : "TENANT");
 
 const validateRefreshScope = (scope: SessionScope): void => {
   if (session.scope !== null && session.scope !== scope) {

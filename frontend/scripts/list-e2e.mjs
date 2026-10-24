@@ -28,8 +28,10 @@ const discoveryEnvironment = {
 };
 
 const playwrightCli = fileURLToPath(new URL("../node_modules/playwright/cli.js", import.meta.url));
-const result = spawnSync(process.execPath, [playwrightCli, "test", "--list"], {
-  cwd: process.cwd(),
+const playwrightConfig = fileURLToPath(new URL("../playwright.config.ts", import.meta.url));
+const frontendRoot = fileURLToPath(new URL("../", import.meta.url));
+const result = spawnSync(process.execPath, [playwrightCli, "test", "--config", playwrightConfig, "--list"], {
+  cwd: frontendRoot,
   env: { ...process.env, ...discoveryEnvironment },
   stdio: "inherit",
 });

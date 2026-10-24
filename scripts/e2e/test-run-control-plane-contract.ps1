@@ -7,6 +7,7 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $runnerPath = Join-Path $PSScriptRoot 'run-control-plane.ps1'
 $specPath = Join-Path $repoRoot 'frontend\e2e\control-plane.spec.ts'
+$financialPath = Join-Path $repoRoot 'frontend\e2e\support\financial-flow.ts'
 
 function Assert-Contains {
     param(
@@ -31,7 +32,7 @@ function Assert-Ordered {
     }
 }
 
-foreach ($path in @($runnerPath, $specPath)) {
+foreach ($path in @($runnerPath, $specPath, $financialPath)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Falta archivo requerido por el contrato E2E: $path"
     }
@@ -39,7 +40,7 @@ foreach ($path in @($runnerPath, $specPath)) {
 
 $tokens = $null
 $parseErrors = $null
-[void][Management.Automation.Language.Parser]::ParseFile(
+$runnerAst = [Management.Automation.Language.Parser]::ParseFile(
     $runnerPath,
     [ref]$tokens,
     [ref]$parseErrors)
@@ -49,6 +50,87 @@ if ($parseErrors.Count -ne 0) {
 
 $runner = [IO.File]::ReadAllText($runnerPath)
 $spec = [IO.File]::ReadAllText($specPath)
+$financial = [IO.File]::ReadAllText($financialPath)
+
+# Run the runner's actual native command against an argv-only fixture. This
+# covers spaces and option forwarding in both PowerShell runtimes without Docker.
+$nodeCommands = @($runnerAst.FindAll({
+    param($item)
+    $item -is [Management.Automation.Language.CommandAst] -and
+        $item.GetCommandName() -ceq 'node' -and
+        $item.Extent.Text.IndexOf('$playwrightCli', [StringComparison]::Ordinal) -ge 0
+}, $true))
+if ($nodeCommands.Count -ne 1) { throw 'El runner debe tener una sola invocacion directa del CLI Node.' }
+$argvRoot = [IO.Path]::GetFullPath((Join-Path ([IO.Path]::GetTempPath()) ('gestudio-e2e-argv-' + [Guid]::NewGuid().ToString('N'))))
+try {
+    [IO.Directory]::CreateDirectory($argvRoot) | Out-Null
+    $playwrightCli = Join-Path $argvRoot 'capture cli.js'
+    $playwrightConfig = Join-Path $argvRoot 'config con espacios.ts'
+    [IO.File]::WriteAllText($playwrightCli,
+        'process.stdout.write(JSON.stringify(process.argv.slice(2)));', [Text.UTF8Encoding]::new($false))
+    $argvOutput = & ([scriptblock]::Create($nodeCommands[0].Extent.Text))
+    if ($LASTEXITCODE -ne 0) { throw 'El fixture nativo de argumentos fallo.' }
+    [object[]] $forwarded = ConvertFrom-Json -InputObject ($argvOutput -join "`n")
+    if ($forwarded.Count -ne 3 -or $forwarded[0] -cne 'test' -or
+        $forwarded[1] -cne '--config' -or $forwarded[2] -cne $playwrightConfig) {
+        throw 'Node no recibio test/config/path como tres argumentos exactos.'
+    }
+    Write-Host ('CLI argv fixture: ' + ($forwarded | ConvertTo-Json -Compress))
+} finally {
+    $resolvedArgvRoot = [IO.Path]::GetFullPath($argvRoot)
+    $tempPrefix = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+    if (-not $resolvedArgvRoot.StartsWith($tempPrefix, [StringComparison]::OrdinalIgnoreCase) -or
+        (Split-Path $resolvedArgvRoot -Leaf) -notmatch '^gestudio-e2e-argv-[a-f0-9]{32}$') {
+        throw 'Se rechazo cleanup de fixture argv fuera del temporal propio.'
+    }
+    if (Test-Path -LiteralPath $resolvedArgvRoot) { Remove-Item -LiteralPath $resolvedArgvRoot -Recurse -Force }
+}
+
+$discoveryPath = Join-Path $repoRoot 'frontend\scripts\list-e2e.mjs'
+Push-Location ([IO.Path]::GetTempPath())
+try {
+    $discoveryOutput = @(& node $discoveryPath 2>&1 | ForEach-Object { [string]$_ })
+    if ($LASTEXITCODE -ne 0 -or ($discoveryOutput -join "`n") -notmatch 'Total: 1 test in 1 file') {
+        throw 'La misma CLI/config no descubre el escenario desde otro directorio.'
+    }
+    $discoveryOutput | ForEach-Object { Write-Host $_ }
+} finally { Pop-Location }
+
+# Execute the fail-fast guard: this combination must not probe Docker or mutate a demo.
+$rejected = $false
+try {
+    & $runnerPath -FinancialFlow -PersistentDemo
+} catch {
+    $rejected = $_.Exception.Message -ceq 'FinancialFlow requiere un proyecto efimero; PersistentDemo esta excluido.'
+}
+if (-not $rejected) { throw 'El flujo financiero no rechazo el demo persistente antes de ejecutar operaciones.' }
+Assert-Ordered -Source $runner -First 'if ($FinancialFlow -and $PersistentDemo)' `
+    -Second '$dockerContext = Assert-LocalDockerTarget' `
+    -Failure 'El rechazo de FinancialFlow persistente debe preceder al contacto con Docker.'
+foreach ($requirement in @(
+    @('APP_RECEIPTS_WORKER_ENABLED: `${APP_RECEIPTS_WORKER_ENABLED:?required}', 'El override no transmite el worker a Compose.'),
+    @('$config.services.backend.environment.APP_RECEIPTS_WORKER_ENABLED -cne $envValues.APP_RECEIPTS_WORKER_ENABLED', 'Falta verificar el worker efectivo.'),
+    @('$config.services.backend.environment.APP_SCHEDULING_ENABLED -cne ''false''', 'El flujo podria activar cron de negocio.'),
+    @('$config.services.backend.environment.APP_EMAIL_REAL_NETWORK_ALLOWED -cne ''false''', 'El flujo podria permitir red de correo.'),
+    @('''build'', ''--target'', ''receipt-path-validation''', 'Falta ejecutar el gate Linux de rutas.'),
+    @('RECEIPT_PATH_VALIDATION_RUN=$suffix', 'El gate Linux no exige un run unico.'),
+    @('''--output=type=cacheonly''', 'El stage opcional no debe exportar imagenes sin cleanup.'),
+    @('$receiptPathLinuxStatus = ''EXECUTED_FAIL''', 'Un gate ejecutado que falla no debe aparecer como no ejecutado.'),
+    @('& node $playwrightCli test --config $playwrightConfig', 'Playwright debe recibir sus opciones sin el shim npm.ps1.'),
+    @('1|1|1|2|1|120.50|120.50|1|1|0|0', 'Falta reconciliacion financiera exacta y sin envios.')
+)) {
+    Assert-Contains -Source $runner -Marker $requirement[0] -Failure $requirement[1]
+}
+foreach ($marker in @('El recorrido financiero requiere un proyecto efimero aislado',
+        'download.suggestedFilename()', 'Buffer.concat(chunks).equals(bytes)',
+        'expect(denied.status()).toBe(404)', 'creditoGenerado: "0.00"')) {
+    Assert-Contains -Source $financial -Marker $marker -Failure "Falta contrato financiero: $marker"
+}
+Assert-Ordered -Source $financial -First 'download.suggestedFilename()' `
+    -Second 'headers: betaHeaders' -Failure 'Beta debe probar el PDF ya disponible para Alpha.'
+$workflow = [IO.File]::ReadAllText((Join-Path $repoRoot '.github\workflows\e2e.yml'))
+Assert-Contains -Source $workflow -Marker 'run: ./scripts/e2e/run-control-plane.ps1 -FinancialFlow' `
+    -Failure 'El workflow E2E no exige el recorrido financiero efimero.'
 
 foreach ($requirement in @(
     @("GetEnvironmentVariable('DOCKER_HOST', 'Process')", 'Falta rechazo explicito de DOCKER_HOST.'),

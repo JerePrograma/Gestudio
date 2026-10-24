@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const login = vi.hoisted(() => vi.fn());
 
@@ -17,6 +17,66 @@ import Login from "./Login";
 describe("Login", () => {
   beforeEach(() => {
     login.mockReset();
+  });
+
+  afterEach(() => vi.unstubAllEnvs());
+
+  const enablePublicDemo = () => {
+    vi.stubEnv("VITE_PUBLIC_DEMO_ENABLED", "true");
+    vi.stubEnv("VITE_PUBLIC_DEMO_USERNAME", "alpha.demo.presentacion");
+    vi.stubEnv("VITE_PUBLIC_DEMO_PASSWORD", "synthetic-read-only-fixture");
+  };
+
+  it.each([
+    [undefined, "viewer", "synthetic"],
+    ["false", "viewer", "synthetic"],
+    ["TRUE", "viewer", "synthetic"],
+    ["true", "", "synthetic"],
+    ["true", "viewer", ""],
+  ])("oculta la demo sin habilitación explícita y credenciales completas (%s, %s)", (enabled, username, password) => {
+    vi.stubEnv("VITE_PUBLIC_DEMO_ENABLED", enabled);
+    vi.stubEnv("VITE_PUBLIC_DEMO_USERNAME", username);
+    vi.stubEnv("VITE_PUBLIC_DEMO_PASSWORD", password);
+    render(<MemoryRouter><Login /></MemoryRouter>);
+
+    expect(screen.queryByRole("button", { name: "Entrar a la demo" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ingresar" })).toBeVisible();
+  });
+
+  it("accede a la cuenta pública con el login habitual sin completar ni persistir contraseñas", async () => {
+    enablePublicDemo();
+    let finishLogin: (value: null) => void = () => undefined;
+    login.mockImplementation(() => new Promise((resolve) => { finishLogin = resolve; }));
+    render(<MemoryRouter><Login /></MemoryRouter>);
+
+    fireEvent.click(screen.getByRole("button", { name: "Entrar a la demo" }));
+
+    await waitFor(() => expect(login).toHaveBeenCalledWith(
+      "alpha.demo.presentacion", "synthetic-read-only-fixture", undefined,
+    ));
+    expect(screen.getByRole("button", { name: "Ingresando a la demo…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Ingresar" })).toBeDisabled();
+    expect(screen.getByLabelText("Nombre de Usuario:")).toHaveValue("");
+    expect(screen.getByLabelText("Contraseña:")).toHaveValue("");
+    expect(localStorage.getItem("contrasena")).toBeNull();
+
+    finishLogin(null);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Entrar a la demo" })).toBeEnabled());
+  });
+
+  it("permite reintentar la demo si falla el acceso sin mostrar detalles internos", async () => {
+    enablePublicDemo();
+    login.mockRejectedValueOnce(new Error("private backend diagnostic"));
+    render(<MemoryRouter><Login /></MemoryRouter>);
+
+    fireEvent.click(screen.getByRole("button", { name: "Entrar a la demo" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("No se pudo iniciar sesión");
+    expect(screen.queryByText("private backend diagnostic")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Entrar a la demo" })).toBeEnabled());
+
+    login.mockResolvedValueOnce(null);
+    fireEvent.click(screen.getByRole("button", { name: "Entrar a la demo" }));
+    await waitFor(() => expect(login).toHaveBeenCalledTimes(2));
   });
 
   it("valida campos y envía las credenciales", async () => {

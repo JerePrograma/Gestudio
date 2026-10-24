@@ -8,7 +8,7 @@ import { SidebarProvider } from "./hooks/context/SideBarContext";
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <BrowserRouter>
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
       <AuthProvider>
         <SidebarProvider>
           <AppRouter />

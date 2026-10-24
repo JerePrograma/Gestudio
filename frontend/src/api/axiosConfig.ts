@@ -4,6 +4,7 @@ import axios, {
   type InternalAxiosRequestConfig,
 } from "axios";
 import { API_BASE_URL } from "../config/environment";
+import { appPath } from "../config/basePath";
 import {
   clearAuthSession,
   getAccessToken,
@@ -110,7 +111,7 @@ function getAuthorizationHeader(config: InternalAxiosRequestConfig): string | nu
 }
 
 function redirectToLogin(scope: SessionScope): void {
-  const loginPath = scope === "PLATFORM" ? "/platform/login" : "/login";
+  const loginPath = appPath(scope === "PLATFORM" ? "/platform/login" : "/login");
   if (window.location.pathname !== loginPath) {
     window.location.assign(loginPath);
   }

@@ -123,6 +123,34 @@ recursos propios. No debe apuntarse a `gestudio-remote-demo` ni a una DB
 persistente. `npm run e2e:typecheck` y `npm run e2e:list` validan el arnés, pero
 no constituyen evidencia browser.
 
+El gate E2E de CI exige además el recorrido financiero completo:
+
+```powershell
+pwsh -NoProfile -File .\scripts\e2e\run-control-plane.ps1 -FinancialFlow
+```
+
+Esta variante rechaza `-PersistentDemo`, reconstruye backend y frontend sin
+capas reutilizadas y habilita sólo el worker de recibos a un segundo, con cron
+de negocio apagados y correo NOOP/sin red. El usuario Alpha se inscribe desde
+UI, recibe cuota 100.50 y matrícula 20.00, paga 120.50 desde UI, consulta caja
+y descarga el PDF real generado por el outbox. Se comparan los bytes API y
+descarga, se verifica Beta 404 después de que el archivo existe y se reconcilian
+registros, importes, outbox completado y ausencia de envíos mediante SQL.
+`PdfServiceTest` extrae texto del PDF real con OpenPDF para verificar alumno,
+fecha, pago, cargos e importes; no sustituye la prueba browser.
+
+El stage opcional `receipt-path-validation` reutiliza el build Linux y exige
+ejecutar las dos pruebas de symlinks con un ID único: XML con dos casos
+nombrados y cero skips/fallos/errores. El runtime final no depende de ese stage.
+El resultado y log sanitizados quedan en `artifacts/e2e/result.json`,
+`playwright.log`, `receipt-path-linux.log` e `image-builds.log` (IDs de imágenes
+en el JSON); los recursos efímeros se limpian.
+El contrato del runner se ejecuta con PowerShell 7 y también admite 5.1:
+`scripts/e2e/test-run-control-plane-contract.ps1`.
+El runner invoca el CLI local de Playwright directamente mediante Node: evita
+que el shim `npm.ps1` consuma el separador `--` y transforme la configuración
+en un filtro sin escenarios en Windows.
+
 ## Validación integrada
 
 ```powershell

@@ -1,10 +1,12 @@
+import { appPath } from "../config/basePath";
+
 const ACTIVATION_PATH = "/platform/activate";
 
 export const platformActivationUrl = (
   token: string,
   origin = window.location.origin,
 ): string => {
-  const url = new URL(ACTIVATION_PATH, origin);
+  const url = new URL(appPath(ACTIVATION_PATH), origin);
   url.hash = new URLSearchParams({ token }).toString();
   return url.toString();
 };

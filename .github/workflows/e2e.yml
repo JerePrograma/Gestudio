@@ -60,9 +60,13 @@ jobs:
           npm run e2e:typecheck
           npm run e2e:list
 
-      - name: Run isolated fresh control-plane E2E
+      - name: Validate ephemeral financial runner contract
         shell: pwsh
-        run: ./scripts/e2e/run-control-plane.ps1
+        run: ./scripts/e2e/test-run-control-plane-contract.ps1
+
+      - name: Run isolated fresh control-plane and financial E2E
+        shell: pwsh
+        run: ./scripts/e2e/run-control-plane.ps1 -FinancialFlow
 
       - name: Upload sanitized E2E result
         if: always()
@@ -72,6 +76,8 @@ jobs:
           path: |
             artifacts/e2e/result.json
             artifacts/e2e/playwright.log
+            artifacts/e2e/receipt-path-linux.log
+            artifacts/e2e/image-builds.log
           if-no-files-found: error
           retention-days: 14
 

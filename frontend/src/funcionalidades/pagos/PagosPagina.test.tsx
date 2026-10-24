@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   AlumnoResponse,
   Page,
@@ -40,6 +40,7 @@ vi.mock("../../hooks/context/useAuth", () => ({
 import PagosPagina from "./PagosPagina";
 
 describe("PagosPagina", () => {
+  afterEach(() => vi.unstubAllEnvs());
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.clearAllMocks();
@@ -151,6 +152,21 @@ describe("PagosPagina", () => {
     await openActions();
     fireEvent.click(await screen.findByRole("menuitem", { name: "Descargar recibo" }));
     await waitFor(() => expect(toastError).toHaveBeenCalledWith("No se pudo descargar el recibo."));
+  });
+
+  it("explica los recibos ficticios y deshabilita la descarga sólo en la demo pública", async () => {
+    vi.stubEnv("VITE_PUBLIC_DEMO_ENABLED", "true");
+    vi.stubEnv("VITE_PUBLIC_DEMO_USERNAME", "alpha.demo.presentacion");
+    vi.stubEnv("VITE_PUBLIC_DEMO_PASSWORD", "synthetic-read-only-fixture");
+    renderPage();
+    await selectDefaultAlumno();
+
+    expect(screen.getByText("Los pagos son datos de ejemplo. Esta demo no incluye comprobantes PDF descargables.")).toBeVisible();
+    await openActions();
+    const download = await screen.findByRole("menuitem", { name: "Descargar recibo" });
+    expect(download).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(download);
+    expect(descargarRecibo).not.toHaveBeenCalled();
   });
 
   it("anula con motivo normalizado, invalida la consulta y respeta cancelación", async () => {

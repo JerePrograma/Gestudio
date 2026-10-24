@@ -4,9 +4,8 @@ FROM maven:3.9.16-eclipse-temurin-21-alpine AS build
 ARG VCS_REF=unknown
 WORKDIR /workspace
 COPY pom.xml ./
-RUN --mount=type=cache,target=/root/.m2,sharing=locked \
-    mvn -B -ntp dependency:go-offline
-
+# Resolve only dependencies required by packaging below. go-offline also
+# prefetches optional QA plugins and substantially delays a fresh VPS build.
 COPY src ./src
 ENV GESTUDIO_HOME=/workspace
 RUN set -eux; \
@@ -53,6 +52,24 @@ RUN set -eux; \
 RUN --mount=type=cache,target=/root/.m2,sharing=locked \
     mvn -B -ntp -DskipTests clean package
 
+# Optional Linux-only security gate, independent of the final runtime image.
+# A unique run ID forces execution against this build's compiled test classes.
+FROM build AS receipt-path-validation
+ARG RECEIPT_PATH_VALIDATION_RUN
+RUN --mount=type=cache,target=/root/.m2,sharing=locked \
+    set -eu; \
+    test -n "$RECEIPT_PATH_VALIDATION_RUN"; \
+    mvn -B -ntp '-Dtest=ReciboPathResolverTest#rechazaSymlinkFinal+rechazaDirectorioIntermedioQueEscapaPorSymlink' test; \
+    report='target/surefire-reports/TEST-gestudio.servicios.pdfs.ReciboPathResolverTest.xml'; \
+    test -s "$report"; \
+    for expected in 'tests="2"' 'errors="0"' 'failures="0"' 'skipped="0"' \
+      'name="rechazaSymlinkFinal"' 'name="rechazaDirectorioIntermedioQueEscapaPorSymlink"'; do \
+      grep -Fq "$expected" "$report"; \
+    done; \
+    if grep -q '<skipped' "$report"; then exit 1; fi; \
+    printf 'Receipt path Linux XML verified: run=%s tests=2 failures=0 errors=0 skipped=0\n' "$RECEIPT_PATH_VALIDATION_RUN"; \
+    grep '<testcase ' "$report"
+
 FROM eclipse-temurin:21-jre-alpine-3.23
 
 ARG VCS_REF=unknown
@@ -67,7 +84,8 @@ LABEL org.opencontainers.image.revision="$VCS_REF" \
       org.gestudio.flyway.resources-metadata="/app/build-metadata/flyway-resources.sha256" \
       org.gestudio.health.metadata="/app/build-metadata/health-contract"
 
-RUN addgroup -S gestudio && adduser -S gestudio -G gestudio
+RUN apk add --no-cache curl \
+    && addgroup -S gestudio && adduser -S gestudio -G gestudio
 WORKDIR /app
 RUN mkdir -p /app/data/receipts /app/imgs /app/build-metadata && chown -R gestudio:gestudio /app
 

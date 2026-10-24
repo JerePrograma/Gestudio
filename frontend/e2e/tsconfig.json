@@ -14,5 +14,5 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["../playwright.config.ts", "./**/*.ts"]
+  "include": ["../playwright.config.ts", "./**/*.ts", "../src/utils/civilDate.ts"]
 }

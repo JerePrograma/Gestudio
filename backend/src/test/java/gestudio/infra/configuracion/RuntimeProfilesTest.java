@@ -1,6 +1,11 @@
 package gestudio.infra.configuracion;
 
 import gestudio.servicios.ScheduledTasks;
+import gestudio.repositorios.AplicacionPagoRepositorio;
+import gestudio.repositorios.ReciboPendienteRepositorio;
+import gestudio.repositorios.ReciboRepositorio;
+import gestudio.servicios.pdfs.PdfService;
+import gestudio.servicios.pdfs.ReciboStorageService;
 import gestudio.servicios.asistencia.AsistenciaMensualServicio;
 import gestudio.servicios.email.EmailDeliveryMetrics;
 import gestudio.servicios.email.EmailDeliveryConfigurationGuard;
@@ -30,8 +35,10 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.transaction.PlatformTransactionManager;
 
 import java.io.IOException;
+import java.time.Clock;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -41,8 +48,18 @@ import static org.mockito.Mockito.verifyNoInteractions;
 class RuntimeProfilesTest {
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
+            .withInitializer(context -> {
+                try {
+                    var sources = new YamlPropertySourceLoader().load(
+                            "application", new ClassPathResource("application.yml"));
+                    sources.forEach(source -> context.getEnvironment().getPropertySources().addLast(source));
+                } catch (IOException exception) {
+                    throw new IllegalStateException("No se pudo cargar la configuración real", exception);
+                }
+            })
             .withUserConfiguration(ProfileConfiguration.class)
             .withPropertyValues(
+                    "app.receipts-path=./target/runtime-profile-receipts",
                     "app.email.enabled=false",
                     "app.email.dry-run=true",
                     "app.email.real-network-allowed=false",
@@ -57,6 +74,7 @@ class RuntimeProfilesTest {
                 assertThat(context).hasSingleBean(IEmailService.class);
                 assertThat(context).hasSingleBean(NoOpEmailService.class);
                 assertThat(context).doesNotHaveBean(ScheduledTasks.class);
+                assertThat(context).doesNotHaveBean(ReciboStorageService.class);
             });
         }
     }
@@ -67,7 +85,60 @@ class RuntimeProfilesTest {
             assertThat(context).hasSingleBean(IEmailService.class);
             assertThat(context).hasSingleBean(FakeEmailService.class);
             assertThat(context).hasSingleBean(ScheduledTasks.class);
+            assertThat(context).hasSingleBean(ReciboStorageService.class);
         }, "app.email.provider=FAKE");
+    }
+
+    @Test
+    void recibosSeHabilitanSinActivarJobsDeNegocioNiEnvios() {
+        for (String profile : List.of("dev", "test", "remote-demo", "prod")) {
+            run(profile, "false", context -> {
+                assertThat(context).hasNotFailed();
+                assertThat(context).hasSingleBean(ReciboStorageService.class);
+                assertThat(context).doesNotHaveBean(ScheduledTasks.class);
+                assertThat(context).hasSingleBean(NoOpEmailService.class);
+                verifyNoInteractions(context.getBean(JavaMailSender.class),
+                        context.getBean(MensualidadServicio.class),
+                        context.getBean(TenantExecutionService.class),
+                        context.getBean(PdfService.class));
+            }, "APP_RECEIPTS_WORKER_ENABLED=true");
+        }
+    }
+
+    @Test
+    void recibosPuedenDeshabilitarseConJobsGlobalesActivos() {
+        run("prod", "true", context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context).hasSingleBean(ScheduledTasks.class);
+            assertThat(context).doesNotHaveBean(ReciboStorageService.class);
+        }, "APP_RECEIPTS_WORKER_ENABLED=false");
+    }
+
+    @Test
+    void recibosHeredanSchedulingGlobalYPorDefectoPermanecenApagados() {
+        runner.withInitializer(context -> context.getEnvironment().setActiveProfiles("dev"))
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).doesNotHaveBean(ReciboStorageService.class);
+                    assertThat(context).doesNotHaveBean(ScheduledTasks.class);
+                });
+        run("prod", "true", context -> {
+            assertThat(context).hasSingleBean(ReciboStorageService.class);
+            assertThat(context).hasSingleBean(ScheduledTasks.class);
+        });
+    }
+
+    @Test
+    void recibosHeredanElDefaultDelPerfilProdReal() throws IOException {
+        var source = new YamlPropertySourceLoader().load(
+                "prod", new ClassPathResource("application-prod.yml")).getFirst();
+        runner.withInitializer(context -> context.getEnvironment().setActiveProfiles("prod"))
+                .withPropertyValues("app.scheduling-enabled=" + source.getProperty("app.scheduling-enabled"))
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).hasSingleBean(ReciboStorageService.class);
+                    assertThat(context).hasSingleBean(ScheduledTasks.class);
+                });
     }
 
     @Test
@@ -125,7 +196,7 @@ class RuntimeProfilesTest {
     }
 
     @Configuration(proxyBeanMethods = false)
-    @EnableConfigurationProperties(EmailDeliveryProperties.class)
+    @EnableConfigurationProperties({EmailDeliveryProperties.class, AppProperties.class})
     @Import({
             ActiveProfileGuard.class,
             EmailDeliveryMetrics.class,
@@ -134,7 +205,8 @@ class RuntimeProfilesTest {
             NoOpEmailService.class,
             FakeEmailService.class,
             GmailSmtpEmailService.class,
-            ScheduledTasks.class
+            ScheduledTasks.class,
+            ReciboStorageService.class
     })
     static class ProfileConfiguration {
         @Bean MeterRegistry meterRegistry() { return new SimpleMeterRegistry(); }
@@ -147,5 +219,11 @@ class RuntimeProfilesTest {
         @Bean AsistenciaMensualServicio asistenciaMensualServicio() { return mock(AsistenciaMensualServicio.class); }
         @Bean NotificacionService notificacionService() { return mock(NotificacionService.class); }
         @Bean TenantExecutionService tenantExecutionService() { return mock(TenantExecutionService.class); }
+        @Bean PdfService pdfService() { return mock(PdfService.class); }
+        @Bean ReciboRepositorio reciboRepositorio() { return mock(ReciboRepositorio.class); }
+        @Bean ReciboPendienteRepositorio reciboPendienteRepositorio() { return mock(ReciboPendienteRepositorio.class); }
+        @Bean AplicacionPagoRepositorio aplicacionPagoRepositorio() { return mock(AplicacionPagoRepositorio.class); }
+        @Bean Clock clock() { return Clock.systemUTC(); }
+        @Bean PlatformTransactionManager transactionManager() { return mock(PlatformTransactionManager.class); }
     }
 }

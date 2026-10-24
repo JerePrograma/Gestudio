@@ -11,6 +11,7 @@ import {
 } from "@playwright/test";
 import { e2eState } from "./support/e2e-state";
 import { TotpSequence } from "./support/totp";
+import { verifyFinancialFlow } from "./support/financial-flow";
 
 interface ProvisionedTenant {
   id: string;
@@ -617,6 +618,9 @@ test("fresh -> bootstrap/MFA -> Alpha/Beta -> RLS -> lifecycle -> audit; axe A/A
     const alphaMarker = await requireObject(createAlphaMarker, "Alta marcador Alpha antes de suspension");
     if (!Number.isSafeInteger(alphaMarker.id)) throw new Error("Alta marcador Alpha: id invalido");
     alphaAlumnoId = alphaMarker.id as number;
+    if (e2eState.financialFlow) {
+      await verifyFinancialFlow(request, alphaSession, betaSession.accessToken, alphaAlumnoId);
+    }
   } finally {
     await alphaSession.context.close();
   }

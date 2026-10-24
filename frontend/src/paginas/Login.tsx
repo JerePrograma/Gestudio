@@ -8,6 +8,7 @@ import { prefetch } from "../rutas/routes";
 import { Sparkles } from "lucide-react";
 import type { TenantSummary } from "../types/types";
 import { getApiErrorMessage } from "../api/apiError";
+import { publicDemoCredentials } from "../config/publicDemo";
 
 const loginSchema = yup.object().shape({
   nombreUsuario: yup.string().required("Nombre de Usuario es requerido"),
@@ -19,6 +20,8 @@ const Login: React.FC = () => {
   const navigate = useNavigate();
   const [error, setError] = useState("");
   const [tenantOptions, setTenantOptions] = useState<TenantSummary[]>([]);
+  const [demoSubmitting, setDemoSubmitting] = useState(false);
+  const publicDemo = publicDemoCredentials();
 
   useEffect(() => {
     const id = window.requestIdleCallback
@@ -34,16 +37,11 @@ const Login: React.FC = () => {
     };
   }, []);
 
-  const handleLogin = async (values: {
+  const authenticate = async (values: {
     nombreUsuario: string;
     contrasena: string;
     tenantId: string;
   }) => {
-    if (tenantOptions.length > 0 && !values.tenantId) {
-      setError("Seleccioná una organización para continuar.");
-      return;
-    }
-
     try {
       setError("");
       const result = await login(
@@ -76,6 +74,29 @@ const Login: React.FC = () => {
 
       const { toast } = await import("react-toastify");
       toast.error(message);
+    }
+  };
+
+  const handleLogin = async (values: {
+    nombreUsuario: string;
+    contrasena: string;
+    tenantId: string;
+  }) => {
+    if (tenantOptions.length > 0 && !values.tenantId) {
+      setError("Seleccioná una organización para continuar.");
+      return;
+    }
+    await authenticate(values);
+  };
+
+  const handleDemoLogin = async () => {
+    if (!publicDemo) return;
+    setDemoSubmitting(true);
+    setTenantOptions([]);
+    try {
+      await authenticate({ ...publicDemo, tenantId: "" });
+    } finally {
+      setDemoSubmitting(false);
     }
   };
 
@@ -123,6 +144,22 @@ const Login: React.FC = () => {
           >
             {({ isSubmitting }) => (
               <Form className="formulario">
+                {publicDemo && (
+                  <div className="rounded-lg border border-border bg-muted/40 p-4">
+                    <p className="mb-3 text-sm text-muted-foreground">
+                      Explorá el panel con datos ficticios y acceso de consulta.
+                    </p>
+                    <Boton
+                      type="button"
+                      disabled={isSubmitting || demoSubmitting}
+                      onClick={handleDemoLogin}
+                      className="page-button w-full"
+                    >
+                      {demoSubmitting ? "Ingresando a la demo…" : "Entrar a la demo"}
+                    </Boton>
+                  </div>
+                )}
+
                 <div className="field-group">
                   <label htmlFor="nombreUsuario">Nombre de Usuario:</label>
 
@@ -186,7 +223,7 @@ const Login: React.FC = () => {
                   </div>
                 )}
 
-                <Boton type="submit" disabled={isSubmitting} className="page-button w-full">
+                <Boton type="submit" disabled={isSubmitting || demoSubmitting} className="page-button w-full">
                   {isSubmitting
                     ? "Ingresando…"
                     : tenantOptions.length > 0
