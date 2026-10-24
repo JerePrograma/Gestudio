@@ -17,7 +17,7 @@ leer el `GESTUDIO_FINALIZACION_SUPERADMIN_MEGAPROMPT.md` raíz.
 
 ## Stack
 
-- Backend Java 21 / Spring Boot 3.5.16 / Maven / PostgreSQL / JPA / Flyway.
+- Backend Java 21 / Spring Boot 4.0.9 / Maven / PostgreSQL / JPA / Flyway.
 - Frontend React 18 / TypeScript 5.6 / Vite 6.
 - Docker Compose, PowerShell, Actuator/Prometheus.
 

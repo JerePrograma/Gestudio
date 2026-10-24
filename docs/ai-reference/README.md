@@ -30,7 +30,7 @@ Etiquetas:
 
 Gestudio es un monolito modular cliente-servidor para administrar alumnos, inscripciones, disciplinas, profesores, asistencias, tarifas, condiciones económicas, matrículas, mensualidades, cargos, pagos, créditos, caja, egresos, inventario, recibos, reportes, notificaciones y usuarios/RBAC.
 
-- Backend: Java 21, Spring Boot 3.5.16, PostgreSQL, JPA, Flyway y Maven Wrapper.
+- Backend: Java 21, Spring Boot 4.0.9, PostgreSQL, JPA, Flyway y Maven Wrapper.
 - Frontend: React 18, TypeScript 5.6, Vite 6 y React Router.
 - Seguridad: JWT de acceso, refresh cookie `HttpOnly`, 32 permisos y autorización fail-closed.
 - Operación: Docker Compose, PowerShell, Actuator/Prometheus, backup/restore y rollback forward-compatible.

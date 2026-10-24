@@ -25,15 +25,8 @@ public final class MetricsTokenAuthorizationManager
     }
 
     @Override
-    public AuthorizationResult authorize(Supplier<Authentication> authentication,
+    public AuthorizationResult authorize(Supplier<? extends Authentication> authentication,
                                          RequestAuthorizationContext context) {
-        return decision(context);
-    }
-
-    @Override
-    @SuppressWarnings("deprecation")
-    public AuthorizationDecision check(Supplier<Authentication> authentication,
-                                       RequestAuthorizationContext context) {
         return decision(context);
     }
 

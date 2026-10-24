@@ -22,7 +22,7 @@ import java.util.List;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.springframework.context.annotation.Bean;
-import org.springframework.boot.autoconfigure.mail.MailProperties;
+import org.springframework.boot.mail.autoconfigure.MailProperties;
 import gestudio.servicios.email.EmailDeliveryConfigurationGuard;
 import gestudio.servicios.email.EmailDeliveryPolicy;
 

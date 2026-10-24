@@ -5,9 +5,9 @@ import gestudio.tenancy.TenantStructuralHealthIndicator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.actuate.health.Health;
-import org.springframework.boot.test.autoconfigure.actuate.observability.AutoConfigureObservability;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.health.contributor.Health;
+import org.springframework.boot.micrometer.metrics.test.autoconfigure.AutoConfigureMetrics;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.env.Environment;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -30,7 +30,7 @@ import static org.mockito.Mockito.when;
         "management.endpoints.web.exposure.include=health,prometheus"
 })
 @AutoConfigureMockMvc
-@AutoConfigureObservability(metrics = true, tracing = false)
+@AutoConfigureMetrics
 class ObservabilityPostgreSqlTest extends PostgreSqlIntegrationTest {
 
     @MockitoBean

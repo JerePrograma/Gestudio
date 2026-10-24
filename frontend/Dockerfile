@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-FROM node:22-alpine3.24 AS build
+FROM node:22.23.4-alpine3.24@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS build
 
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -21,7 +21,7 @@ ENV VITE_API_BASE_URL=$VITE_API_BASE_URL \
     VITE_PUBLIC_DEMO_PASSWORD=$VITE_PUBLIC_DEMO_PASSWORD
 RUN npm run build
 
-FROM nginx:1.30.0-alpine3.23
+FROM nginx:1.30.6-alpine3.24-slim@sha256:d9322bba63c6cfc63dc9e86522fd4f95fd4d9020a02b5bced282bbf38b8c3960
 
 ARG VCS_REF=unknown
 ARG COMPOSE_SHA=unknown

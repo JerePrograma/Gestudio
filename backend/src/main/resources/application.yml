@@ -30,8 +30,11 @@ spring:
           timeout: ${APP_EMAIL_SMTP_READ_TIMEOUT_MS:5000}
           writetimeout: ${APP_EMAIL_SMTP_WRITE_TIMEOUT_MS:5000}
         debug: false
-  jackson:
+  jackson2:
     time-zone: ${APP_TIME_ZONE:America/Argentina/Buenos_Aires}
+  http:
+    converters:
+      preferred-json-mapper: jackson2
   data:
     web:
       pageable:

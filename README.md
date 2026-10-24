@@ -70,10 +70,14 @@ Fuentes vigentes:
 
 ## Stack
 
-- Backend: Java 21, Spring Boot 3.5.16, Maven Wrapper, PostgreSQL 15 y Flyway.
+- Backend: Java 21, Spring Boot 4.0.9, Maven Wrapper, PostgreSQL 15 y Flyway.
 - Frontend: React 19.2.8, React Router 8.3.0, TypeScript, Vite 6, Node 22 LTS y npm 10.x o compatible.
 - Operación: PowerShell, Docker y Docker Compose v2.
 - Observabilidad: Spring Boot Actuator, Micrometer y formato Prometheus.
+
+La transición conserva Jackson 2 mediante el módulo oficial de compatibilidad;
+su alcance, retiro y validación se describen en
+[ADR-0010](docs/architecture/adr-0010-spring-boot-4-json-transition.md).
 
 El worktree contiene la cadena forward-only V1-V12 y la baseline productiva
 B12. Las migraciones ya publicadas permanecen inmutables y toda corrección debe

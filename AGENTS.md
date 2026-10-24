@@ -11,7 +11,7 @@ cash movements, expenses, users, notifications, receipts, and reports.
 Current stack:
 
 - Java 21.
-- Spring Boot 3.5.x.
+- Spring Boot 4.0.x (Jackson 2 compatibility transition: ADR-0010).
 - Spring Data JPA and Hibernate.
 - PostgreSQL.
 - Flyway.

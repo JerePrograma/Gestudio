@@ -2,7 +2,7 @@ package gestudio.tenancy;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.actuate.health.Status;
+import org.springframework.boot.health.contributor.Status;
 import org.springframework.jdbc.core.JdbcTemplate;
 import gestudio.servicios.pdfs.ReceiptNamespaceMigrator;
 

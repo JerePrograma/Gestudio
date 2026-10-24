@@ -2,10 +2,13 @@ package gestudio.infra.seguridad;
 
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.Cookie;
 import jakarta.validation.Constraint;
 import jakarta.validation.Valid;
 import gestudio.dto.usuario.response.UsuarioResponse;
+import gestudio.dto.pago.response.AplicacionPagoResponse;
+import gestudio.dto.pago.response.PagoResponse;
 import gestudio.entidades.Permiso;
 import gestudio.entidades.Recibo;
 import gestudio.entidades.Rol;
@@ -40,7 +43,7 @@ import gestudio.servicios.usuario.UsuarioServicio;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
 import org.springframework.context.annotation.Bean;
@@ -50,6 +53,7 @@ import org.springframework.core.type.filter.AnnotationTypeFilter;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.data.domain.Page;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.access.AccessDeniedException;
@@ -61,6 +65,7 @@ import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter;
 
 import java.io.IOException;
 import java.lang.annotation.Annotation;
@@ -71,6 +76,7 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -169,6 +175,9 @@ class SecurityHttpIntegrationTest {
     private final MockMvc mockMvc;
     private final TokenService tokenService;
 
+    @Autowired private RequestMappingHandlerAdapter handlerAdapter;
+    @Autowired private ObjectMapper objectMapper;
+
     @Autowired
     SecurityHttpIntegrationTest(MockMvc mockMvc, TokenService tokenService) {
         this.mockMvc = mockMvc;
@@ -240,6 +249,37 @@ class SecurityHttpIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, bearer(accessToken(user))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.nombreUsuario").value("admin"));
+    }
+
+    @Test
+    @SuppressWarnings("removal")
+    void jackson2EfectivoPreservaImportesYFechaDelContratoHttpDePagos() throws Exception {
+        var converters = handlerAdapter.getMessageConverters().stream()
+                .filter(converter -> converter.canWrite(PagoResponse.class, MediaType.APPLICATION_JSON))
+                .toList();
+        assertThat(converters).isNotEmpty();
+        assertThat(converters.getFirst()).isInstanceOf(MappingJackson2HttpMessageConverter.class);
+        assertThat(((MappingJackson2HttpMessageConverter) converters.getFirst()).getObjectMapper())
+                .isSameAs(objectMapper);
+
+        Usuario user = usuarioConPermisos(15L, "payment-json", Set.of(PERM_APP_ACCESO, PERM_PAGOS_LEER));
+        when(usuarioRepositorio.findByIdConRolesYPermisos(15L)).thenReturn(Optional.of(user));
+        when(pagoServicio.obtenerPagoPorId(999L)).thenReturn(new PagoResponse(
+                999L, 1L, 1L, 15L, LocalDate.of(2026, 10, 23), "120.50", "REGISTRADO",
+                "payment-json-compatibility", null, "0.00", List.of(
+                        new AplicacionPagoResponse(1L, 1L, "100.50", "APLICADA", "0.00"),
+                        new AplicacionPagoResponse(2L, 2L, "20.00", "APLICADA", "0.00"))));
+
+        mockMvc.perform(get("/api/pagos/999")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(accessToken(user))))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.fecha").value("2026-10-23"))
+                .andExpect(jsonPath("$.montoRecibido").isString())
+                .andExpect(jsonPath("$.montoRecibido").value("120.50"))
+                .andExpect(jsonPath("$.creditoGenerado").value("0.00"))
+                .andExpect(jsonPath("$.aplicaciones[0].importeAplicado").value("100.50"))
+                .andExpect(jsonPath("$.aplicaciones[1].importeAplicado").value("20.00"));
     }
 
     @Test

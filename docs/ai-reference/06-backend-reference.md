@@ -6,7 +6,10 @@
 
 ## Stack
 
-Java 21; Spring Boot 3.5.16; Spring Web, Security, Validation, Data JPA y Actuator; PostgreSQL y Flyway; Auth0 Java JWT; MapStruct; Lombok; OpenPDF; Spring Mail; Micrometer Prometheus; Maven Wrapper.
+Java 21; Spring Boot 4.0.9; Spring Web MVC, Security, Validation, Data JPA y Actuator; PostgreSQL y Flyway; Auth0 Java JWT; MapStruct; Lombok; OpenPDF; Spring Mail; Micrometer Prometheus; Maven Wrapper.
+
+Jackson 2 usa el puente oficial y el conversor MVC explícito durante la transición;
+ver [ADR-0010](../architecture/adr-0010-spring-boot-4-json-transition.md).
 
 Pruebas: Spring Boot Test, Spring Security Test, JUnit, Mockito, Testcontainers PostgreSQL y JaCoCo.
 

@@ -1,12 +1,17 @@
 package gestudio.infra.configuracion;
 
+import gestudio.Main;
 import gestudio.infra.seguridad.SecurityProperties;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.support.BeanDefinitionRegistry;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.context.annotation.ClassPathBeanDefinitionScanner;
 
 import java.nio.file.Path;
 import java.time.ZoneId;
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -47,6 +52,45 @@ class ProductionConfigurationGuardTest {
                 app("https://app.example.test"), security(true), "short"))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("token de métricas");
+    }
+
+    @Test
+    void descubreLaGuardaPublicaDesdeElPaqueteDeMain() {
+        for (String profile : List.of("prod", "remote-demo")) {
+            scannedGuard(profile, "https://app.example.test").run(context -> {
+                assertThat(context).hasNotFailed();
+                assertThat(context).hasSingleBean(ProductionConfigurationGuard.class);
+            });
+        }
+    }
+
+    @Test
+    void elEscaneoRespetaElPerfilYRechazaConfiguracionPublicaInsegura() {
+        scannedGuard("dev", "http://localhost:5173").run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context).doesNotHaveBean(ProductionConfigurationGuard.class);
+        });
+        scannedGuard("prod", "http://app.example.test").run(context -> {
+            assertThat(context).hasFailed();
+            assertThat(context.getStartupFailure()).hasStackTraceContaining("CORS HTTPS");
+        });
+    }
+
+    private ApplicationContextRunner scannedGuard(String profile, String origin) {
+        return new ApplicationContextRunner()
+                .withBean(AppProperties.class, () -> app(origin))
+                .withBean(SecurityProperties.class, () -> security(true))
+                .withPropertyValues("app.observability.metrics-token=" + METRICS_TOKEN)
+                .withInitializer(context -> {
+                    context.getEnvironment().setActiveProfiles(profile);
+                    ClassPathBeanDefinitionScanner scanner = new ClassPathBeanDefinitionScanner(
+                            (BeanDefinitionRegistry) context);
+                    // Keep Spring's default component filters and real profile
+                    // conditions; exclude unrelated infrastructure to avoid a DB.
+                    scanner.addExcludeFilter((metadata, factory) -> !metadata.getClassMetadata()
+                            .getClassName().equals(ProductionConfigurationGuard.class.getName()));
+                    scanner.scan(Main.class.getPackageName());
+                });
     }
 
     private AppProperties app(String origin) {

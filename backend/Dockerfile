@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-FROM maven:3.9.16-eclipse-temurin-21-alpine AS build
+FROM maven:3.9.16-eclipse-temurin-21-alpine@sha256:308cba8b638ed7e4658cea3f8399066219466211c805f6d5728c3c9c7614661b AS build
 
 ARG VCS_REF=unknown
 WORKDIR /workspace
@@ -70,7 +70,7 @@ RUN --mount=type=cache,target=/root/.m2,sharing=locked \
     printf 'Receipt path Linux XML verified: run=%s tests=2 failures=0 errors=0 skipped=0\n' "$RECEIPT_PATH_VALIDATION_RUN"; \
     grep '<testcase ' "$report"
 
-FROM eclipse-temurin:21-jre-alpine-3.23
+FROM eclipse-temurin:21.0.12.1_1-jre-alpine-3.23@sha256:034d979877898d295f5e1c29559a2678f3efff1ed15c2ab4395787141b8df6d3
 
 ARG VCS_REF=unknown
 ARG COMPOSE_SHA=unknown
@@ -84,8 +84,7 @@ LABEL org.opencontainers.image.revision="$VCS_REF" \
       org.gestudio.flyway.resources-metadata="/app/build-metadata/flyway-resources.sha256" \
       org.gestudio.health.metadata="/app/build-metadata/health-contract"
 
-RUN apk add --no-cache curl \
-    && addgroup -S gestudio && adduser -S gestudio -G gestudio
+RUN addgroup -S gestudio && adduser -S gestudio -G gestudio
 WORKDIR /app
 RUN mkdir -p /app/data/receipts /app/imgs /app/build-metadata && chown -R gestudio:gestudio /app
 

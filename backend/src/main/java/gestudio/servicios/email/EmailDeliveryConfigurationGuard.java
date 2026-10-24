@@ -1,6 +1,6 @@
 package gestudio.servicios.email;
 
-import org.springframework.boot.autoconfigure.mail.MailProperties;
+import org.springframework.boot.mail.autoconfigure.MailProperties;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
