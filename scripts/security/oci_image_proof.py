@@ -316,7 +316,38 @@ def classic_identity_model(identity, image_id):
         require(layer.get('archivePath') == path and layer.get('diffId') == diff_id
                 and layer.get('mediaType') in (GZIP, TAR), 'Classic layer proof mismatch')
         manifest_layers.append(dict(mediaType=layer['mediaType'], digest=layer['compressedDigest'], size=layer['compressedSize']))
+    if 'archiveLayout' in identity or 'archiveIndex' in identity or 'ociManifest' in identity:
+        require(identity.get('archiveLayout') == 'docker-save-oci-dual', 'Unsupported classic archive layout')
+        validate_dual_manifest(identity, records[0], config_raw)
     return b'', dict(config=dict(digest=image_id, size=len(config_raw)), layers=manifest_layers), config_raw, diff_ids
+
+
+def validate_dual_manifest(identity, classic_record, config_raw):
+    """Moby classic-store exports also contain a direct-manifest OCI index.
+
+    Its selected Docker ID is the config digest, not an OCI index digest. Both
+    archive views must reference the same verified config and ordered layer bytes.
+    This is explicit format support, never a fallback after an OCI proof fails.
+    """
+    _, root = decode_node(identity['archiveIndex'], INDEX)
+    require(isinstance(root.get('manifests'), list) and len(root['manifests']) == 1,
+            'Dual archive must contain one direct OCI manifest')
+    selected = descriptor(root['manifests'][0], MANIFEST)
+    manifest_raw, manifest = decode_node(identity['ociManifest'], MANIFEST)
+    require(selected['digest'] == digest(manifest_raw) and selected['size'] == len(manifest_raw),
+            'Dual OCI manifest descriptor mismatch')
+    config = descriptor(manifest.get('config'), CONFIG)
+    require(config['digest'] == digest(config_raw) and config['size'] == len(config_raw)
+            and classic_record.get('Config') == 'blobs/sha256/' + config['digest'][7:],
+            'Dual archive config views disagree')
+    layers = manifest.get('layers')
+    require(isinstance(layers, list) and len(layers) == len(identity['layers']), 'Dual OCI layer count mismatch')
+    for item, layer in zip(layers, identity['layers']):
+        descriptor(item)
+        require(item.get('mediaType') in (GZIP, TAR) and item['mediaType'] == layer['mediaType']
+                and item['digest'] == layer['compressedDigest'] and item['size'] == layer['compressedSize']
+                and layer['archivePath'] == 'blobs/sha256/' + item['digest'][7:],
+                'Dual archive layer views disagree')
 
 
 def capture_classic_identity(archive, image_id, platform='linux/amd64'):
@@ -362,17 +393,41 @@ def capture_classic_identity(archive, image_id, platform='linux/amd64'):
             layers.append(dict(archivePath=name, mediaType=GZIP if compressed else TAR,
                                compressedDigest=compressed_digest, compressedSize=compressed_size,
                                diffId=actual_diff_id, uncompressedSize=expanded_size))
+        dual = {}
+        if 'index.json' in members:
+            layout = strict_json(read('oci-layout'))
+            require(isinstance(layout, dict) and layout.get('imageLayoutVersion') == '1.0.0', 'Unsupported OCI layout')
+            root_raw = read('index.json')
+            root = strict_json(root_raw)
+            require(isinstance(root, dict) and isinstance(root.get('manifests'), list) and len(root['manifests']) == 1,
+                    'Dual archive must contain one direct OCI manifest')
+            selected = descriptor(root['manifests'][0], MANIFEST)
+            manifest_blob = read('blobs/sha256/' + selected['digest'][7:])
+            dual = dict(archiveLayout='docker-save-oci-dual', archiveIndex=node(root_raw, INDEX),
+                        ociManifest=node(manifest_blob, MANIFEST))
     result = dict(schemaVersion=1, proofType='docker-config-content-chain', selectedImageId=image_id,
                   platform=platform, archive=dict(sha256=archive_digest, bytes=archive_size),
-                  archiveManifest=node(manifest_raw, 'docker-save-manifest-v1'), config=node(config_raw, CONFIG), layers=layers)
+                  archiveManifest=node(manifest_raw, 'docker-save-manifest-v1'), config=node(config_raw, CONFIG), layers=layers,
+                  **dual)
     classic_identity_model(result, image_id)
     return result
 
 
 def capture_identity(archive, image_id, platform='linux/amd64'):
-    # Select by format, never accept a mismatching OCI ID via a weaker fallback.
+    # Recognize Moby's direct-manifest dual export before the exact-index format.
+    # A failed index-based proof never falls back to the config-based verifier.
     with tarfile.open(archive, 'r:') as source:
         members = safe_members(source)
+        if 'index.json' in members:
+            entry = members['index.json']
+            require(entry.isfile() and entry.size <= 1024 * 1024, 'Missing or oversized archive index')
+            with source.extractfile(entry) as stream:
+                root = strict_json(stream.read())
+            require(isinstance(root, dict) and isinstance(root.get('manifests'), list), 'Invalid archive index')
+            direct = root['manifests']
+            if direct and all(isinstance(item, dict) and item.get('mediaType') == MANIFEST for item in direct):
+                require('manifest.json' in members, 'Direct-manifest config-ID archive requires its classic view')
+                return capture_classic_identity(archive, image_id, platform)
     if 'index.json' in members:
         return capture_oci_identity(archive, image_id, platform)
     require('manifest.json' in members, 'Unsupported Docker archive format')
