@@ -29,6 +29,11 @@ $targets = @(
     [pscustomobject]@{
         Path = 'scripts/demo-local.ps1'
         FirstDockerMarker = 'switch ($Action)'
+    },
+    [pscustomobject]@{
+        Path = 'scripts/ops/verify-application-rollback.ps1'
+        FirstDockerMarker = "Invoke-Native -FilePath 'docker' -Arguments @('version', '--format', '{{.Server.Version}}')"
+        ProtectedProjectCheckedOutsideGuard = $true
     }
 )
 
@@ -182,9 +187,13 @@ try {
         Assert-Contract -Condition ($script:fakeCalls -eq 0) -Message "$($target.Path) consulto Docker con DOCKER_HOST heredado."
         [Environment]::SetEnvironmentVariable('DOCKER_HOST', $null, 'Process')
 
-        $script:fakeCalls = 0
-        Assert-GuardFails -ProjectName 'gestudio-remote-demo' -MessagePattern 'gestudio-remote-demo' -Case "$($target.Path): proyecto protegido"
-        Assert-Contract -Condition ($script:fakeCalls -eq 0) -Message "$($target.Path) consulto Docker para el proyecto protegido."
+        if ($target.PSObject.Properties.Name -notcontains 'ProtectedProjectCheckedOutsideGuard') {
+            $script:fakeCalls = 0
+            Assert-GuardFails -ProjectName 'gestudio-remote-demo' -MessagePattern 'gestudio-remote-demo' -Case "$($target.Path): proyecto protegido"
+            Assert-Contract -Condition ($script:fakeCalls -eq 0) -Message "$($target.Path) consulto Docker para el proyecto protegido."
+        } else {
+            Assert-Contract -Condition $source.Contains("`$project -cne 'gestudio-remote-demo'") -Message 'El rollback debe validar el proyecto propio antes de su preflight.'
+        }
 
         foreach ($forbiddenContext in @('production-west', 'stage', 'remote-ci', 'demo-lab')) {
             $script:fakeContext = $forbiddenContext
@@ -200,6 +209,10 @@ try {
         $script:fakeCalls = 0
         Assert-GuardFails -ProjectName 'gestudio-contract-local' -MessagePattern 'endpoint|local' -Case "$($target.Path): endpoint remoto"
         Assert-Contract -Condition ($script:fakeCalls -eq 2) -Message "$($target.Path) consulto el daemon con endpoint remoto."
+        $script:fakeEndpoint = 'npipe:////external.invalid/pipe/docker_engine'
+        $script:fakeCalls = 0
+        Assert-GuardFails -ProjectName 'gestudio-contract-local' -MessagePattern 'endpoint|local' -Case "$($target.Path): named pipe remoto"
+        Assert-Contract -Condition ($script:fakeCalls -eq 2) -Message "$($target.Path) consulto un named pipe remoto."
 
         $script:fakeEndpoint = 'npipe:////./pipe/docker_engine'
         $script:fakeOsType = 'windows'
@@ -220,6 +233,18 @@ try {
                 -Message "$($target.Path) rechazo endpoint local $localEndpoint."
             Assert-Contract -Condition ($script:fakeCalls -eq 3) -Message "$($target.Path) no completo el preflight local."
         }
+    }
+    $backupPath=Join-Path $repoRoot 'scripts/ops/verify-backup-restore.ps1'
+    $backupAst=[Management.Automation.Language.Parser]::ParseFile($backupPath,[ref]$tokens,[ref]$parseErrors)
+    $temporaryGuard=$backupAst.Find({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Assert-BackupTemporaryRoot'},$false)
+    Invoke-Expression $temporaryGuard.Extent.Text
+    $temporaryProject='gestudio-backup-verify-0123456789'
+    $safeTemporary=Join-Path ([IO.Path]::GetTempPath()) $temporaryProject
+    Assert-Contract -Condition ((Assert-BackupTemporaryRoot -Path $safeTemporary -ProjectName $temporaryProject) -ceq [IO.Path]::GetFullPath($safeTemporary)) -Message 'El scope temporal valido fue rechazado.'
+    foreach($invalidTemporary in @($repoRoot,[IO.Path]::GetTempPath(),(Join-Path ([IO.Path]::GetTempPath()) 'otro-proyecto'))) {
+        $rejected=$false
+        try { $null=Assert-BackupTemporaryRoot -Path $invalidTemporary -ProjectName $temporaryProject } catch { $rejected=$true }
+        Assert-Contract -Condition $rejected -Message 'Se acepto cleanup temporal fuera del scope exacto.'
     }
 }
 finally {

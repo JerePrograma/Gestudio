@@ -1,6 +1,9 @@
 ﻿[CmdletBinding()]
 param(
     [switch] $FinancialFlow,
+    [switch] $RecoveryDrill,
+    [switch] $ExportCandidateImages,
+    [string] $RecoveryHistoricalCommit = '',
     [switch] $PersistentDemo,
     [string] $StateRoot = '',
     [ValidateRange(1, 65535)][int] $PersistentDatabasePort = 15432,
@@ -13,6 +16,12 @@ $ErrorActionPreference = 'Stop'
 
 if ($FinancialFlow -and $PersistentDemo) {
     throw 'FinancialFlow requiere un proyecto efimero; PersistentDemo esta excluido.'
+}
+if (($RecoveryDrill -or $ExportCandidateImages) -and (-not $FinancialFlow -or $PersistentDemo)) {
+    throw 'RecoveryDrill y ExportCandidateImages requieren FinancialFlow efimero.'
+}
+if ($RecoveryDrill -and $RecoveryHistoricalCommit -cnotmatch '^[a-f0-9]{40}$') {
+    throw 'RecoveryDrill requiere RecoveryHistoricalCommit SHA40 explicito.'
 }
 
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
@@ -44,6 +53,8 @@ $receiptPathLinuxStatus = 'NOT_EXECUTED'
 $imageBuildLog = [Collections.Generic.List[string]]::new()
 $backendBuiltId = $null
 $frontendBuiltId = $null
+$backendRuntimeImageId = $null
+$frontendRuntimeImageId = $null
 $playwrightOutput = $null
 $backendSourceSha = $null
 $frontendSourceSha = $null
@@ -59,6 +70,13 @@ $projectSnapshotCaptured = $false
 $projectInvariant = 'NOT_VERIFIED'
 $credentialManifest = $null
 $recoveryCodesPath = $null
+$recoveryCompose = $null
+$recoveryLog = [Collections.Generic.List[string]]::new()
+$recoveryStatus = 'NOT_EXECUTED'
+$recoveryResult = $null
+$candidateArchives = @()
+$nodeVersion = $null
+$nodeExecutableSha256 = $null
 
 function New-RandomBytes {
     param([Parameter(Mandatory)][ValidateRange(1, 1024)][int] $Count)
@@ -103,6 +121,14 @@ function Get-SourceFingerprint {
 function Get-FileSha256 {
     param([Parameter(Mandatory)][string] $Path)
     return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+}
+
+function Get-ComposeStartupArguments {
+    param([Parameter(Mandatory)][bool] $ImagesAlreadyBuilt)
+    $startupArguments = @('up', '-d', '--wait', '--wait-timeout', '420')
+    if ($ImagesAlreadyBuilt) { $startupArguments += '--no-build' }
+    else { $startupArguments += '--build' }
+    return $startupArguments
 }
 
 function ConvertTo-Base32 {
@@ -168,8 +194,22 @@ function Invoke-Native {
         [switch] $Capture,
         [switch] $AllowFailure
     )
-    $output = @(& $FilePath @Arguments 2>&1 | ForEach-Object { [string]$_ })
-    $exitCode = $LASTEXITCODE
+    $nativeCommand = Get-Command -Name $FilePath -CommandType Application -ErrorAction Stop | Select-Object -First 1
+    $previousNativeErrorPreference = $ErrorActionPreference
+    $nativeExitPreference = Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue
+    try {
+        if ($null -ne $nativeExitPreference) { $PSNativeCommandUseErrorActionPreference = $false }
+        $ErrorActionPreference = 'Continue'
+        $output = @(& $nativeCommand.Source @Arguments 2>&1 | ForEach-Object {
+            if ($_ -is [Management.Automation.ErrorRecord] -and
+                $_.FullyQualifiedErrorId -notin @('NativeCommandError','NativeCommandErrorMessage')) { throw $_ }
+            [string]$_
+        })
+        $exitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousNativeErrorPreference
+        if ($null -ne $nativeExitPreference) { $PSNativeCommandUseErrorActionPreference = $nativeExitPreference.Value }
+    }
     if ($exitCode -ne 0 -and -not $AllowFailure) {
         $safe = ConvertTo-SafeText ($output -join [Environment]::NewLine)
         throw "$FilePath fallo con exit code $exitCode. $safe"
@@ -203,7 +243,8 @@ function Assert-LocalDockerTarget {
     ) -Capture
     try { $endpoint = [string]($endpointRaw | ConvertFrom-Json) }
     catch { throw 'El contexto Docker no devolvio un endpoint valido.' }
-    if ($endpoint -notmatch '^npipe://' -and $endpoint -cne 'unix:///var/run/docker.sock') {
+    if ($endpoint -cnotin @('npipe:////./pipe/docker_engine',
+            'npipe:////./pipe/dockerDesktopLinuxEngine', 'unix:///var/run/docker.sock')) {
         throw 'El contexto Docker no apunta a un endpoint local permitido.'
     }
     $osType = Invoke-Native -FilePath 'docker' -Arguments @(
@@ -569,14 +610,27 @@ function Write-SanitizedArtifacts {
         [IO.File]::WriteAllLines((Join-Path $artifactRoot 'image-builds.log'), $safeBuildLines,
             [Text.UTF8Encoding]::new($false))
     }
+    if ($RecoveryDrill) {
+        [IO.File]::WriteAllLines((Join-Path $artifactRoot 'financial-recovery.log'),
+            @($recoveryLog | ForEach-Object { ConvertTo-SafeText $_ }), [Text.UTF8Encoding]::new($false))
+    }
     $result = [ordered]@{
         schemaVersion = 1
         status = $Status
         phase = if ($FinancialFlow) { 'control-plane-financial-e2e' } else { 'control-plane-e2e' }
         financialFlowRequested = [bool]$FinancialFlow
+        recoveryRequested = [bool]$RecoveryDrill
+        recoveryRuntime = $recoveryStatus
+        recovery = $recoveryResult
+        candidateArchives = $candidateArchives
+        nodeRuntime = $nodeVersion
+        nodeExecutableSha256 = $nodeExecutableSha256
+        playwrightArgv = @('node', $playwrightCli, 'test', '--config', $playwrightConfig)
         receiptPathLinux = $receiptPathLinuxStatus
         backendImageId = $backendBuiltId
         frontendImageId = $frontendBuiltId
+          backendRuntimeImageId = $backendRuntimeImageId
+          frontendRuntimeImageId = $frontendRuntimeImageId
         runId = $suffix
         composeProject = $project
         dockerContext = if ($dockerContext) { ConvertTo-SafeText $dockerContext } else { $null }
@@ -600,7 +654,7 @@ function Write-SanitizedArtifacts {
     }
     [IO.File]::WriteAllText(
         (Join-Path $artifactRoot 'result.json'),
-        ($result | ConvertTo-Json -Depth 4),
+        ($result | ConvertTo-Json -Depth 8),
         [Text.UTF8Encoding]::new($false))
 }
 
@@ -612,6 +666,11 @@ try {
     if (-not (Test-Path -LiteralPath $playwrightCli -PathType Leaf)) {
         throw 'Falta Playwright local fijado por lockfile; ejecute npm ci en frontend.'
     }
+    $expectedNode = [IO.File]::ReadAllText((Join-Path $repoRoot '.nvmrc')).Trim()
+    $nodeCommand = Get-Command node -CommandType Application -ErrorAction Stop | Select-Object -First 1
+    $nodeVersion = Invoke-Native -FilePath $nodeCommand.Source -Arguments @('--version') -Capture
+    if ($nodeVersion -cne ('v' + $expectedNode)) { throw 'El E2E requiere el Node exacto fijado en .nvmrc.' }
+    $nodeExecutableSha256 = Get-FileSha256 -Path $nodeCommand.Source
     $dockerContext = Assert-LocalDockerTarget
     [Environment]::SetEnvironmentVariable('DOCKER_CONTEXT', $dockerContext, 'Process')
     $dockerContextApplied = $true
@@ -835,6 +894,13 @@ services:
         $config.services.frontend.image -cne $frontendImage) {
         throw 'Compose E2E efectivo no cumple aislamiento, loopback o bootstrap-off ordinario.'
     }
+    if ($RecoveryDrill) {
+        # Canonical Compose contains private resolved values and round-trip $
+        # escapes. Retain them, adding only the deliberate image/health overrides.
+        . (Join-Path $PSScriptRoot 'verify-financial-recovery.ps1')
+        $recoveryCompose = Join-Path $runRoot 'recovery.compose.json'
+        Write-PrivateFile -Path $recoveryCompose -Content (ConvertTo-FinancialRecoveryCompose -ConfigJson $configJson)
+    }
     $configJson = $null
     $config = $null
 
@@ -861,9 +927,34 @@ services:
         $imageBuildLog.Add((ConvertTo-SafeText (Invoke-Compose -Arguments @('build', '--no-cache', 'frontend') -Capture)))
         $frontendBuiltId = Invoke-Native -FilePath 'docker' -Arguments @(
             'image', 'inspect', '--format', '{{.Id}}', $frontendImage) -Capture
+        if ($ExportCandidateImages) {
+            $candidateRoot = Join-Path $artifactRoot "candidate-$suffix"
+            if (Test-Path -LiteralPath $candidateRoot) { throw 'El destino candidato ya existe.' }
+            [IO.Directory]::CreateDirectory($candidateRoot) | Out-Null
+            foreach ($entry in @(@('backend', $backendBuiltId), @('frontend', $frontendBuiltId))) {
+                $archivePath = Join-Path $candidateRoot ($entry[0] + '.tar')
+                [void](Invoke-Native -FilePath docker -Arguments @('image', 'save', '--output', $archivePath, $entry[1]))
+                $candidateArchives += [ordered]@{
+                    service=$entry[0]; imageId=$entry[1]; path=$archivePath;
+                    sha256=(Get-FileSha256 -Path $archivePath); bytes=(Get-Item -LiteralPath $archivePath).Length
+                }
+            }
+        }
     }
-    [void](Invoke-Compose -Arguments @('up', '-d', '--build', '--wait', '--wait-timeout', '420'))
+    [void](Invoke-Compose -Arguments (Get-ComposeStartupArguments -ImagesAlreadyBuilt ([bool]$FinancialFlow)))
     $composeStarted = $true
+    if ($FinancialFlow) {
+        # A cached rebuild can replace an OCI index through new attestations.
+        # Check exact running/exported identities before bootstrap or browser work.
+        foreach ($entry in @(@('backend', $backendBuiltId), @('frontend', $frontendBuiltId))) {
+            $runtimeContainer = (Invoke-Compose -Arguments @('ps', '-q', $entry[0]) -Capture).Trim()
+            Assert-ExactContainer -ContainerId $runtimeContainer -Service $entry[0] -ExpectedName "$project-$($entry[0])-1" -OneOff $false
+            $runtimeId = (Invoke-Native -FilePath docker -Arguments @('inspect', '--format', '{{.Image}}', $runtimeContainer) -Capture).Trim()
+            if ($runtimeId -cne $entry[1]) { throw "El runtime $($entry[0]) difiere del ID construido/exportado." }
+            if ($entry[0] -ceq 'backend') { $backendRuntimeImageId = $runtimeId }
+            else { $frontendRuntimeImageId = $runtimeId }
+        }
+    }
 
     $migrationRoot = Join-Path $repoRoot 'backend\src\main\resources\db\migration'
     $versioned = @(Get-ChildItem -LiteralPath $migrationRoot -File -Filter 'V*__*.sql' | ForEach-Object {
@@ -1085,6 +1176,24 @@ SELECT
         if ($financialState -cne '1|1|1|2|1|120.50|120.50|1|1|0|0') {
             throw "La reconciliacion financiera no coincide con inscripcion/cargos/pago/PDF/caja sin envios. Estado: $financialState"
         }
+    }
+    if ($RecoveryDrill) {
+        $recoveryStatus = 'EXECUTED_FAIL'
+        . (Join-Path $PSScriptRoot 'verify-financial-recovery.ps1')
+        $recoveryResult = Invoke-FinancialRecovery -RepoRoot $repoRoot -RunRoot $runRoot `
+            -ComposeFile $recoveryCompose -EnvFile $envFile -Project $project `
+            -HistoricalCommit $RecoveryHistoricalCommit `
+            -CurrentImageId $backendBuiltId -AlphaCode $alphaCode -BetaCode $betaCode `
+            -Native { param($FilePath, $Arguments, [switch]$Capture)
+                Invoke-Native -FilePath $FilePath -Arguments $Arguments -Capture:$Capture } `
+            -WritePrivate { param($Path, $Content) Write-PrivateFile -Path $Path -Content $Content } `
+            -Sanitize { param($Value) ConvertTo-SafeText $Value } -Log $recoveryLog
+        $recoveryStatus = 'EXECUTED_PASS'
+    }
+    if ($backendSourceSha -cne (Get-SourceFingerprint -Path (Join-Path $repoRoot 'backend')) -or
+        $frontendSourceSha -cne (Get-SourceFingerprint -Path $frontendRoot) -or
+        $composeSha -cne (Get-FileSha256 -Path $composeFile)) {
+        throw 'Las fuentes cambiaron durante el gate; el resultado no corresponde al candidato exacto.'
     }
 }
 catch {

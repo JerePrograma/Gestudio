@@ -55,6 +55,7 @@ jobs:
       - name: Execute disposable backup/restore drill
         shell: pwsh
         run: |
+          ./scripts/ops/test-local-docker-guards-contract.ps1
           & pwsh -NoProfile -File ./scripts/ops/verify-backup-restore.ps1 2>&1 | Tee-Object -FilePath backup-restore-run.log
           Get-Content backup-restore-run.log | Add-Content backup-restore.log
           exit $LASTEXITCODE

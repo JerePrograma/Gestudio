@@ -2,6 +2,11 @@ name: Control Plane E2E
 
 on:
   workflow_dispatch:
+    inputs:
+      recovery_baseline_commit:
+        description: Previous approved backend commit (full SHA40)
+        required: true
+        type: string
   pull_request:
   push:
     branches: [main]
@@ -17,21 +22,32 @@ jobs:
   control-plane-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      RECOVERY_BASELINE_COMMIT: ${{ github.event.pull_request.base.sha || github.event.before || inputs.recovery_baseline_commit }}
 
     steps:
       - name: Checkout verified SHA
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          # The selected PR/push baseline may span several review commits.
+          # Complete history allows an ancestry check without changing HEAD.
+          fetch-depth: 0
 
       - name: Set up Node 22
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
-          node-version: "22"
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install locked frontend dependencies
         working-directory: frontend
         run: npm ci
+
+      - name: Set up pinned Python for stdlib OCI content proofs
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12.15"
 
       - name: Install pinned Chromium runtime
         working-directory: frontend
@@ -62,11 +78,22 @@ jobs:
 
       - name: Validate ephemeral financial runner contract
         shell: pwsh
-        run: ./scripts/e2e/test-run-control-plane-contract.ps1
+        run: |
+          ./scripts/e2e/test-run-control-plane-contract.ps1
+          ./scripts/e2e/test-financial-recovery-contract.ps1
+          node --test ./frontend/scripts/verify-financial-recovery.test.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Financial recovery Node contract failed.' }
+          ./scripts/security/test-scan-candidate-contract.ps1
+          python -B ./scripts/security/test_image_identity.py
+          if ($LASTEXITCODE -ne 0) { throw 'OCI image identity Python contract failed.' }
 
-      - name: Run isolated fresh control-plane and financial E2E
+      - name: Run isolated fresh financial E2E and recovery drill
         shell: pwsh
-        run: ./scripts/e2e/run-control-plane.ps1 -FinancialFlow
+        run: ./scripts/e2e/run-control-plane.ps1 -FinancialFlow -RecoveryDrill -ExportCandidateImages -RecoveryHistoricalCommit $env:RECOVERY_BASELINE_COMMIT
+
+      - name: Scan the exact tested candidate archives and generate SBOM proofs
+        shell: pwsh
+        run: ./scripts/security/scan-e2e-candidate.ps1
 
       - name: Upload sanitized E2E result
         if: always()
@@ -78,6 +105,8 @@ jobs:
             artifacts/e2e/playwright.log
             artifacts/e2e/receipt-path-linux.log
             artifacts/e2e/image-builds.log
+            artifacts/e2e/financial-recovery.log
+            artifacts/e2e/security-*/
           if-no-files-found: error
           retention-days: 14
 

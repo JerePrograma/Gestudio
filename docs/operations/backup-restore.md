@@ -214,6 +214,30 @@ Para un entorno no local:
 
 ## Estado de release
 
+### Continuidad financiera sintética
+
+El contrato estructural y adversarial anterior se complementa con:
+
+Fijar `$historicalCommit` al SHA40 anterior aprobado, ancestro distinto de HEAD.
+
+```powershell
+pwsh -NoProfile -File .\scripts\e2e\run-control-plane.ps1 -FinancialFlow -RecoveryDrill -RecoveryHistoricalCommit $historicalCommit
+```
+
+El arnés crea su propio proyecto `gestudio-e2e-<12hex>` y no admite demos
+persistentes. Después de inscripción, cargos, pago, PDF y caja reales, usa los
+helpers operativos de backup/restore: valida primero la base alternativa y luego
+recupera la base activa y su volumen de recibos. Compara todas las filas del
+recorrido, permisos, memberships, auditoría y estado MFA exacto antes de nuevos
+logins. Verifica Alpha/Beta mediante API, PDF por SHA256 y MFA con las claves
+sintéticas conservadas fuera del paquete. Un fixture `.txt` o una fila con hash
+de contraseña ficticio sólo acredita estructura; no reemplaza este recorrido.
+
+El resultado se registra en `artifacts/e2e/result.json` y
+`financial-recovery.log`. Es continuidad local con datos sintéticos; no acepta
+custodia, retención ni RPO/RTO productivos. El resultado sobre un working tree
+debe atribuirse a sus fingerprints y cambios, además de HEAD.
+
 El drill histórico fue aprobado en ambos shells para el contrato de julio. V12,
 B12, el control plane y los cambios posteriores del drill invalidan esa evidencia
 para el árbol actual. El gate permanece `NOT_EXECUTED` hasta una nueva corrida

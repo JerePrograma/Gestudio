@@ -57,6 +57,8 @@ $fixtureRoleCode = "BACKUP_$($suffix.ToUpperInvariant())"
 $fixtureTenantUsername = "backup_tenant_$suffix"
 $fixturePlatformUsername = "backup_platform_$suffix"
 $stackAttempted = $false
+$resourceScopeClaimed = $false
+$dockerContextBackup = [Environment]::GetEnvironmentVariable('DOCKER_CONTEXT','Process')
 $passes = 0
 $failures = 0
 
@@ -438,6 +440,22 @@ function Assert-NoProjectResources {
     Assert-True -Condition ([string]::IsNullOrWhiteSpace($networks)) -Message 'Quedaron redes residuales.'
 }
 
+function Assert-BackupTemporaryRoot {
+    param([string] $Path, [string] $ProjectName)
+    $resolved = [IO.Path]::GetFullPath($Path)
+    $tempPrefix = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\','/') + [IO.Path]::DirectorySeparatorChar
+    if ($ProjectName -cnotmatch '^gestudio-backup-verify-[a-f0-9]{10}$' -or
+        -not $resolved.StartsWith($tempPrefix,[StringComparison]::OrdinalIgnoreCase) -or
+        (Split-Path $resolved -Leaf) -cne $ProjectName) {
+        throw 'El temporal de backup está fuera del scope exacto del drill.'
+    }
+    if ((Test-Path -LiteralPath $resolved) -and
+        ((Get-Item -LiteralPath $resolved).Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw 'El temporal de backup no puede ser un reparse point.'
+    }
+    return $resolved
+}
+
 function Copy-BackupPackage {
     param(
         [Parameter(Mandatory)][string] $Source,
@@ -565,14 +583,22 @@ $environment = [ordered]@{
 }
 $previousProcessEnvironment = @{}
 
-$null = Assert-LocalDockerTarget -ProjectName $project
+$dockerContext = Assert-LocalDockerTarget -ProjectName $project
+[Environment]::SetEnvironmentVariable('DOCKER_CONTEXT',$dockerContext,'Process')
 try {
+    Assert-NoProjectResources
+    $existingTag = Invoke-Native -FilePath 'docker' -Arguments @('image','ls','-q',$backendImage) -Capture
+    if ($existingTag) { throw 'El tag del drill ya existe; no se sobrescribe ni elimina.' }
+    $workRoot = Assert-BackupTemporaryRoot -Path $workRoot -ProjectName $project
+    if (Test-Path -LiteralPath $workRoot) { throw 'El temporal del drill ya existe; no se reutiliza.' }
+    $resourceScopeClaimed = $true
     $migrationManifest = Get-LocalMigrationManifest
     foreach ($entry in $environment.GetEnumerator()) {
         $previousProcessEnvironment[$entry.Key] = [Environment]::GetEnvironmentVariable($entry.Key, 'Process')
         [Environment]::SetEnvironmentVariable($entry.Key, [string]$entry.Value, 'Process')
     }
     New-Item -ItemType Directory -Path $workRoot -Force | Out-Null
+    Assert-BackupTemporaryRoot -Path $workRoot -ProjectName $project | Out-Null
     New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
     $environment.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" } |
         Set-Content -LiteralPath $envFile -Encoding ASCII
@@ -870,7 +896,7 @@ finally {
         Write-Host "[INFO] Stack conservado: $project"
         Write-Host "[INFO] Env temporal: $envFile"
     }
-    else {
+    elseif ($resourceScopeClaimed) {
         if ($stackAttempted -and (Test-Path -LiteralPath $envFile)) {
             try { Invoke-Compose -Arguments @('down', '--volumes', '--remove-orphans') -IgnoreFailure | Out-Null }
             catch { $failures++; Write-Host "[FAIL] Cleanup Compose: $($_.Exception.Message)" -ForegroundColor Red }
@@ -879,12 +905,16 @@ finally {
         try { Assert-NoProjectResources; Pass 'Limpieza Docker' }
         catch { $failures++; Write-Host "[FAIL] $($_.Exception.Message)" -ForegroundColor Red }
         if (Test-Path -LiteralPath $workRoot) {
-            Remove-Item -LiteralPath $workRoot -Recurse -Force -ErrorAction SilentlyContinue
+            try {
+                $checkedRoot = Assert-BackupTemporaryRoot -Path $workRoot -ProjectName $project
+                Remove-Item -LiteralPath $checkedRoot -Recurse -Force -ErrorAction Stop
+            } catch { $failures++; Write-Host "[FAIL] Cleanup temporal: $($_.Exception.Message)" -ForegroundColor Red }
         }
     }
     foreach ($entry in $previousProcessEnvironment.GetEnumerator()) {
         [Environment]::SetEnvironmentVariable($entry.Key, $entry.Value, 'Process')
     }
+    [Environment]::SetEnvironmentVariable('DOCKER_CONTEXT',$dockerContextBackup,'Process')
 }
 
 $duration = (Get-Date) - $startedAt

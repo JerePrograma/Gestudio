@@ -52,6 +52,55 @@ $runner = [IO.File]::ReadAllText($runnerPath)
 $spec = [IO.File]::ReadAllText($specPath)
 $financial = [IO.File]::ReadAllText($financialPath)
 
+# Application discovery returns every matching PATH entry on Windows. Execute
+# the runner's actual assignment with several installations, including spaces.
+$nodeResolvers = @($runnerAst.FindAll({
+    param($item)
+    $item -is [Management.Automation.Language.AssignmentStatementAst] -and
+        $item.Left.Extent.Text -ceq '$nodeCommand'
+}, $true))
+if ($nodeResolvers.Count -ne 1) { throw 'Falta una resolucion unica del ejecutable Node.' }
+$resolvedNodeFixture = & {
+    function Get-Command {
+        [CmdletBinding()]
+        param([string] $Name, [string] $CommandType)
+        if ($Name -cne 'node' -or $CommandType -cne 'Application') { throw 'Consulta Node inesperada.' }
+        foreach ($path in @('C:\runtime con espacios\node.exe','C:\otra version\node.exe','C:\tercera\node.exe')) {
+            [pscustomobject]@{Source=$path}
+        }
+    }
+    . ([scriptblock]::Create($nodeResolvers[0].Extent.Text))
+    return $nodeCommand
+}
+if (@($resolvedNodeFixture).Count -ne 1 -or
+    $resolvedNodeFixture.Source -cne 'C:\runtime con espacios\node.exe') {
+    throw 'El runner no fija el primer ejecutable Node del PATH cuando hay varias instalaciones.'
+}
+Write-Host 'Node PATH fixture: primera instalacion exacta con espacios y tres candidatos'
+
+$startupFunctions = @($runnerAst.FindAll({
+    param($item)
+    $item -is [Management.Automation.Language.FunctionDefinitionAst] -and
+        $item.Name -ceq 'Get-ComposeStartupArguments'
+}, $true))
+if ($startupFunctions.Count -ne 1) { throw 'Falta contrato de arranque de imagenes ya preparadas.' }
+. ([scriptblock]::Create($startupFunctions[0].Extent.Text))
+foreach ($prepared in @($true,$false)) {
+    $startup = @(Get-ComposeStartupArguments -ImagesAlreadyBuilt $prepared)
+    $expectedMode = if ($prepared) { '--no-build' } else { '--build' }
+    $forbiddenMode = if ($prepared) { '--build' } else { '--no-build' }
+    if ($startup.Count -ne 6 -or $startup[0] -cne 'up' -or
+        $startup -cnotcontains $expectedMode -or $startup -ccontains $forbiddenMode) {
+        throw 'El arranque reconstruye un candidato ya preparado o altera el modo ordinario.'
+    }
+}
+Assert-Contains -Source $runner -Marker 'Get-ComposeStartupArguments -ImagesAlreadyBuilt ([bool]$FinancialFlow)' `
+    -Failure 'El runtime no usa el selector de construccion probado.'
+Assert-Ordered -Source $runner -First 'El runtime $($entry[0]) difiere del ID construido/exportado.' `
+    -Second '& node $playwrightCli test --config $playwrightConfig' `
+    -Failure 'La identidad runtime/export debe verificarse antes del navegador.'
+Write-Host 'Compose startup fixture: candidato sin reconstruccion y modo ordinario conservado'
+
 # Run the runner's actual native command against an argv-only fixture. This
 # covers spaces and option forwarding in both PowerShell runtimes without Docker.
 $nodeCommands = @($runnerAst.FindAll({
@@ -76,6 +125,33 @@ try {
         throw 'Node no recibio test/config/path como tres argumentos exactos.'
     }
     Write-Host ('CLI argv fixture: ' + ($forwarded | ConvertTo-Json -Compress))
+    $nativeDefinition=$runnerAst.Find({param($item) $item -is [Management.Automation.Language.FunctionDefinitionAst] -and $item.Name -ceq 'Invoke-Native'},$false)
+    . ([scriptblock]::Create($nativeDefinition.Extent.Text))
+    function ConvertTo-SafeText { param([AllowNull()][AllowEmptyString()][string] $Text) return $Text }
+    $stderrProbe=Join-Path $argvRoot 'native stderr probe.js'
+    [IO.File]::WriteAllText($stderrProbe,'process.stdout.write("synthetic stdout\n");process.stderr.write("synthetic stderr\n");process.exitCode=Number(process.argv[2]);',[Text.UTF8Encoding]::new($false))
+    $successfulNative=Invoke-Native -FilePath node -Arguments @($stderrProbe,'0') -Capture
+    if($successfulNative -notlike '*synthetic stdout*' -or $successfulNative -notlike '*synthetic stderr*' -or $ErrorActionPreference -cne 'Stop'){throw 'Native stderr exit0 was lost or error policy leaked.'}
+    $nativeRejected=$false
+    try { Invoke-Native -FilePath node -Arguments @($stderrProbe,'7') -Capture } catch { $nativeRejected=$_.Exception.Message -like '*exit code 7*' }
+    if(-not $nativeRejected -or $ErrorActionPreference -cne 'Stop'){throw 'Native failure did not preserve its exit code and terminating contract.'}
+    if((Invoke-Native -FilePath node -Arguments @($stderrProbe,'7') -AllowFailure) -ne 7 -or $ErrorActionPreference -cne 'Stop'){throw 'Allowed native failure lost its explicit exit code.'}
+    foreach($allowMissing in @($false,$true)) {
+        [void](Invoke-Native -FilePath node -Arguments @($stderrProbe,'0') -Capture)
+        $missingRejected=$false
+        try { Invoke-Native -FilePath (Join-Path $argvRoot 'missing executable.exe') -Arguments @('synthetic') -AllowFailure:$allowMissing } catch { $missingRejected=$true }
+        if(-not $missingRejected -or $ErrorActionPreference -cne 'Stop'){throw 'Missing executable inherited stale exit0, including AllowFailure.'}
+    }
+    $nativePreference=Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue
+    if($null -ne $nativePreference){
+        $previousNativePreference=$nativePreference.Value
+        try {
+            $PSNativeCommandUseErrorActionPreference=$true
+            if((Invoke-Native -FilePath node -Arguments @($stderrProbe,'7') -AllowFailure) -ne 7 -or
+                $PSNativeCommandUseErrorActionPreference -ne $true){throw 'Native exit preference overrode explicit AllowFailure or leaked.'}
+        } finally { $PSNativeCommandUseErrorActionPreference=$previousNativePreference }
+    }
+    Write-Host 'Native stderr fixture: exit0 capturado; exit7 rechazado o devuelto solo con AllowFailure; politica restaurada'
 } finally {
     $resolvedArgvRoot = [IO.Path]::GetFullPath($argvRoot)
     $tempPrefix = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
@@ -104,9 +180,23 @@ try {
     $rejected = $_.Exception.Message -ceq 'FinancialFlow requiere un proyecto efimero; PersistentDemo esta excluido.'
 }
 if (-not $rejected) { throw 'El flujo financiero no rechazo el demo persistente antes de ejecutar operaciones.' }
+foreach ($option in @('RecoveryDrill','ExportCandidateImages')) {
+    $rejected = $false
+    $gateOptions = @{}
+    $gateOptions[$option] = $true
+    try { & $runnerPath @gateOptions } catch {
+        $rejected = $_.Exception.Message -ceq 'RecoveryDrill y ExportCandidateImages requieren FinancialFlow efimero.'
+    }
+    if (-not $rejected) { throw 'Recovery/export sin FinancialFlow no rechazo antes de Docker.' }
+}
 Assert-Ordered -Source $runner -First 'if ($FinancialFlow -and $PersistentDemo)' `
     -Second '$dockerContext = Assert-LocalDockerTarget' `
     -Failure 'El rechazo de FinancialFlow persistente debe preceder al contacto con Docker.'
+$rejected = $false
+try { & $runnerPath -FinancialFlow -RecoveryDrill } catch {
+    $rejected = $_.Exception.Message -ceq 'RecoveryDrill requiere RecoveryHistoricalCommit SHA40 explicito.'
+}
+if (-not $rejected) { throw 'RecoveryDrill sin baseline explicito no rechazo antes de Docker.' }
 foreach ($requirement in @(
     @('APP_RECEIPTS_WORKER_ENABLED: `${APP_RECEIPTS_WORKER_ENABLED:?required}', 'El override no transmite el worker a Compose.'),
     @('$config.services.backend.environment.APP_RECEIPTS_WORKER_ENABLED -cne $envValues.APP_RECEIPTS_WORKER_ENABLED', 'Falta verificar el worker efectivo.'),
@@ -131,12 +221,18 @@ Assert-Ordered -Source $financial -First 'download.suggestedFilename()' `
 $workflow = [IO.File]::ReadAllText((Join-Path $repoRoot '.github\workflows\e2e.yml'))
 Assert-Contains -Source $workflow -Marker 'run: ./scripts/e2e/run-control-plane.ps1 -FinancialFlow' `
     -Failure 'El workflow E2E no exige el recorrido financiero efimero.'
+Assert-Contains -Source $workflow -Marker '-FinancialFlow -RecoveryDrill' `
+    -Failure 'El workflow E2E no exige recuperacion financiera real.'
+Assert-Contains -Source $workflow -Marker 'fetch-depth: 0' `
+    -Failure 'RecoveryDrill necesita el historial del baseline explicito en CI.'
+Assert-Contains -Source $workflow -Marker '-RecoveryHistoricalCommit $env:RECOVERY_BASELINE_COMMIT' `
+    -Failure 'RecoveryDrill debe probar el baseline de PR/push/manual explicito.'
 
 foreach ($requirement in @(
     @("GetEnvironmentVariable('DOCKER_HOST', 'Process')", 'Falta rechazo explicito de DOCKER_HOST.'),
     @("'context', 'show'", 'Falta resolver el contexto Docker activo.'),
     @("'context', 'inspect', '--format', '{{json .Endpoints.docker.Host}}'", 'Falta inspeccionar el endpoint Docker.'),
-    @("^npipe://", 'Falta permitir exclusivamente named pipe local en Windows.'),
+    @('npipe:////./pipe/dockerDesktopLinuxEngine', 'Falta permitir exclusivamente named pipe local en Windows.'),
     @('unix:///var/run/docker.sock', 'Falta permitir exclusivamente el socket Docker local en Unix.'),
     @("'--context', `$context, 'info', '--format', '{{.OSType}}'", 'Falta inspeccionar el OSType del daemon fijado.'),
     @("`$osType.Trim() -cne 'linux'", 'Falta exigir un daemon Linux.'),
@@ -180,11 +276,11 @@ Assert-Ordered -Source $runner `
     -Failure 'El snapshot protegido debe ocurrir despues del preflight Docker local.'
 Assert-Ordered -Source $runner `
     -First '$protectedDemoBefore = Get-DockerProjectSnapshot' `
-    -Second "[void](Invoke-Compose -Arguments @('up'" `
+    -Second '[void](Invoke-Compose -Arguments (Get-ComposeStartupArguments' `
     -Failure 'El snapshot protegido debe ocurrir antes de Compose up.'
 Assert-Ordered -Source $runner `
     -First '$projectBefore = Get-DockerProjectSnapshot' `
-    -Second "[void](Invoke-Compose -Arguments @('up'" `
+    -Second '[void](Invoke-Compose -Arguments (Get-ComposeStartupArguments' `
     -Failure 'El preflight del proyecto aleatorio debe ocurrir antes de Compose up.'
 Assert-Ordered -Source $runner `
     -First '$protectedDemoBefore = Get-DockerProjectSnapshot' `

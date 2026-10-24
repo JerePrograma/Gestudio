@@ -160,7 +160,8 @@ function Assert-LocalDockerTarget {
     ) -Capture
     try { $endpoint = [string]($endpointRaw | ConvertFrom-Json) }
     catch { throw 'El contexto Docker no devolvió un endpoint válido.' }
-    if ($endpoint -notmatch '^npipe://' -and $endpoint -cne 'unix:///var/run/docker.sock') {
+    if ($endpoint -cnotin @('npipe:////./pipe/docker_engine',
+            'npipe:////./pipe/dockerDesktopLinuxEngine', 'unix:///var/run/docker.sock')) {
         throw 'El contexto Docker no apunta a un endpoint local permitido.'
     }
     $osType = Invoke-Native -FilePath 'docker' -Arguments @(

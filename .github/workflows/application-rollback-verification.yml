@@ -2,6 +2,11 @@ name: Application rollback verification
 
 on:
   workflow_dispatch:
+    inputs:
+      recovery_baseline_commit:
+        description: Previous approved backend commit (full SHA40)
+        required: true
+        type: string
   pull_request:
     branches: [main]
     paths:
@@ -9,6 +14,7 @@ on:
       - "backend/src/main/resources/db/migration/**"
       - "scripts/ops/rollback-backend.ps1"
       - "scripts/ops/test-rollback-backend-contract.ps1"
+      - "scripts/ops/test-local-docker-guards-contract.ps1"
       - "scripts/ops/backup-postgres.ps1"
       - "scripts/ops/verify-application-rollback.ps1"
       - "docker-compose.yml"
@@ -21,6 +27,7 @@ on:
       - "backend/src/main/resources/db/migration/**"
       - "scripts/ops/rollback-backend.ps1"
       - "scripts/ops/test-rollback-backend-contract.ps1"
+      - "scripts/ops/test-local-docker-guards-contract.ps1"
       - "scripts/ops/backup-postgres.ps1"
       - "scripts/ops/verify-application-rollback.ps1"
       - "docker-compose.yml"
@@ -39,6 +46,8 @@ jobs:
     name: Forward-compatible backend rollback
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      RECOVERY_BASELINE_COMMIT: ${{ github.event.pull_request.base.sha || github.event.before || inputs.recovery_baseline_commit }}
     steps:
       - name: Checkout full history
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
@@ -61,6 +70,7 @@ jobs:
       - name: Execute rollback static contract
         shell: pwsh
         run: |
+          ./scripts/ops/test-local-docker-guards-contract.ps1
           & pwsh -NoProfile -File ./scripts/ops/test-rollback-backend-contract.ps1 2>&1 | Tee-Object -FilePath application-rollback-contract.log
           Get-Content application-rollback-contract.log | Add-Content application-rollback.log
           exit $LASTEXITCODE
@@ -68,7 +78,8 @@ jobs:
       - name: Execute disposable rollback drill
         shell: pwsh
         run: |
-          & pwsh -NoProfile -File ./scripts/ops/verify-application-rollback.ps1 2>&1 | Tee-Object -FilePath application-rollback-run.log
+          if ($env:RECOVERY_BASELINE_COMMIT -cnotmatch '^[a-f0-9]{40}$') { throw 'An explicit historical SHA40 is required.' }
+          & pwsh -NoProfile -File ./scripts/ops/verify-application-rollback.ps1 -HistoricalCommit $env:RECOVERY_BASELINE_COMMIT 2>&1 | Tee-Object -FilePath application-rollback-run.log
           Get-Content application-rollback-run.log | Add-Content application-rollback.log
           exit $LASTEXITCODE
 

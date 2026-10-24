@@ -1,6 +1,6 @@
 package gestudio.infra.seguridad;
 
-import gestudio.infra.persistencia.PostgreSqlIntegrationTest;
+import gestudio.infra.persistencia.PostgreSqlTestDatabase;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -9,6 +9,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.ActiveProfiles;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.ByteBuffer;
@@ -28,15 +30,37 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest
-class SuperadminBootstrapPostgreSqlTest extends PostgreSqlIntegrationTest {
+@ActiveProfiles("test")
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
+class SuperadminBootstrapPostgreSqlTest {
     private static final String PASSWORD = "clave-superadmin-segura";
     private static final String TOTP_SECRET = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
     private static final String MFA_KEY =
             java.util.Base64.getEncoder().encodeToString("12345678901234567890123456789012"
                     .getBytes(StandardCharsets.US_ASCII));
 
+    // Initial bootstrap requires a platform with no administrators. Other
+    // integration classes intentionally retain their administrators, so sharing
+    // their database would make this test depend on Surefire's execution order.
+    private static final PostgreSqlTestDatabase POSTGRESQL =
+            new PostgreSqlTestDatabase("postgres:15.18-alpine3.24")
+                    .withDatabaseName("gestudio_superadmin_bootstrap")
+                    .withUsername("bootstrap")
+                    .withPassword("bootstrap");
+
+    static {
+        POSTGRESQL.start();
+    }
+
     @DynamicPropertySource
     static void platformProperties(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", POSTGRESQL::getJdbcUrl);
+        registry.add("spring.datasource.username", POSTGRESQL::getUsername);
+        registry.add("spring.datasource.password", POSTGRESQL::getPassword);
+        registry.add("spring.flyway.enabled", () -> true);
+        registry.add("spring.flyway.baseline-on-migrate", () -> false);
+        registry.add("spring.flyway.default-schema", () -> "public");
+        registry.add("spring.flyway.schemas", () -> "public");
         registry.add("app.platform-datasource.url", POSTGRESQL::getJdbcUrl);
         registry.add("app.platform-datasource.username", POSTGRESQL::getUsername);
         registry.add("app.platform-datasource.password", POSTGRESQL::getPassword);
@@ -53,6 +77,8 @@ class SuperadminBootstrapPostgreSqlTest extends PostgreSqlIntegrationTest {
     void bootstrapEsPlatformOnlyMfaObligatorioAtomicoEIdempotente() throws Exception {
         String username = "bootstrap-platform-" + UUID.randomUUID();
         String concurrentUsername = username + "-other";
+
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM platform_admins", Integer.class)).isZero();
 
         assertThatThrownBy(() -> bootstrap.bootstrap(username, "corta", TOTP_SECRET,
                 currentCode(), ignored -> { }))

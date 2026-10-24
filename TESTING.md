@@ -125,8 +125,12 @@ no constituyen evidencia browser.
 
 El gate E2E de CI exige además el recorrido financiero completo:
 
+Para el ensayo de recuperación, fijar previamente `$historicalCommit` al SHA40
+de un ancestro aprobado distinto de HEAD. CI usa el baseline de PR/push o el
+input manual explícito; no infiere `HEAD^` del último commit de revisión.
+
 ```powershell
-pwsh -NoProfile -File .\scripts\e2e\run-control-plane.ps1 -FinancialFlow
+pwsh -NoProfile -File .\scripts\e2e\run-control-plane.ps1 -FinancialFlow -RecoveryDrill -RecoveryHistoricalCommit $historicalCommit
 ```
 
 Esta variante rechaza `-PersistentDemo`, reconstruye backend y frontend sin
@@ -150,6 +154,43 @@ El contrato del runner se ejecuta con PowerShell 7 y también admite 5.1:
 El runner invoca el CLI local de Playwright directamente mediante Node: evita
 que el shim `npm.ps1` consuma el separador `--` y transforme la configuración
 en un filtro sin escenarios en Windows.
+
+`-RecoveryDrill` agrega continuidad del producto al mismo proyecto efímero:
+backup v3 consistente de PostgreSQL y el PDF real, restore a una base alternativa,
+restore activo después de alterar sólo el alumno y PDF sintéticos, cambio al
+backend histórico compatible con las migraciones actuales y retorno al actual.
+Cada fase compara filas financieras, identidad/RBAC, auditoría y Flyway; exige
+login Alpha/Beta, importes, caja, PDF idéntico, aislamiento y MFA de plataforma.
+Los campos MFA completos, incluidos contador anti-replay y fecha de uso, se
+comparan antes de nuevos logins; luego se usa un TOTP de un paso posterior.
+Las claves sintéticas permanecen en la configuración privada separada del backup.
+El log sanitizado adicional es `financial-recovery.log`. El workflow exige esta
+variante; los contratos sin cargas se verifican con
+`scripts/e2e/test-financial-recovery-contract.ps1` (PS7/5.1) y
+`node --test frontend/scripts/verify-financial-recovery.test.mjs`.
+
+Para preparar scans sobre los mismos IDs probados puede agregarse
+`-ExportCandidateImages`: escribe archivos Docker en
+`artifacts/e2e/candidate-<runId>/` y registra IDs, SHA256 y tamaños en el resultado.
+No conserva contenedores, volúmenes ni tags del proyecto. Los archivos se aceptan
+como candidato sólo si el gate completo termina en `PASS`; un cambio de SHA en
+CI exige nuevas imágenes y scans propios, aunque las fuentes coincidan.
+El arranque financiero usa `--no-build` después del clean build y comprueba,
+antes del navegador, que los IDs de ambos contenedores coincidan exactamente
+con las imágenes preparadas y exportadas; conserva las attestations OCI.
+
+Después de ese `PASS`, `scripts/security/scan-e2e-candidate.ps1` genera SBOM Syft y
+CycloneDX y ejecuta Grype sobre los archivos exactos. Vincula índice OCI o config
+Docker clásico, config, capas ordenadas, SBOM, hashes de archivos y reporte;
+rechaza inventarios vacíos o cambios durante la lectura. El gate falla ante
+hallazgos High/Critical, sin ignores ni filtro de vulnerabilidades con arreglo.
+La base de vulnerabilidades debe ser válida y tener menos de 24 horas.
+CI usa Python 3.12.15 explícito y una caché propia que actualiza antes del scan.
+Para una caché local ya preparada puede indicarse `-ExistingDatabaseVolume`:
+se monta sólo lectura y no descarga herramientas ni actualiza datos ajenos.
+Los comandos, códigos, identidad de herramientas, base y hashes quedan en
+`artifacts/e2e/security-<runId>-attempt-<n>/scan-result.json` y archivos asociados.
+`-Attempt <n>` permite conservar cada intento previo sin sobrescribir evidencia.
 
 ## Validación integrada
 

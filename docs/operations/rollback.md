@@ -90,7 +90,7 @@ powershell -NoProfile -ExecutionPolicy Bypass `
   -HistoricalCommit $historicalCommit
 ```
 
-Si se omite `-HistoricalCommit`, el drill descartable usa `HEAD^`; esto sirve para CI de continuidad, no sustituye la selección y promoción explícita de un artefacto productivo. El drill elimina sus imágenes al finalizar. La publicación debe reproducir los mismos inputs verificados en una pipeline controlada y registrar el digest resultante.
+Si se omite `-HistoricalCommit`, la invocación local conserva `HEAD^` por compatibilidad. El workflow exige una base explícita: SHA base del PR, SHA anterior del push o SHA40 indicado en la ejecución manual. La base debe ser ancestro y distinta de HEAD. El drill elimina sus imágenes al finalizar. La publicación debe reproducir los mismos inputs verificados en una pipeline controlada y registrar el digest resultante.
 
 Comprobar metadata:
 
@@ -237,6 +237,18 @@ El drill:
 15. elimina únicamente el stack etiquetado, sus volúmenes/red, las imágenes del drill y el temporal validado. Git no se modifica.
 
 ### Estado de evidencia
+
+La variante `scripts/e2e/run-control-plane.ps1 -FinancialFlow -RecoveryDrill -RecoveryHistoricalCommit <SHA40>`
+agrega una comprobación del producto con datos sintéticos: tras restaurar pago,
+aplicaciones, caja y PDF reales, cambia al backend histórico seleccionado
+explícitamente, ancestro distinto de HEAD, ensamblado
+con el Dockerfile y recursos Flyway actuales y vuelve al candidato. Comprueba
+IDs de imágenes, snapshot financiero/identidad/RBAC, auditoría, estado MFA
+completo antes de autenticaciones nuevas, login/aislamiento Alpha/Beta y PDF
+idéntico. No ejecuta down migrations ni habilita correo o cron de negocio.
+El artefacto histórico de este ensayo no es una imagen aprobada para producción.
+Esta aceptación complementa las guardas adversariales del drill anterior y no
+acredita rollback del frontend ni efectos externos.
 
 La evidencia de julio de 2026 correspondía al contrato anterior y quedó invalidada por V12/B12, el control plane y el nuevo ensamblado temporal. Debe ejecutarse nuevamente el comando anterior sobre el SHA candidato. Hasta obtener exit 0 y cleanup completo, el gate de rollback no es `PASS`.
 
