@@ -9,6 +9,39 @@ function Expect-Rejection {
     try { & $Action } catch { $rejected = $true }
     if (-not $rejected) { throw 'Expected recovery scope rejection did not occur.' }
 }
+function Invoke-SyntheticDockerScope {
+    param([Parameter(Mandatory)][scriptblock] $Action)
+    $callerHost = [Environment]::GetEnvironmentVariable('DOCKER_HOST','Process')
+    $callerContext = [Environment]::GetEnvironmentVariable('DOCKER_CONTEXT','Process')
+    try { & $Action }
+    finally {
+        [Environment]::SetEnvironmentVariable('DOCKER_HOST',$callerHost,'Process')
+        [Environment]::SetEnvironmentVariable('DOCKER_CONTEXT',$callerContext,'Process')
+    }
+}
+function Read-ContractComposeConfig {
+    param([string] $Path, [string] $EnvironmentFile, [string] $Label)
+    $dockerCommand = Get-Command docker -CommandType Application -ErrorAction Stop | Select-Object -First 1
+    $callerErrorPreference = $ErrorActionPreference
+    try {
+        # Windows PowerShell represents native stderr as ErrorRecords even for
+        # ordinary command errors. Preserve output, then evaluate the exit code.
+        $ErrorActionPreference = 'Continue'
+        $output = @(& $dockerCommand.Source compose -f $Path --env-file $EnvironmentFile config --format json 2>&1 | ForEach-Object { [string]$_ })
+        $code = $LASTEXITCODE
+    }
+    finally { $ErrorActionPreference = $callerErrorPreference }
+    if ($code -ne 0) {
+        $diagnostic = $output -join "`n"
+        foreach ($sensitive in @($previousHost,$previousContext,$previousBackend,$root)) {
+            if ($sensitive) { $diagnostic = $diagnostic.Replace($sensitive,'[redacted]') }
+        }
+        $diagnostic = $diagnostic -replace '(?i)([a-z][a-z0-9+.-]*://)[^\s/@]+@','$1[redacted]@'
+        if ($diagnostic.Length -gt 4096) { $diagnostic = $diagnostic.Substring(0,4096) }
+        throw "$Label does not parse (exit code $code): $diagnostic"
+    }
+    return ($output -join "`n")
+}
 $project = 'gestudio-e2e-' + [Guid]::NewGuid().ToString('N').Substring(0,12)
 $root = [IO.Path]::GetFullPath((Join-Path ([IO.Path]::GetTempPath()) $project))
 if (Test-Path -LiteralPath $root) { throw 'Contract temporary root exists.' }
@@ -79,47 +112,64 @@ try {
         WritePrivate={ throw 'Private write must not occur before preflight' };
         Sanitize={ param($value) $value }; Log=[Collections.Generic.List[string]]::new()
     }
-    $env:DOCKER_CONTEXT='desktop-linux'
-    $env:DOCKER_HOST='tcp://external.invalid:2376'
-    Expect-Rejection { Invoke-FinancialRecovery @invokeParameters }
-    if ($script:recoveryNativeCalls -ne 0) { throw 'Inherited Docker host was not rejected before native commands.' }
-    Remove-Item Env:DOCKER_HOST -ErrorAction SilentlyContinue
-    Expect-Rejection { Invoke-FinancialRecovery @invokeParameters }
-    if ($script:recoveryNativeCalls -ne 1) { throw 'Nonlocal endpoint was not rejected before Docker mutations.' }
-    $script:recoveryEndpointJson='"npipe:////external.invalid/pipe/docker_engine"'
-    Expect-Rejection { Invoke-FinancialRecovery @invokeParameters }
-    if ($script:recoveryNativeCalls -ne 2) { throw 'Remote named pipe was not rejected before Docker mutations.' }
-    $script:baselineNativeCalls=[Collections.Generic.List[string]]::new()
-    $sameHead=$invokeParameters.Clone()
-    $sameHead.Native={
-        param($FilePath,$Arguments,[switch]$Capture)
-        $script:baselineNativeCalls.Add($FilePath + ' ' + ($Arguments -join ' '))
-        if($FilePath -ceq 'docker'){return '"npipe:////./pipe/dockerDesktopLinuxEngine"'}
-        if($FilePath -ceq 'git'){return ('a'*40)}
-        throw 'Unexpected native operation before baseline validation'
+    # Metadata-only stubs own their process environment and function scope.
+    # They must not select a Desktop-only context for the real offline parser.
+    Invoke-SyntheticDockerScope {
+        $env:DOCKER_CONTEXT='desktop-linux'
+        $env:DOCKER_HOST='tcp://external.invalid:2376'
+        Expect-Rejection { Invoke-FinancialRecovery @invokeParameters }
+        if ($script:recoveryNativeCalls -ne 0) { throw 'Inherited Docker host was not rejected before native commands.' }
+        Remove-Item Env:DOCKER_HOST -ErrorAction SilentlyContinue
+        Expect-Rejection { Invoke-FinancialRecovery @invokeParameters }
+        if ($script:recoveryNativeCalls -ne 1) { throw 'Nonlocal endpoint was not rejected before Docker mutations.' }
+        $script:recoveryEndpointJson='"npipe:////external.invalid/pipe/docker_engine"'
+        Expect-Rejection { Invoke-FinancialRecovery @invokeParameters }
+        if ($script:recoveryNativeCalls -ne 2) { throw 'Remote named pipe was not rejected before Docker mutations.' }
+        $script:baselineNativeCalls=[Collections.Generic.List[string]]::new()
+        $sameHead=$invokeParameters.Clone()
+        $sameHead.Native={
+            param($FilePath,$Arguments,[switch]$Capture)
+            $script:baselineNativeCalls.Add($FilePath + ' ' + ($Arguments -join ' '))
+            if($FilePath -ceq 'docker'){return '"npipe:////./pipe/dockerDesktopLinuxEngine"'}
+            if($FilePath -ceq 'git'){return ('a'*40)}
+            throw 'Unexpected native operation before baseline validation'
+        }
+        Expect-Rejection { Invoke-FinancialRecovery @sameHead }
+        if($script:baselineNativeCalls.Count -ne 3){throw 'Historical HEAD must be rejected before Docker inventory/mutations.'}
+        # Exercise the runner's actual preflight as well, with metadata-only stubs.
+        $tokens=$null; $errors=$null
+        $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'run-control-plane.ps1'),[ref]$tokens,[ref]$errors)
+        if ($errors.Count -ne 0) { throw 'Runner AST is invalid.' }
+        $definition=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Assert-LocalDockerTarget'},$false)
+        Invoke-Expression $definition.Extent.Text
+        function Invoke-Native {
+            param($FilePath,$Arguments,[switch]$Capture)
+            if ($Arguments[0] -ceq 'context' -and $Arguments[1] -ceq 'show') { return 'desktop-linux' }
+            if ($Arguments[0] -ceq 'context' -and $Arguments[1] -ceq 'inspect') { return $script:recoveryEndpointJson }
+            if ($Arguments[-1] -ceq '{{.OSType}}') { return 'linux' }
+            throw 'Unexpected native operation in local Docker preflight contract.'
+        }
+        foreach ($rejectedEndpoint in @('tcp://external.invalid:2376','npipe:////external.invalid/pipe/docker_engine')) {
+            $script:recoveryEndpointJson=ConvertTo-Json $rejectedEndpoint -Compress
+            Expect-Rejection { Assert-LocalDockerTarget }
+        }
+        foreach ($allowedEndpoint in @('npipe:////./pipe/docker_engine','npipe:////./pipe/dockerDesktopLinuxEngine','unix:///var/run/docker.sock')) {
+            $script:recoveryEndpointJson=ConvertTo-Json $allowedEndpoint -Compress
+            if ((Assert-LocalDockerTarget) -cne 'desktop-linux') { throw 'Allowed local Docker endpoint was rejected.' }
+        }
     }
-    Expect-Rejection { Invoke-FinancialRecovery @sameHead }
-    if($script:baselineNativeCalls.Count -ne 3){throw 'Historical HEAD must be rejected before Docker inventory/mutations.'}
-    # Exercise the runner's actual preflight as well, with metadata-only stubs.
-    $tokens=$null; $errors=$null
-    $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'run-control-plane.ps1'),[ref]$tokens,[ref]$errors)
-    if ($errors.Count -ne 0) { throw 'Runner AST is invalid.' }
-    $definition=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Assert-LocalDockerTarget'},$false)
-    Invoke-Expression $definition.Extent.Text
-    function Invoke-Native {
-        param($FilePath,$Arguments,[switch]$Capture)
-        if ($Arguments[0] -ceq 'context' -and $Arguments[1] -ceq 'show') { return 'desktop-linux' }
-        if ($Arguments[0] -ceq 'context' -and $Arguments[1] -ceq 'inspect') { return $script:recoveryEndpointJson }
-        if ($Arguments[-1] -ceq '{{.OSType}}') { return 'linux' }
-        throw 'Unexpected native operation in local Docker preflight contract.'
+    # Exercise restoration on exceptional completion as well as the successful
+    # stub phase, without invoking any native command or real endpoint.
+    Expect-Rejection {
+        Invoke-SyntheticDockerScope {
+            $env:DOCKER_HOST='tcp://external.invalid:2376'
+            $env:DOCKER_CONTEXT='synthetic-throw-context'
+            throw 'synthetic scope failure'
+        }
     }
-    foreach ($rejectedEndpoint in @('tcp://external.invalid:2376','npipe:////external.invalid/pipe/docker_engine')) {
-        $script:recoveryEndpointJson=ConvertTo-Json $rejectedEndpoint -Compress
-        Expect-Rejection { Assert-LocalDockerTarget }
-    }
-    foreach ($allowedEndpoint in @('npipe:////./pipe/docker_engine','npipe:////./pipe/dockerDesktopLinuxEngine','unix:///var/run/docker.sock')) {
-        $script:recoveryEndpointJson=ConvertTo-Json $allowedEndpoint -Compress
-        if ((Assert-LocalDockerTarget) -cne 'desktop-linux') { throw 'Allowed local Docker endpoint was rejected.' }
+    if (-not [string]::Equals([Environment]::GetEnvironmentVariable('DOCKER_HOST','Process'),$previousHost,[StringComparison]::Ordinal) -or
+        -not [string]::Equals([Environment]::GetEnvironmentVariable('DOCKER_CONTEXT','Process'),$previousContext,[StringComparison]::Ordinal)) {
+        throw 'Synthetic Docker environment escaped into real Compose parsing.'
     }
 
     # Real Compose parsing only: no engine, containers or remote endpoint calls.
@@ -132,16 +182,16 @@ try {
         }
     }
     [IO.File]::WriteAllText($compose,($fixture | ConvertTo-Json -Depth 12),[Text.UTF8Encoding]::new($false))
-    $originalOutput=@(& docker compose -f $compose --env-file $envFile config --format json 2>&1)
-    if ($LASTEXITCODE -ne 0) { throw 'Synthetic original Compose does not parse.' }
-    $canonicalOriginal=($originalOutput -join "`n")
+    $diagnosticRejected=$false
+    try { Read-ContractComposeConfig -Path (Join-Path $root 'missing.compose.json') -EnvironmentFile $envFile -Label 'Synthetic missing Compose fixture' }
+    catch { $diagnosticRejected=$_.Exception.Message -like 'Synthetic missing Compose fixture does not parse (exit code *): *' }
+    if (-not $diagnosticRejected -or $ErrorActionPreference -cne 'Stop') { throw 'Compose errors must preserve a sanitized diagnostic and restore error policy.' }
+    $canonicalOriginal=Read-ContractComposeConfig -Path $compose -EnvironmentFile $envFile -Label 'Synthetic original Compose'
     $original=$canonicalOriginal | ConvertFrom-Json
     $converted=ConvertTo-FinancialRecoveryCompose $canonicalOriginal
     [IO.File]::WriteAllText($compose,$converted,[Text.UTF8Encoding]::new($false))
     $env:BACKEND_IMAGE='backend:overridden'
-    $output = @(& docker compose -f $compose --env-file $envFile config --format json 2>&1)
-    if ($LASTEXITCODE -ne 0) { throw 'Recovery canonical Compose does not parse.' }
-    $parsed=($output -join "`n") | ConvertFrom-Json
+    $parsed=(Read-ContractComposeConfig -Path $compose -EnvironmentFile $envFile -Label 'Recovery canonical Compose') | ConvertFrom-Json
     if ($parsed.services.backend.image -cne 'backend:overridden' -or
         $parsed.services.backend.environment.SYNTHETIC_LITERAL -cne $original.services.backend.environment.SYNTHETIC_LITERAL -or
         $parsed.services.backend.healthcheck.test[1] -cne $original.services.backend.healthcheck.test[1] -or
